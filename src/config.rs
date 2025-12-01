@@ -15,6 +15,8 @@ pub struct HotkeyConfig {
     pub action: String,
     #[serde(default)]
     pub trigger_on_release: bool,
+    pub target_application: Option<String>,
+    pub app_window: Option<String>,
 }
 
 /// Load and parse the config file
@@ -42,6 +44,8 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             action_name: hk_config.action.clone(),
             action,
             trigger_on_release: hk_config.trigger_on_release,
+            application: hk_config.target_application,
+            app_window: hk_config.app_window,
         });
     }
 

@@ -22,12 +22,28 @@ pub fn test_keystroke() {
 
 pub fn test_app_info() {
     use crate::macos::app_info;
+    use std::time::Instant;
 
     log::info!("=== App Focus Information ===");
+    println!("=== App Focus Information ===");
+
+    // Benchmark get_current_app()
+    let start = Instant::now();
+    for _ in 0..1000 {
+        let _ = app_info::get_current_app();
+    }
+    let elapsed = start.elapsed();
+    let msg = format!("⏱️  get_current_app() benchmark: {:?} per call (1000 calls in {:?})",
+                      elapsed / 1000, elapsed);
+    log::info!("{}", msg);
+    println!("{}", msg);
 
     // Get current app (no permissions needed)
     match app_info::get_current_app() {
-        Ok(app_name) => println!("Current App: {}", app_name),
+        Ok(app_name) => {
+            log::info!("Current App: {}", app_name);
+            println!("Current App: {}", app_name);
+        }
         Err(e) => log::error!("Failed to get app: {}", e),
     }
 

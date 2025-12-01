@@ -10,7 +10,6 @@ use std::sync::{Mutex, OnceLock};
 pub struct KeyState {
     /// Set of currently pressed key codes
     pub pressed_keys: HashSet<u16>,
-
     // Future: Track press history with timestamps for sequential chord support
     // press_history: VecDeque<(u16, Instant)>,
 }
@@ -60,7 +59,6 @@ pub enum ChordPattern {
     ///
     /// Matches when: (55 OR 54) AND (56 OR 60) AND 1 are ALL pressed
     Simultaneous { key_groups: Vec<Vec<u16>> },
-
     // Future: Sequential chords for multi-tap patterns
     // Sequential { steps: Vec<ChordStep> },
 }
@@ -85,7 +83,10 @@ impl ChordPattern {
                     .iter()
                     .map(|group| {
                         // Count how many keys from this group are pressed
-                        group.iter().filter(|&&key| pressed_keys.contains(&key)).count()
+                        group
+                            .iter()
+                            .filter(|&&key| pressed_keys.contains(&key))
+                            .count()
                     })
                     .sum();
 
@@ -107,9 +108,9 @@ impl ChordPattern {
                     .filter_map(|group| {
                         // Get the name of the first key in the group
                         // (for modifiers with L/R variants, they map to the same name anyway)
-                        group.first().and_then(|&code| {
-                            keycode_to_name(code).map(|name| name.to_string())
-                        })
+                        group
+                            .first()
+                            .and_then(|&code| keycode_to_name(code).map(|name| name.to_string()))
                     })
                     .collect();
                 parts.join("+")
@@ -136,12 +137,20 @@ pub struct Hotkey {
 
     /// Whether to trigger on key release instead of key down
     pub trigger_on_release: bool,
+
+    pub application: Option<String>,
+
+    pub app_window: Option<String>,
 }
 
 impl Hotkey {
     /// Checks if this hotkey's chord matches the current key state
     pub fn matches(&self, pressed_keys: &HashSet<u16>) -> bool {
         self.chord.matches(pressed_keys)
+            && (self.application.is_none()
+                || self.application.as_ref() == crate::macos::app_info::get_current_app().ok().as_ref())
+            && (self.app_window.is_none()
+                || self.app_window.as_ref() == crate::macos::app_info::get_app_window().ok().as_ref())
     }
 }
 

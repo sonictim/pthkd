@@ -1,10 +1,10 @@
 [package]
-name = "macos_macro_daemon"
+name = "protools_hotkey_daemon"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "hotkey_daemon"
+name = "pthkd"
 path = "src/main.rs"
 
 [dependencies]

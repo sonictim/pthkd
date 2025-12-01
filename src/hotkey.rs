@@ -149,8 +149,18 @@ impl Hotkey {
         self.chord.matches(pressed_keys)
             && (self.application.is_none()
                 || self.application.as_ref() == crate::macos::app_info::get_current_app().ok().as_ref())
-            && (self.app_window.is_none()
-                || self.app_window.as_ref() == crate::macos::app_info::get_app_window().ok().as_ref())
+            && 
+                match &self.app_window {
+                    None => true,
+                    Some(config_window) => {
+                        match crate::macos::app_info::get_app_window().ok() {
+                            None => false,
+                            Some(app_window) => app_window.to_uppercase().contains(config_window.to_uppercase()),
+
+
+                        }
+                    }
+                }
     }
 }
 

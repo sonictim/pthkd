@@ -13,18 +13,27 @@ action = "example_two"
 [[hotkey]]
 keys = ["cmd", "shift", "s"]
 action = "pt.solo_selected"
+target_application = "Pro Tools"
+app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", "d"]
+keys = ["cmd", "shift", "num_minus"]
 action = "pt.conform_delete"
+target_application = "Pro Tools"
+app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", "i"]
+keys = ["cmd", "shift", "num_plus"]
 action = "pt.conform_insert"
+target_application = "Pro Tools"
+app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", "f"]
+keys = ["f"]
 action = "pt.crossfade"
+target_application = "Pro Tools"
+app_window = "Edit"
+
 
 [[hotkey]]
 keys = ["cmd", "shift", "l"]

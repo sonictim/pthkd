@@ -1,0 +1,35 @@
+[package]
+name = "macos_macro_daemon"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "hotkey_daemon"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+mac-notification-sys = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+tokio = { version = "1", features = ["full"] }
+prost = "0.14.1"
+serde_json = "1.0"
+anyhow = "1.0.100"
+tonic = "0.14.2"
+tonic-prost = "0.14.2"
+log = "0.4"
+env_logger = "0.11"
+chrono = "0.4"
+objc2 = "0.5"
+objc2-foundation = "0.2"
+
+[build-dependencies]
+tonic-prost-build = "0.14.2"  
+
+[package.metadata.bundle]
+  name = "pt-cli"
+  identifier = "com.feralfrequencies.pt-cli"
+  category = "Utility"
+  osx_background_only = true
+

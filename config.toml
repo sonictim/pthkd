@@ -1,0 +1,53 @@
+# Hotkey Configuration
+# Define your custom hotkeys using chord-based format
+
+[[hotkey]]
+keys = ["cmd", "shift", "k"]
+action = "test_notification"
+
+[[hotkey]]
+keys = ["cmd", "shift", "r"]
+action = "example_two"
+
+# ProTools actions (namespaced with pt.)
+[[hotkey]]
+keys = ["cmd", "shift", "s"]
+action = "pt.solo_selected"
+
+[[hotkey]]
+keys = ["cmd", "shift", "d"]
+action = "pt.conform_delete"
+
+[[hotkey]]
+keys = ["cmd", "shift", "i"]
+action = "pt.conform_insert"
+
+[[hotkey]]
+keys = ["cmd", "shift", "f"]
+action = "pt.crossfade"
+
+[[hotkey]]
+keys = ["cmd", "shift", "l"]
+action = "test_keystroke"
+trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+
+[[hotkey]]
+keys = ["cmd", "shift", "y"]
+action = "pt.get_selection"
+
+[[hotkey]]
+keys = ["cmd", "shift", "a"]
+action = "test_app_info"
+
+# Example: Non-modifier chord (all keys pressed simultaneously)
+# [[hotkey]]
+# keys = ["l", "d", "q"]
+# action = "weird_chord"
+
+# Available key names:
+# - Modifiers: "cmd", "shift", "option"/"alt", "control"/"ctrl"
+# - Letters: "a" through "z"
+# - Numbers: "1" through "0"
+# - Function: "f1" through "f20"
+# - Special: "space", "return", "tab", "delete", "escape", etc.
+# See src/keycodes.rs for complete list

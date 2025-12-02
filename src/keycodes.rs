@@ -224,6 +224,18 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "9" => vec![KEY_9],
         "0" => vec![KEY_0],
 
+        // Numbers (keypad)
+        "pad_1" => vec![KEYPAD_1],
+        "pad_2" => vec![KEYPAD_2],
+        "pad_3" => vec![KEYPAD_3],
+        "pad_4" => vec![KEYPAD_4],
+        "pad_5" => vec![KEYPAD_5],
+        "pad_6" => vec![KEYPAD_6],
+        "pad_7" => vec![KEYPAD_7],
+        "pad_8" => vec![KEYPAD_8],
+        "pad_9" => vec![KEYPAD_9],
+        "pad_0" => vec![KEYPAD_0],
+        
         // Function keys
         "f1" => vec![KEY_F1],
         "f2" => vec![KEY_F2],
@@ -264,11 +276,11 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "pagedown" | "page_down" => vec![KEY_PAGE_DOWN],
 
         // Punctuation
-        "plus" | "num_plus" | "+" => vec![KEYPAD_PLUS],
+        "plus" | "pad_plus" | "+" => vec![KEYPAD_PLUS],
         "minus" | "-" => vec![KEY_MINUS],
-        "num_minus" => vec![KEYPAD_MINUS],
+        "pad_minus" => vec![KEYPAD_MINUS],
         "equal" | "equals" | "=" => vec![KEY_EQUAL],
-        "num_equal" | "num_equals" => vec![KEYPAD_EQUALS],
+        "pad_equal" | "pad_equals" => vec![KEYPAD_EQUALS],
         "leftbracket" | "[" => vec![KEY_LEFT_BRACKET],
         "rightbracket" | "]" => vec![KEY_RIGHT_BRACKET],
         "backslash" | "\\" => vec![KEY_BACKSLASH],

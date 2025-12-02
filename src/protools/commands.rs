@@ -5,10 +5,14 @@ use ptsl::CommandId;
 
 pub async fn keystroke(keys: &[&str]) -> Result<()> {
     crate::macos::keystroke::send_keystroke(keys)?;
-    std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+    std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
     Ok(())
 }
-
+pub async fn menu(menu: &[&str]) -> Result<()> {
+    crate::macos::menu::run_menu_item("Pro Tools", menu)?;
+    std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
+    Ok(())
+}
 pub async fn solo_clear(pt: &mut ProtoolsSession) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
@@ -50,7 +54,7 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession) -> Result<()> {
             continue;
         };
         let is_selected_str = attributes["is_selected"].as_str().unwrap_or("None");
-        let is_selected = is_selected_str != "None";
+        let is_selected = is_selected_str == "SetExplicitly";
         let is_soloed = attributes["is_soloed"].as_bool().unwrap_or(false);
 
         if is_soloed != is_selected {
@@ -147,9 +151,11 @@ pub async fn crossfade_and_clear_automation(pt: &mut ProtoolsSession, preset: &s
     let mut sel = PtSelectionSamples::new(pt).await?;
     let c = sel.get_io();
     sel.set_io(pt, c.1, c.1).await?;
-    keystroke(&["cmd", "option", "slash"]).await?;
+    menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+    // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0, c.0).await?;
-    keystroke(&["cmd", "option", "slash"]).await?;
+    menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+    // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0 + 100, c.1 - 100).await?;
 
     let _: serde_json::Value = pt
@@ -161,8 +167,9 @@ pub async fn crossfade_and_clear_automation(pt: &mut ProtoolsSession, preset: &s
         )
         .await?;
 
-    sel.set_io(pt, c.0 - 4800, c.1 + 4800).await?;
-    keystroke(&["cmd", "option", "control", "t"]).await?;
+    sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
+    menu(&["Edit", "Automation", "Thin All"]).await?;
+    // keystroke(&["cmd", "option", "control", "t"]).await?;
     sel.set_io(pt, c.0, c.1).await?;
     Ok(())
 }
@@ -175,11 +182,10 @@ pub async fn conform_delete(pt: &mut ProtoolsSession) -> Result<()> {
 
     if pt.get_edit_mode().await? != "EMO_Shuffle" {
         keystroke(&["cmd", "f1"]).await?;
-        std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+        // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
-
     let _: serde_json::Value = pt.cmd(CommandId::Clear, serde_json::json!({})).await?;
     pt.set_edit_mode(&original_mode).await?;
     if flag {
@@ -195,13 +201,13 @@ pub async fn conform_insert(pt: &mut ProtoolsSession) -> Result<()> {
 
     if pt.get_edit_mode().await? != "EMO_Shuffle" {
         keystroke(&["cmd", "f1"]).await?;
-        std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+        // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
-
-    keystroke(&["cmd", "shift", "e"]).await?;
-    std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+    menu(&["Edit", "Insert Silence"]).await?;
+    // keystroke(&["cmd", "shift", "e"]).await?;
+    // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
     if flag {
         keystroke(&["cmd", "f1"]).await?;
@@ -223,68 +229,94 @@ pub async fn get_selection_samples(pt: &mut ProtoolsSession) -> Result<()> {
     .await?;
     let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
     println!("Marker List: {:?}", markers);
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    println!("Marker Ruler Names: {:?}", rulers);
     Ok(())
 }
 
 pub async fn go_to_next_marker(pt: &mut ProtoolsSession) -> Result<()> {
-    let mut selection = PtSelectionSamples::new(pt).await?;
-    let (selection_time, _) = selection.get_io();
-    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
-
-    let mut next_marker_time: Option<i64> = None;
-
-    for marker in markers {
-        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
-        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
-
-        if marker_time > selection_time {
-            match next_marker_time {
-                None => next_marker_time = Some(marker_time),
-                Some(current_next) => {
-                    if marker_time < current_next {
-                        next_marker_time = Some(marker_time);
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(time) = next_marker_time {
-        selection.set_io(pt, time, time).await?;
-    }
-
+    pt.go_to_next_marker("", false).await?;
     Ok(())
 }
 pub async fn go_to_previous_marker(pt: &mut ProtoolsSession) -> Result<()> {
-    let mut selection = PtSelectionSamples::new(pt).await?;
-    let (selection_time, _) = selection.get_io();
-    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
-
-    let mut next_marker_time: Option<i64> = None;
-
-    for marker in markers {
-        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
-        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
-
-        if marker_time < selection_time {
-            match next_marker_time {
-                None => next_marker_time = Some(marker_time),
-                Some(current_next) => {
-                    if marker_time > current_next {
-                        next_marker_time = Some(marker_time);
-                    }
-                }
-            }
-        }
+    pt.go_to_next_marker("", true).await?;
+    Ok(())
+}
+pub async fn go_to_next_marker_1(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(0) {
+        pt.go_to_next_marker(name, false).await?;
     }
-
-    if let Some(time) = next_marker_time {
-        selection.set_io(pt, time, time).await?;
-    }
-
     Ok(())
 }
 
+pub async fn go_to_previous_marker_1(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(0) {
+        pt.go_to_next_marker(name, true).await?;
+    }
+    Ok(())
+}
+pub async fn go_to_next_marker_2(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(1) {
+        pt.go_to_next_marker(name, false).await?;
+    }
+    Ok(())
+}
+
+pub async fn go_to_previous_marker_2(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(1) {
+        pt.go_to_next_marker(name, true).await?;
+    }
+    Ok(())
+}
+pub async fn go_to_next_marker_3(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(2) {
+        pt.go_to_next_marker(name, false).await?;
+    }
+    Ok(())
+}
+
+pub async fn go_to_previous_marker_3(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(2) {
+        pt.go_to_next_marker(name, true).await?;
+    }
+    Ok(())
+}
+pub async fn go_to_next_marker_4(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(3) {
+        pt.go_to_next_marker(name, false).await?;
+    }
+    Ok(())
+}
+
+pub async fn go_to_previous_marker_4(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(3) {
+        pt.go_to_next_marker(name, true).await?;
+    }
+    Ok(())
+}
+pub async fn go_to_next_marker_5(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(4) {
+        pt.go_to_next_marker(name, false).await?;
+    }
+    Ok(())
+}
+
+pub async fn go_to_previous_marker_5(pt: &mut ProtoolsSession) -> Result<()> {
+    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
+    if let Some(name) = rulers.get(4) {
+        pt.go_to_next_marker(name, true).await?;
+    }
+    Ok(())
+}
 pub async fn toggle_edit_tool(pt: &mut ProtoolsSession) -> Result<()> {
     let tool = pt.get_edit_tool().await?;
     if tool != "ET_Selector" {
@@ -292,5 +324,10 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession) -> Result<()> {
     } else {
         pt.set_edit_tool("ET_GrabberTime").await?;
     }
+    Ok(())
+}
+pub async fn spot_to_protools_from_soundminer(pt: &mut ProtoolsSession) -> Result<()> {
+    println!("Sending to Protools Session");
+    crate::macos::menu::run_menu_item("Soundminer_Intel", &["Transfer", "Spot to DAW"])?;
     Ok(())
 }

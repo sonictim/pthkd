@@ -163,7 +163,7 @@ impl Hotkey {
 }
 
 /// Global hotkey registry accessible from C callback
-pub static HOTKEYS: OnceLock<Vec<Hotkey>> = OnceLock::new();
+pub static HOTKEYS: OnceLock<Mutex<Vec<Hotkey>>> = OnceLock::new();
 
 // ============================================================================
 // Pending Hotkey Tracking (for trigger_on_release)

@@ -33,8 +33,11 @@ pub fn test_app_info() {
         let _ = app_info::get_current_app();
     }
     let elapsed = start.elapsed();
-    let msg = format!("⏱️  get_current_app() benchmark: {:?} per call (1000 calls in {:?})",
-                      elapsed / 1000, elapsed);
+    let msg = format!(
+        "⏱️  get_current_app() benchmark: {:?} per call (1000 calls in {:?})",
+        elapsed / 1000,
+        elapsed
+    );
     log::info!("{}", msg);
     println!("{}", msg);
 
@@ -76,6 +79,88 @@ pub fn test_app_info() {
     }
 }
 
+pub fn reload_config() {
+    use crate::config::{config_to_hotkeys, load_config};
+    use crate::hotkey::HOTKEYS;
+
+    log::info!("Reloading config from config.toml...");
+
+    // Load and parse config
+    let config = match load_config("config.toml") {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to reload config: {:#}", e);
+            show_notification("❌ Failed to reload config");
+            return;
+        }
+    };
+
+    // Convert to hotkeys
+    let hotkeys = match config_to_hotkeys(config) {
+        Ok(h) => h,
+        Err(e) => {
+            log::error!("Failed to parse config: {:#}", e);
+            show_notification("❌ Failed to parse config");
+            return;
+        }
+    };
+
+    // Log registered hotkeys
+    log::info!("Reloaded {} hotkeys:", hotkeys.len());
+    for hotkey in &hotkeys {
+        log::info!("  - {} => {}", hotkey.chord.describe(), hotkey.action_name);
+    }
+
+    // Update the global hotkey registry
+    if let Some(hotkeys_mutex) = HOTKEYS.get() {
+        *hotkeys_mutex.lock().unwrap() = hotkeys;
+        log::info!("✅ Config reloaded successfully!");
+        show_notification("✅ Config reloaded!");
+    } else {
+        log::error!("HOTKEYS not initialized - cannot reload");
+        show_notification("❌ HOTKEYS not initialized");
+    }
+}
+
+pub fn dump_app_menus() {
+    use crate::macos::menu::get_app_menus;
+
+    // Get menu structure for Pro Tools
+    let app_name = "Pro Tools";
+    log::info!("Getting menu structure for {}...", app_name);
+
+    match get_app_menus(app_name) {
+        Ok(menu_bar) => {
+            let json = serde_json::to_string_pretty(&menu_bar).unwrap();
+            log::info!("Menu structure for {}:\n{}", app_name, json);
+            println!("Menu structure for {}:\n{}", app_name, json);
+            show_notification(&format!("✅ {} menus logged!", app_name));
+        }
+        Err(e) => {
+            log::error!("Failed to get menus for {}: {:#}", app_name, e);
+            show_notification(&format!("❌ Failed: {}", e));
+        }
+    }
+}
+
+pub fn test_menu_click() {
+    use crate::macos::menu::run_menu_item;
+
+    log::info!("Testing menu click...");
+
+    // Test with a simple menu item - adjust this to whatever you want to test
+    match run_menu_item("Pro Tools", &["Edit", "Automation", "Write to All Enabled"]) {
+        Ok(_) => {
+            log::info!("✅ Menu click succeeded!");
+            show_notification("✅ Menu clicked!");
+        }
+        Err(e) => {
+            log::error!("Failed to click menu: {:#}", e);
+            show_notification(&format!("❌ Failed: {}", e));
+        }
+    }
+}
+
 // Add more actions as needed
 // pub fn my_custom() {
 //     println!("Custom action!");
@@ -92,6 +177,9 @@ pub fn get_action_registry() -> HashMap<&'static str, fn()> {
     registry.insert("example_two", example_two as fn());
     registry.insert("test_keystroke", test_keystroke as fn());
     registry.insert("test_app_info", test_app_info as fn());
+    registry.insert("reload_config", reload_config as fn());
+    registry.insert("dump_app_menus", dump_app_menus as fn());
+    registry.insert("test_menu_click", test_menu_click as fn());
 
     // Add more actions as needed:
     // registry.insert("my_custom", my_custom as fn());

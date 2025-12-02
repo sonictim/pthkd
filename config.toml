@@ -1,35 +1,44 @@
 # Hotkey Configuration
 # Define your custom hotkeys using chord-based format
 
+# System actions
 [[hotkey]]
-keys = ["cmd", "shift", "k"]
-action = "test_notification"
+keys = ["cmd", "option", "r"]
+action = "reload_config"
 
 [[hotkey]]
-keys = ["cmd", "shift", "r"]
-action = "example_two"
+keys = ["cmd", "option", "m"]
+action = "dump_app_menus"
+
+[[hotkey]]
+keys = ["cmd", "option", "n"]
+action = "test_menu_click"
+
+[[hotkey]]
+keys = ["cmd", "shift", "y"]
+action = "test_app_info"
 
 # ProTools actions (namespaced with pt.)
 [[hotkey]]
 keys = ["cmd", "shift", "s"]
-action = "pt.solo_selected"
-target_application = "Pro Tools"
-app_window = "Edit"
-
-[[hotkey]]
-keys = ["shift", "option", "s"]
 action = "pt.solo_only_selected_tracks"
 target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", "num_minus"]
+keys = ["shift", "option", "s"]
+action = "pt.solo_clear"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+[[hotkey]]
+keys = ["cmd", "option", "control", "pad_minus"]
 action = "pt.conform_delete"
 target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", "num_plus"]
+keys = ["cmd", "option", "control", "pad_plus"]
 action = "pt.conform_insert"
 target_application = "Pro Tools"
 app_window = "Edit"
@@ -46,25 +55,104 @@ keys = ["cmd", "shift", "l"]
 action = "test_keystroke"
 trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
 
-# [[hotkey]]
-# keys = ["cmd", "shift", "y"]
-# action = "pt.get_selection"
-#
 [[hotkey]]
 keys = ["cmd", "shift", "a"]
 action = "test_app_info"
 
 [[hotkey]]
-keys = ["cmd", "shift", "."]
+keys = ["pad_0", "pad_plus"]
 action = "pt.go_to_next_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
 
 [[hotkey]]
-keys = ["cmd", "shift", ","]
+keys = ["pad_0", "pad_minus"]
 action = "pt.go_to_previous_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_1", "pad_plus"]
+action = "pt.go_to_next_marker_lane_1"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_1", "pad_minus"]
+action = "pt.go_to_previous_marker_lane_1"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_2", "pad_plus"]
+action = "pt.go_to_next_marker_lane_2"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_2", "pad_minus"]
+action = "pt.go_to_previous_marker_lane_2"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_3", "pad_plus"]
+action = "pt.go_to_next_marker_lane_3"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_3", "pad_minus"]
+action = "pt.go_to_previous_marker_lane_3"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_4", "pad_plus"]
+action = "pt.go_to_next_marker_lane_4"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_4", "pad_minus"]
+action = "pt.go_to_previous_marker_lane_4"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_5", "pad_plus"]
+action = "pt.go_to_next_marker_lane_5"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+
+[[hotkey]]
+keys = ["pad_1", "pad_minus"]
+action = "pt.go_to_previous_marker_lane_1"
+target_application = "Pro Tools"
+app_window = "Edit"
+
 
 [[hotkey]]
 keys = ["cmd", "shift", "t"]
 action = "pt.toggle_select_grab_tool"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+[[hotkey]]
+keys = ["control", "s"]
+action = "pt.spot_to_protools_from_soundminer"
+
+
 # Example: Non-modifier chord (all keys pressed simultaneously)
 # [[hotkey]]
 # keys = ["l", "d", "q"]

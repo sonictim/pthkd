@@ -121,7 +121,28 @@ impl ProtoolsSession {
 
         response["memory_locations"].as_array().cloned()
     }
+  pub async fn get_used_marker_ruler_names(&mut self) -> Option<Vec<String>> {
+      let markers = self.get_all_markers().await?;
 
+      let mut ruler_names = Vec::new();
+
+      for marker in markers {
+          // Check if marker is on a named ruler
+          if marker["location"].as_str() == Some("MarkerLocation_NamedRuler") {
+              if let Some(ruler_name) = marker["track_name"].as_str() {
+                  if !ruler_name.is_empty() {
+                      let ruler_name = ruler_name.to_string();
+                      // Only add if not already in the list (preserve order)
+                      if !ruler_names.contains(&ruler_name) {
+                          ruler_names.push(ruler_name);
+                      }
+                  }
+              }
+          }
+      }
+
+      Some(ruler_names)
+  }
     pub async fn solo_tracks(&mut self, tracks: Vec<String>, state: bool) -> Result<()> {
         if !tracks.is_empty() {
             let _: serde_json::Value = self
@@ -218,7 +239,53 @@ impl ProtoolsSession {
             .await?;
         Ok(())
     }
-}
+pub async fn go_to_next_marker(&mut self, location: &str, reverse: bool) -> Result<()> {
+    let mut selection = PtSelectionSamples::new(self).await?;
+    let (selection_time, _) = selection.get_io();
+    let markers = self.get_all_markers().await.unwrap_or(Vec::new());
+
+    let mut next_marker_time: Option<i64> = None;
+
+    for marker in markers {
+        let marker_location = marker["track_name"].as_str().unwrap_or("");
+        if !location.is_empty() && location != marker_location {continue;};
+        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
+        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
+
+        match reverse {
+                true => {
+                    if marker_time < selection_time {
+                        match next_marker_time {
+                            None => next_marker_time = Some(marker_time),
+                            Some(current_next) => {
+                                if marker_time > current_next {
+                                    next_marker_time = Some(marker_time);
+                                    }
+                                }
+                            }
+                        }
+                },
+               false => {
+                if marker_time > selection_time {
+                    match next_marker_time {
+                        None => next_marker_time = Some(marker_time),
+                        Some(current_next) => {
+                            if marker_time < current_next {
+                                next_marker_time = Some(marker_time);
+                            }
+                        }
+                    }
+                }
+                },
+        }
+    }
+
+    if let Some(time) = next_marker_time {
+        selection.set_io(self, time, time).await?;
+    }
+
+    Ok(())
+}}
 
 #[derive(Debug, Default)]
 pub struct PtSelectionSamples {

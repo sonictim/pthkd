@@ -34,9 +34,10 @@ unsafe extern "C" fn key_event_callback(
         drop(state);
 
         // Check all registered hotkeys against current key state
-        if let Some(hotkeys) = HOTKEYS.get() {
+        if let Some(hotkeys_mutex) = HOTKEYS.get() {
             let state = key_state.lock().unwrap();
             let pressed_keys = state.get_pressed_keys();
+            let hotkeys = hotkeys_mutex.lock().unwrap();
 
             for (index, hotkey) in hotkeys.iter().enumerate() {
                 if hotkey.matches(pressed_keys) {
@@ -81,7 +82,8 @@ unsafe extern "C" fn key_event_callback(
                 // Small delay to let the system fully process key releases
                 std::thread::sleep(std::time::Duration::from_millis(50));
 
-                if let Some(hotkeys) = HOTKEYS.get() {
+                if let Some(hotkeys_mutex) = HOTKEYS.get() {
+                    let hotkeys = hotkeys_mutex.lock().unwrap();
                     if let Some(hotkey) = hotkeys.get(pending.hotkey_index) {
                         (hotkey.action)();
                     }
@@ -121,9 +123,10 @@ unsafe extern "C" fn key_event_callback(
         // Check hotkeys after modifier change (same logic as KEY_DOWN)
         if is_pressed {
             // Only check for new matches on key down, not release
-            if let Some(hotkeys) = HOTKEYS.get() {
+            if let Some(hotkeys_mutex) = HOTKEYS.get() {
                 let state = key_state.lock().unwrap();
                 let pressed_keys = state.get_pressed_keys();
+                let hotkeys = hotkeys_mutex.lock().unwrap();
 
                 for (index, hotkey) in hotkeys.iter().enumerate() {
                     if hotkey.matches(pressed_keys) {
@@ -160,7 +163,8 @@ unsafe extern "C" fn key_event_callback(
                     // Small delay to let the system fully process key releases
                     std::thread::sleep(std::time::Duration::from_millis(50));
 
-                    if let Some(hotkeys) = HOTKEYS.get() {
+                    if let Some(hotkeys_mutex) = HOTKEYS.get() {
+                        let hotkeys = hotkeys_mutex.lock().unwrap();
                         if let Some(hotkey) = hotkeys.get(pending.hotkey_index) {
                             (hotkey.action)();
                         }
@@ -220,7 +224,7 @@ fn run() -> anyhow::Result<()> {
     }
 
     // Initialize hotkey registry
-    HOTKEYS.set(hotkeys)
+    HOTKEYS.set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
 
     // Create and install event tap for keyboard events

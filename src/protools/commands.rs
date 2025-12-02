@@ -9,6 +9,32 @@ pub async fn keystroke(keys: &[&str]) -> Result<()> {
     Ok(())
 }
 
+pub async fn solo_clear(pt: &mut ProtoolsSession) -> Result<()> {
+    println!("Running Solo Selected Tracks");
+    let Some(tracks) = pt.get_all_tracks().await else {
+        return Ok(());
+    };
+    let mut solos = Vec::new();
+
+    for track in tracks {
+        let Some(name) = track["name"].as_str() else {
+            continue;
+        };
+        let Some(attributes) = track["track_attributes"].as_object() else {
+            continue;
+        };
+        let is_soloed = attributes["is_soloed"].as_bool().unwrap_or(false);
+
+        if is_soloed {
+                solos.push(name.to_string());
+            }
+        
+    }
+    pt.solo_tracks(solos, false).await?;
+
+    Ok(())
+}
+
 pub async fn solo_selected_tracks(pt: &mut ProtoolsSession) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {

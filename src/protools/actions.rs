@@ -4,6 +4,7 @@ use crate::pt_actions;
 // Automatically generates functions AND registry
 pt_actions! {
     solo_selected => solo_selected_tracks,
+    solo_clear => solo_clear,
     crossfade => crossfade,
     conform_delete => conform_delete,
     conform_insert => conform_insert,

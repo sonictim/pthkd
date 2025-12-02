@@ -264,8 +264,11 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "pagedown" | "page_down" => vec![KEY_PAGE_DOWN],
 
         // Punctuation
+        "plus" | "num_plus" | "+" => vec![KEYPAD_PLUS],
         "minus" | "-" => vec![KEY_MINUS],
+        "num_minus" => vec![KEYPAD_MINUS],
         "equal" | "equals" | "=" => vec![KEY_EQUAL],
+        "num_equal" | "num_equals" => vec![KEYPAD_EQUALS],
         "leftbracket" | "[" => vec![KEY_LEFT_BRACKET],
         "rightbracket" | "]" => vec![KEY_RIGHT_BRACKET],
         "backslash" | "\\" => vec![KEY_BACKSLASH],

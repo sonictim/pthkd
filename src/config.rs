@@ -4,6 +4,9 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::fs;
 
+/// Embedded default configuration
+const DEFAULT_CONFIG: &str = include_str!("../config.toml");
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub hotkey: Vec<HotkeyConfig>,
@@ -20,24 +23,64 @@ pub struct HotkeyConfig {
 }
 
 /// Load and parse the config file
+/// If the config file doesn't exist, creates one from the embedded default
+/// If the config file has TOML errors, falls back to the embedded default
 pub fn load_config(path: &str) -> Result<Config> {
-    let contents = fs::read_to_string(path).context("Failed to read config file")?;
-    let config: Config = toml::from_str(&contents).context("Failed to parse TOML config")?;
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => {
+            log::info!("Loaded config from {}", path);
+            contents
+        }
+        Err(_) => {
+            log::warn!("Config file '{}' not found, creating from default", path);
+            // Write the default config to disk
+            fs::write(path, DEFAULT_CONFIG)
+                .context("Failed to write default config file")?;
+            log::info!("Created default config at {}", path);
+            DEFAULT_CONFIG.to_string()
+        }
+    };
+
+    // Try to parse the config
+    let config = match toml::from_str::<Config>(&contents) {
+        Ok(config) => config,
+        Err(e) => {
+            log::error!("Failed to parse config file: {:#}", e);
+            log::warn!("Falling back to embedded default configuration");
+            toml::from_str(DEFAULT_CONFIG)
+                .context("Failed to parse embedded default config (this should never happen)")?
+        }
+    };
+
     Ok(config)
 }
 
 /// Convert config hotkeys to runtime Hotkey structs
+/// Skips any hotkeys that fail to parse instead of failing entirely
 pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
     let mut hotkeys = Vec::new();
+    let mut skipped_count = 0;
 
     for hk_config in config.hotkey {
         // Parse the chord pattern from the keys list
-        let chord = parse_chord(&hk_config.keys)
-            .with_context(|| format!("Failed to parse keys: {:?}", hk_config.keys))?;
+        let chord = match parse_chord(&hk_config.keys) {
+            Ok(chord) => chord,
+            Err(e) => {
+                log::error!("Skipping hotkey with keys {:?}: {:#}", hk_config.keys, e);
+                skipped_count += 1;
+                continue;
+            }
+        };
 
         // Look up the action function (handles namespaces)
-        let action = get_action(&hk_config.action)
-            .with_context(|| format!("Unknown action: {}", hk_config.action))?;
+        let action = match get_action(&hk_config.action) {
+            Some(action) => action,
+            None => {
+                log::error!("Skipping hotkey '{}': unknown action", hk_config.action);
+                skipped_count += 1;
+                continue;
+            }
+        };
 
         hotkeys.push(Hotkey {
             chord,
@@ -47,6 +90,10 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             application: hk_config.target_application,
             app_window: hk_config.app_window,
         });
+    }
+
+    if skipped_count > 0 {
+        log::warn!("Skipped {} invalid hotkey(s)", skipped_count);
     }
 
     Ok(hotkeys)

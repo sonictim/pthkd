@@ -17,6 +17,12 @@ target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
+keys = ["shift", "option", "s"]
+action = "pt.solo_clear"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+[[hotkey]]
 keys = ["cmd", "shift", "num_minus"]
 action = "pt.conform_delete"
 target_application = "Pro Tools"

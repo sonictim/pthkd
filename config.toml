@@ -18,7 +18,7 @@ app_window = "Edit"
 
 [[hotkey]]
 keys = ["shift", "option", "s"]
-action = "pt.solo_clear"
+action = "pt.solo_only_selected_tracks"
 target_application = "Pro Tools"
 app_window = "Edit"
 
@@ -46,14 +46,25 @@ keys = ["cmd", "shift", "l"]
 action = "test_keystroke"
 trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
 
-[[hotkey]]
-keys = ["cmd", "shift", "y"]
-action = "pt.get_selection"
-
+# [[hotkey]]
+# keys = ["cmd", "shift", "y"]
+# action = "pt.get_selection"
+#
 [[hotkey]]
 keys = ["cmd", "shift", "a"]
 action = "test_app_info"
 
+[[hotkey]]
+keys = ["cmd", "shift", "."]
+action = "pt.go_to_next_marker"
+
+[[hotkey]]
+keys = ["cmd", "shift", ","]
+action = "pt.go_to_previous_marker"
+
+[[hotkey]]
+keys = ["cmd", "shift", "t"]
+action = "pt.toggle_select_grab_tool"
 # Example: Non-modifier chord (all keys pressed simultaneously)
 # [[hotkey]]
 # keys = ["l", "d", "q"]

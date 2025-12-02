@@ -26,9 +26,8 @@ pub async fn solo_clear(pt: &mut ProtoolsSession) -> Result<()> {
         let is_soloed = attributes["is_soloed"].as_bool().unwrap_or(false);
 
         if is_soloed {
-                solos.push(name.to_string());
-            }
-        
+            solos.push(name.to_string());
+        }
     }
     pt.solo_tracks(solos, false).await?;
 
@@ -64,6 +63,57 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession) -> Result<()> {
     }
     pt.solo_tracks(solos, true).await?;
     pt.solo_tracks(unsolos, false).await?;
+
+    Ok(())
+}
+
+pub async fn add_selected_to_solos(pt: &mut ProtoolsSession) -> Result<()> {
+    println!("Running Solo Selected Tracks");
+    let Some(tracks) = pt.get_all_tracks().await else {
+        return Ok(());
+    };
+    let mut solos = Vec::new();
+
+    for track in tracks {
+        let Some(name) = track["name"].as_str() else {
+            continue;
+        };
+        let Some(attributes) = track["track_attributes"].as_object() else {
+            continue;
+        };
+        let is_selected_str = attributes["is_selected"].as_str().unwrap_or("None");
+        let is_selected = is_selected_str != "None";
+
+        if is_selected {
+            solos.push(name.to_string());
+        }
+    }
+    pt.solo_tracks(solos, true).await?;
+
+    Ok(())
+}
+pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession) -> Result<()> {
+    println!("Running Solo Selected Tracks");
+    let Some(tracks) = pt.get_all_tracks().await else {
+        return Ok(());
+    };
+    let mut solos = Vec::new();
+
+    for track in tracks {
+        let Some(name) = track["name"].as_str() else {
+            continue;
+        };
+        let Some(attributes) = track["track_attributes"].as_object() else {
+            continue;
+        };
+        let is_selected_str = attributes["is_selected"].as_str().unwrap_or("None");
+        let is_selected = is_selected_str != "None";
+
+        if is_selected {
+            solos.push(name.to_string());
+        }
+    }
+    pt.solo_tracks(solos, false).await?;
 
     Ok(())
 }
@@ -161,5 +211,86 @@ pub async fn conform_insert(pt: &mut ProtoolsSession) -> Result<()> {
 pub async fn get_selection_samples(pt: &mut ProtoolsSession) -> Result<()> {
     let mut selection = PtSelectionSamples::new(pt).await?;
     selection.slide(pt, 48000).await?;
+    let (st, et) = selection.get_io();
+    pt.edit_marker(
+        1,
+        "Tim's Cool Marker",
+        st,
+        et,
+        MarkerLocation::NamedRuler,
+        "Markers 5",
+    )
+    .await?;
+    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
+    println!("Marker List: {:?}", markers);
+    Ok(())
+}
+
+pub async fn go_to_next_marker(pt: &mut ProtoolsSession) -> Result<()> {
+    let mut selection = PtSelectionSamples::new(pt).await?;
+    let (selection_time, _) = selection.get_io();
+    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
+
+    let mut next_marker_time: Option<i64> = None;
+
+    for marker in markers {
+        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
+        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
+
+        if marker_time > selection_time {
+            match next_marker_time {
+                None => next_marker_time = Some(marker_time),
+                Some(current_next) => {
+                    if marker_time < current_next {
+                        next_marker_time = Some(marker_time);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(time) = next_marker_time {
+        selection.set_io(pt, time, time).await?;
+    }
+
+    Ok(())
+}
+pub async fn go_to_previous_marker(pt: &mut ProtoolsSession) -> Result<()> {
+    let mut selection = PtSelectionSamples::new(pt).await?;
+    let (selection_time, _) = selection.get_io();
+    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
+
+    let mut next_marker_time: Option<i64> = None;
+
+    for marker in markers {
+        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
+        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
+
+        if marker_time < selection_time {
+            match next_marker_time {
+                None => next_marker_time = Some(marker_time),
+                Some(current_next) => {
+                    if marker_time > current_next {
+                        next_marker_time = Some(marker_time);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(time) = next_marker_time {
+        selection.set_io(pt, time, time).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn toggle_edit_tool(pt: &mut ProtoolsSession) -> Result<()> {
+    let tool = pt.get_edit_tool().await?;
+    if tool != "ET_Selector" {
+        pt.set_edit_tool("ET_Selector").await?;
+    } else {
+        pt.set_edit_tool("ET_GrabberTime").await?;
+    }
     Ok(())
 }

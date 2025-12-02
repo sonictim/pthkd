@@ -101,45 +101,27 @@ impl ProtoolsSession {
 
         response["track_list"].as_array().cloned()
     }
-    pub async fn set_selection_samples(&mut self, in_time: i64, out_time: i64) -> Result<()> {
-        let _: serde_json::Value = self
-            .cmd(
-                CommandId::SetTimelineSelection,
-                ptsl::SetTimelineSelectionRequestBody {
-                    in_time: in_time.to_string(),
-                    out_time: out_time.to_string(),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        Ok(())
-    }
-    pub async fn get_selection_samples(&mut self) -> Result<(i64, i64)> {
-        log::info!("Requesting timeline selection...");
 
-        // Pro Tools expects the enum as a STRING in JSON, not an integer!
-        // Use raw JSON instead of the protobuf struct
+    pub async fn get_all_markers(&mut self) -> Option<Vec<serde_json::Value>> {
+        println!("\nFetching marker list...");
         let response: serde_json::Value = self
             .cmd(
-                CommandId::GetTimelineSelection,
+                CommandId::GetMemoryLocations,
                 serde_json::json!({
-                    "location_type": "TLType_Samples"
-                }),
+
+                "pagination_request": {
+                    "limit": 0,
+                    "offset": 0,
+                },
+
+                      }),
             )
-            .await?;
+            .await
+            .ok()?;
 
-        log::info!("Timeline selection response: {:?}", response);
-        let in_time = response["in_time"]
-            .as_str()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(0);
-
-        let out_time = response["out_time"]
-            .as_str()
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(0);
-        Ok((in_time, out_time))
+        response["memory_locations"].as_array().cloned()
     }
+
     pub async fn solo_tracks(&mut self, tracks: Vec<String>, state: bool) -> Result<()> {
         if !tracks.is_empty() {
             let _: serde_json::Value = self
@@ -171,6 +153,67 @@ impl ProtoolsSession {
                 serde_json::json!({
                     "edit_mode": mode
                 }),
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn get_edit_tool(&mut self) -> Result<String> {
+        let response: serde_json::Value = self
+            .cmd(CommandId::GetEditTool, serde_json::json!({}))
+            .await?;
+
+        let mode = response["current_setting"].as_str().unwrap();
+        println!("current tool is: {}", mode);
+        Ok(mode.to_string())
+    }
+
+    pub async fn set_edit_tool(&mut self, tool: &str) -> Result<()> {
+        let _: serde_json::Value = self
+            .cmd(
+                CommandId::SetEditTool,
+                serde_json::json!({
+                    "edit_tool": tool
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn edit_marker(
+        &mut self,
+        number: u32,
+        name: &str,
+        start_time: i64,
+        end_time: i64,
+        destination: MarkerLocation,
+        destination_name: &str,
+    ) -> Result<()> {
+        let _: serde_json::Value = self
+            .cmd(
+                CommandId::EditMemoryLocation,
+                serde_json::json!({
+
+                "number": number,
+                "name": name,
+                "start_time": start_time.to_string(),
+                "end_time": end_time.to_string(),
+                "time_properties": "TProperties_Marker",
+                "reference": "MLReference_FollowTrackTimebase",
+                "general_properties": {
+                    "zoom_settings": false,
+                    "pre_post_roll_times": false,
+                    "track_visibility": false,
+                    "track_heights": false,
+                    "group_enables": false,
+                    "window_configuration": false,
+                    "window_configuration_index": 1,
+                    "venue_snapshot_index": 1
+                },
+                "comments": "comments",
+                "color_index": 1,
+                "location": destination.as_str(),
+                "track_name": destination_name
+
+                      }),
             )
             .await?;
         Ok(())
@@ -286,5 +329,21 @@ impl PtSelectionSamples {
         self.post_roll_stop_time += value;
         self.set(pt).await?;
         Ok(())
+    }
+}
+
+pub enum MarkerLocation {
+    Track,
+    NamedRuler,
+    MainRuler,
+}
+
+impl MarkerLocation {
+    pub fn as_str(&self) -> &str {
+        match self {
+            MarkerLocation::Track => "MarkerLocation_Track",
+            MarkerLocation::NamedRuler => "MarkerLocation_NamedRuler",
+            MarkerLocation::MainRuler => "MarkerLocation_MainRuler",
+        }
     }
 }

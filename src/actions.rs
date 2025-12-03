@@ -1,4 +1,6 @@
 use crate::macos::show_notification;
+use crate::soundminer::*;
+use std::collections::HashMap;
 use std::collections::HashMap;
 
 // ====== Action Functions ======
@@ -149,7 +151,17 @@ pub fn test_menu_click() {
     log::info!("Testing menu click...");
 
     // Test with a simple menu item - adjust this to whatever you want to test
-    match run_menu_item("Pro Tools", &["Edit", "Automation", "Write to All Enabled"]) {
+    match run_menu_item("Soundminer_Intel", &["DAW", "Pro Tools"]) {
+        Ok(_) => {
+            log::info!("✅ Menu click succeeded!");
+            show_notification("✅ Menu clicked!");
+        }
+        Err(e) => {
+            log::error!("Failed to click menu: {:#}", e);
+            show_notification(&format!("❌ Failed: {}", e));
+        }
+    }
+    match run_menu_item("Soundminer_Intel", &["Transfer", "Pro Tools"]) {
         Ok(_) => {
             log::info!("✅ Menu click succeeded!");
             show_notification("✅ Menu clicked!");
@@ -180,6 +192,10 @@ pub fn get_action_registry() -> HashMap<&'static str, fn()> {
     registry.insert("reload_config", reload_config as fn());
     registry.insert("dump_app_menus", dump_app_menus as fn());
     registry.insert("test_menu_click", test_menu_click as fn());
+    registry.insert(
+        "spot_to_protools",
+        crate::soundminer::spot_to_protools as fn(),
+    );
 
     // Add more actions as needed:
     // registry.insert("my_custom", my_custom as fn());

@@ -4,14 +4,15 @@ mod hotkey;
 mod keycodes;
 mod macos;
 mod protools;
+mod soundminer;
 
 use anyhow::Context;
 use config::{config_to_hotkeys, load_config};
 use hotkey::{HOTKEYS, KEY_STATE, PENDING_HOTKEY, PendingHotkey};
 
 use libc::c_void;
-use std::ptr;
 use std::io::Write;
+use std::ptr;
 
 // Event tap callback - tracks key state and checks registered hotkeys
 unsafe extern "C" fn key_event_callback(
@@ -43,7 +44,9 @@ unsafe extern "C" fn key_event_callback(
                 if hotkey.matches(pressed_keys) {
                     if hotkey.trigger_on_release {
                         // Mark as pending, trigger on key release
-                        let pending = PENDING_HOTKEY.get().expect("PENDING_HOTKEY not initialized");
+                        let pending = PENDING_HOTKEY
+                            .get()
+                            .expect("PENDING_HOTKEY not initialized");
                         *pending.lock().unwrap() = Some(PendingHotkey {
                             hotkey_index: index,
                             chord_keys: pressed_keys.clone(),
@@ -63,7 +66,9 @@ unsafe extern "C" fn key_event_callback(
         } as u16;
 
         // Check if we have a pending hotkey
-        let pending_hotkey_guard = PENDING_HOTKEY.get().expect("PENDING_HOTKEY not initialized");
+        let pending_hotkey_guard = PENDING_HOTKEY
+            .get()
+            .expect("PENDING_HOTKEY not initialized");
         let pending_opt = pending_hotkey_guard.lock().unwrap().clone();
 
         // Update key state
@@ -106,8 +111,12 @@ unsafe extern "C" fn key_event_callback(
         let is_pressed = match key_code {
             KEY_CMD_LEFT | KEY_CMD_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_COMMAND) != 0,
             KEY_SHIFT_LEFT | KEY_SHIFT_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_SHIFT) != 0,
-            KEY_OPTION_LEFT | KEY_OPTION_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_ALTERNATE) != 0,
-            KEY_CONTROL_LEFT | KEY_CONTROL_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_CONTROL) != 0,
+            KEY_OPTION_LEFT | KEY_OPTION_RIGHT => {
+                (flags & macos::CG_EVENT_FLAG_MASK_ALTERNATE) != 0
+            }
+            KEY_CONTROL_LEFT | KEY_CONTROL_RIGHT => {
+                (flags & macos::CG_EVENT_FLAG_MASK_CONTROL) != 0
+            }
             _ => return event, // Unknown modifier
         };
 
@@ -132,7 +141,9 @@ unsafe extern "C" fn key_event_callback(
                     if hotkey.matches(pressed_keys) {
                         if hotkey.trigger_on_release {
                             // Mark as pending, trigger on key release
-                            let pending = PENDING_HOTKEY.get().expect("PENDING_HOTKEY not initialized");
+                            let pending = PENDING_HOTKEY
+                                .get()
+                                .expect("PENDING_HOTKEY not initialized");
                             *pending.lock().unwrap() = Some(PendingHotkey {
                                 hotkey_index: index,
                                 chord_keys: pressed_keys.clone(),
@@ -148,7 +159,9 @@ unsafe extern "C" fn key_event_callback(
             }
         } else {
             // Modifier released - check for pending hotkey trigger (same as KEY_UP)
-            let pending_hotkey_guard = PENDING_HOTKEY.get().expect("PENDING_HOTKEY not initialized");
+            let pending_hotkey_guard = PENDING_HOTKEY
+                .get()
+                .expect("PENDING_HOTKEY not initialized");
             let pending_opt = pending_hotkey_guard.lock().unwrap().clone();
 
             if let Some(pending) = pending_opt {
@@ -156,7 +169,8 @@ unsafe extern "C" fn key_event_callback(
                 let pressed_keys = state.get_pressed_keys();
 
                 // Check if any of the chord keys are still pressed
-                let any_chord_key_pressed = pending.chord_keys.iter().any(|k| pressed_keys.contains(k));
+                let any_chord_key_pressed =
+                    pending.chord_keys.iter().any(|k| pressed_keys.contains(k));
 
                 if !any_chord_key_pressed {
                     // All chord keys released - trigger the action!
@@ -205,17 +219,16 @@ fn run() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("Failed to initialize KEY_STATE - already initialized"))?;
 
     // Initialize pending hotkey tracker
-    PENDING_HOTKEY
-        .set(Mutex::new(None))
-        .map_err(|_| anyhow::anyhow!("Failed to initialize PENDING_HOTKEY - already initialized"))?;
+    PENDING_HOTKEY.set(Mutex::new(None)).map_err(|_| {
+        anyhow::anyhow!("Failed to initialize PENDING_HOTKEY - already initialized")
+    })?;
 
     // Load configuration from config.toml
     let config = load_config("config.toml")
         .context("Failed to load config.toml - make sure it exists in the current directory")?;
 
     // Convert config to hotkeys
-    let hotkeys = config_to_hotkeys(config)
-        .context("Failed to parse config")?;
+    let hotkeys = config_to_hotkeys(config).context("Failed to parse config")?;
 
     // Log registered hotkeys
     log::info!("Registered {} hotkeys:", hotkeys.len());
@@ -224,7 +237,8 @@ fn run() -> anyhow::Result<()> {
     }
 
     // Initialize hotkey registry
-    HOTKEYS.set(Mutex::new(hotkeys))
+    HOTKEYS
+        .set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
 
     // Create and install event tap for keyboard events
@@ -253,9 +267,9 @@ fn init_logging() -> anyhow::Result<()> {
         OpenOptions::new()
             .write(true)
             .create(true)
-            .append(true)  // Append across multiple runs
+            .append(true) // Append across multiple runs
             .open(log_file_path)
-            .context("Failed to open log file for writing")?
+            .context("Failed to open log file for writing")?,
     );
 
     env_logger::Builder::from_default_env()

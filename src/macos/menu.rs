@@ -23,6 +23,10 @@ pub struct MenuBar {
 }
 
 /// Helper to get PID for an application by name
+///
+/// Uses two-pass matching (case-insensitive):
+/// 1. First pass: exact match
+/// 2. Second pass: contains match
 unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
     use core_foundation::base::TCFType;
     use core_foundation::string::CFString;
@@ -36,17 +40,39 @@ unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
 
     let cf_array = core_foundation::array::CFArray::<core_foundation::dictionary::CFDictionary>::wrap_under_create_rule(window_list as *const _);
 
-    // Search for a window owned by the target app
+    // First pass: exact match (case-insensitive)
     for i in 0..cf_array.len() {
         if let Some(window) = cf_array.get(i) {
             let owner_name_key = CFString::from_static_string("kCGWindowOwnerName");
             if let Some(owner_name_value) = window.find(owner_name_key.as_CFTypeRef()) {
                 let owner_name = CFString::wrap_under_get_rule(*owner_name_value as *const _);
-                if owner_name.to_string() == app_name {
-                    // Found the app, get its PID
+                let owner_name_str = owner_name.to_string();
+                if owner_name_str.to_lowercase() == app_name.to_lowercase() {
+                    // Found exact match, get its PID
                     let pid_key = CFString::from_static_string("kCGWindowOwnerPID");
                     if let Some(pid_value) = window.find(pid_key.as_CFTypeRef()) {
                         let cf_number = core_foundation::number::CFNumber::wrap_under_get_rule(*pid_value as *const _);
+                        log::info!("Found app '{}' (exact match for '{}'), PID: {}", owner_name_str, app_name, cf_number.to_i32().unwrap());
+                        return Ok(cf_number.to_i32().unwrap());
+                    }
+                }
+            }
+        }
+    }
+
+    // Second pass: contains match (case-insensitive)
+    for i in 0..cf_array.len() {
+        if let Some(window) = cf_array.get(i) {
+            let owner_name_key = CFString::from_static_string("kCGWindowOwnerName");
+            if let Some(owner_name_value) = window.find(owner_name_key.as_CFTypeRef()) {
+                let owner_name = CFString::wrap_under_get_rule(*owner_name_value as *const _);
+                let owner_name_str = owner_name.to_string();
+                if owner_name_str.to_lowercase().contains(&app_name.to_lowercase()) {
+                    // Found partial match, get its PID
+                    let pid_key = CFString::from_static_string("kCGWindowOwnerPID");
+                    if let Some(pid_value) = window.find(pid_key.as_CFTypeRef()) {
+                        let cf_number = core_foundation::number::CFNumber::wrap_under_get_rule(*pid_value as *const _);
+                        log::info!("Found app '{}' (contains match for '{}'), PID: {}", owner_name_str, app_name, cf_number.to_i32().unwrap());
                         return Ok(cf_number.to_i32().unwrap());
                     }
                 }
@@ -215,9 +241,15 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
 ///
 /// Navigates through menu hierarchy and clicks the final item
 ///
+/// Matching behavior (all case-insensitive):
+/// - App name: Exact match first, then contains match
+/// - Menu items: Case-insensitive matching
+///
 /// # Example
 /// ```ignore
 /// run_menu_item("Pro Tools", &["File", "Save Session As"])?;
+/// run_menu_item("pro tools", &["file", "save session as"])?; // All case-insensitive
+/// run_menu_item("Pro", &["File", "New Session"])?;           // Partial app name
 /// ```
 pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
     use core_foundation::base::TCFType;
@@ -300,8 +332,9 @@ pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
                         let cf_string = CFString::wrap_under_create_rule(title_value as *const _);
                         let title = cf_string.to_string();
 
-                        if title == menu_title {
-                            log::info!("Found menu item: {}", menu_title);
+                        // Case-insensitive comparison
+                        if title.to_lowercase() == menu_title.to_lowercase() {
+                            log::info!("Found menu item: {} (matched '{}')", title, menu_title);
 
                             // If this is the last item in path, click it
                             if i == menu_path.len() - 1 {

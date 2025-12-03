@@ -148,15 +148,22 @@ impl Hotkey {
     pub fn matches(&self, pressed_keys: &HashSet<u16>) -> bool {
         self.chord.matches(pressed_keys)
             && (self.application.is_none()
-                || self.application.as_ref()
-                    == crate::macos::app_info::get_current_app().ok().as_ref())
+                || match (&self.application, crate::macos::app_info::get_current_app().ok()) {
+                    (Some(config_app), Some(current_app)) => {
+                        let config_lower = config_app.to_lowercase();
+                        let current_lower = current_app.to_lowercase();
+                        // First try exact match, then contains
+                        config_lower == current_lower || current_lower.contains(&config_lower)
+                    }
+                    _ => false,
+                })
             && match &self.app_window {
                 None => true,
                 Some(config_window) => match crate::macos::app_info::get_app_window().ok() {
                     None => false,
                     Some(app_window) => app_window
-                        .to_uppercase()
-                        .contains(&config_window.to_uppercase()),
+                        .to_lowercase()
+                        .contains(&config_window.to_lowercase()),
                 },
             }
     }

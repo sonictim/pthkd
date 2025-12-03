@@ -1,6 +1,4 @@
 use crate::macos::show_notification;
-use crate::soundminer::*;
-use std::collections::HashMap;
 use std::collections::HashMap;
 
 // ====== Action Functions ======
@@ -173,6 +171,45 @@ pub fn test_menu_click() {
     }
 }
 
+pub fn list_running_apps() {
+    use crate::macos::app_info::get_all_running_applications;
+
+    log::info!("Getting list of running applications...");
+
+    match get_all_running_applications() {
+        Ok(apps) => {
+            log::info!("Running applications ({}):", apps.len());
+            println!("\n=== Running Applications ({}) ===", apps.len());
+            for app in &apps {
+                log::info!("  - {}", app);
+                println!("  - {}", app);
+            }
+            show_notification(&format!("✅ Found {} running apps", apps.len()));
+        }
+        Err(e) => {
+            log::error!("Failed to get running applications: {:#}", e);
+            show_notification(&format!("❌ Failed: {}", e));
+        }
+    }
+}
+
+pub fn focus_protools() {
+    use crate::macos::app_info::focus_application;
+
+    log::info!("Focusing Pro Tools...");
+
+    match focus_application("Pro Tools") {
+        Ok(_) => {
+            log::info!("✅ Pro Tools focused successfully!");
+            show_notification("✅ Pro Tools focused!");
+        }
+        Err(e) => {
+            log::error!("Failed to focus Pro Tools: {:#}", e);
+            show_notification(&format!("❌ Failed: {}", e));
+        }
+    }
+}
+
 // Add more actions as needed
 // pub fn my_custom() {
 //     println!("Custom action!");
@@ -192,6 +229,8 @@ pub fn get_action_registry() -> HashMap<&'static str, fn()> {
     registry.insert("reload_config", reload_config as fn());
     registry.insert("dump_app_menus", dump_app_menus as fn());
     registry.insert("test_menu_click", test_menu_click as fn());
+    registry.insert("list_running_apps", list_running_apps as fn());
+    registry.insert("focus_protools", focus_protools as fn());
     registry.insert(
         "spot_to_protools",
         crate::soundminer::spot_to_protools as fn(),

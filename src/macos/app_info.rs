@@ -363,3 +363,176 @@ pub fn is_in_text_field() -> Result<bool> {
 pub fn has_accessibility_permission() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
+
+/// Get a list of all currently running applications
+///
+/// **Permissions:** None required
+///
+/// # Returns
+/// A vector of application names (e.g., ["Pro Tools", "Safari", "Finder"])
+///
+/// # Example
+/// ```ignore
+/// let apps = get_all_running_applications()?;
+/// for app in apps {
+///     println!("Running: {}", app);
+/// }
+/// ```
+pub fn get_all_running_applications() -> Result<Vec<String>> {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    unsafe {
+        // Get NSWorkspace class
+        let workspace_class = class!(NSWorkspace);
+
+        // Call [NSWorkspace sharedWorkspace]
+        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
+        if workspace.is_null() {
+            bail!("Failed to get NSWorkspace");
+        }
+
+        // Call [workspace runningApplications] to get array of all running apps
+        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
+        if running_apps.is_null() {
+            bail!("Failed to get running applications");
+        }
+
+        // Get the count of running applications
+        let count: usize = msg_send![running_apps, count];
+
+        let mut app_names = Vec::new();
+
+        // Iterate through running apps and collect names
+        for i in 0..count {
+            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
+            if app.is_null() {
+                continue;
+            }
+
+            // Get the localized name of this app
+            let name_nsstring: *mut c_void = msg_send![app, localizedName];
+            if name_nsstring.is_null() {
+                continue;
+            }
+
+            // Convert to Rust string
+            if let Some(name) = cfstring_to_string(name_nsstring) {
+                if !name.is_empty() {
+                    app_names.push(name);
+                }
+            }
+        }
+
+        Ok(app_names)
+    }
+}
+
+/// Bring a specific application to the foreground by name
+///
+/// **Permissions:** None required
+///
+/// Matching strategy (case-insensitive):
+/// 1. First tries exact match (e.g., "pro tools" matches "Pro Tools")
+/// 2. Falls back to contains() if no exact match (e.g., "pro" matches "Pro Tools")
+///
+/// # Arguments
+/// * `app_name` - Application name to match (case-insensitive)
+///
+/// # Example
+/// ```ignore
+/// focus_application("Pro Tools")?;  // Exact match preferred
+/// focus_application("pro tools")?;  // Case-insensitive
+/// focus_application("Pro")?;         // Falls back to contains()
+/// ```
+pub fn focus_application(app_name: &str) -> Result<()> {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    unsafe {
+        // Get NSWorkspace class
+        let workspace_class = class!(NSWorkspace);
+
+        // Call [NSWorkspace sharedWorkspace]
+        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
+        if workspace.is_null() {
+            bail!("Failed to get NSWorkspace");
+        }
+
+        // Call [workspace runningApplications] to get array of all running apps
+        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
+        if running_apps.is_null() {
+            bail!("Failed to get running applications");
+        }
+
+        // Get the count of running applications
+        let count: usize = msg_send![running_apps, count];
+
+        // First pass: try exact match (case-insensitive)
+        for i in 0..count {
+            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
+            if app.is_null() {
+                continue;
+            }
+
+            // Get the localized name of this app
+            let name_nsstring: *mut c_void = msg_send![app, localizedName];
+            if name_nsstring.is_null() {
+                continue;
+            }
+
+            // Convert to Rust string
+            let name = cfstring_to_string(name_nsstring).unwrap_or_default();
+
+            // Check for exact match (case-insensitive)
+            if name.to_lowercase() == app_name.to_lowercase() {
+                // Found exact match! Activate it
+                // NSApplicationActivateAllWindows = 1 << 0 = 1
+                // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+                // Combine both flags: 1 | 2 = 3
+                let options: usize = 3;
+                let success: bool = msg_send![app, activateWithOptions: options];
+
+                if success {
+                    log::info!("Successfully activated application: {} (exact match for '{}')", name, app_name);
+                    return Ok(());
+                } else {
+                    bail!("Failed to activate application: {}", name);
+                }
+            }
+        }
+
+        // Second pass: try contains match (case-insensitive)
+        for i in 0..count {
+            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
+            if app.is_null() {
+                continue;
+            }
+
+            // Get the localized name of this app
+            let name_nsstring: *mut c_void = msg_send![app, localizedName];
+            if name_nsstring.is_null() {
+                continue;
+            }
+
+            // Convert to Rust string
+            let name = cfstring_to_string(name_nsstring).unwrap_or_default();
+
+            // Check if this app name contains our search string (case-insensitive)
+            if name.to_lowercase().contains(&app_name.to_lowercase()) {
+                // Found partial match! Activate it
+                let options: usize = 3;
+                let success: bool = msg_send![app, activateWithOptions: options];
+
+                if success {
+                    log::info!("Successfully activated application: {} (partial match for '{}')", name, app_name);
+                    return Ok(());
+                } else {
+                    bail!("Failed to activate application: {}", name);
+                }
+            }
+        }
+
+        bail!("No running application found matching '{}'", app_name)
+    }
+}

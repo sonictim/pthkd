@@ -18,6 +18,14 @@ action = "test_menu_click"
 keys = ["cmd", "shift", "y"]
 action = "test_app_info"
 
+  [[hotkey]]
+  keys = ["cmd", "shift", "p"]
+  action = "focus_protools"
+
+  [[hotkey]]
+  keys = ["cmd","shift","l"]
+  action = "list_running_apps"
+
 # ProTools actions (namespaced with pt.)
 [[hotkey]]
 keys = ["cmd", "shift", "s"]
@@ -150,7 +158,7 @@ app_window = "Edit"
 
 [[hotkey]]
 keys = ["control", "s"]
-action = "pt.spot_to_protools_from_soundminer"
+action = "spot_to_protools"
 
 
 # Example: Non-modifier chord (all keys pressed simultaneously)

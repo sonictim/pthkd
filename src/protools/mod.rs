@@ -33,26 +33,3 @@ where
         TOKIO_RT.get().unwrap().block_on(f());
     });
 }
-
-/// Macro to generate ProTools actions and registry
-#[macro_export]
-macro_rules! pt_actions {
-    ($($action_name:ident => $command:ident),* $(,)?) => {
-        $(
-            pub fn $action_name() {
-                $crate::protools::run_command(|| async {
-                    let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
-                    $crate::protools::commands::$command(&mut pt).await.ok();
-                });
-            }
-        )*
-
-        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn()> {
-            let mut registry = std::collections::HashMap::new();
-            $(
-                registry.insert(stringify!($action_name), $action_name as fn());
-            )*
-            registry
-        }
-    };
-}

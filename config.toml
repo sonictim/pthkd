@@ -1,35 +1,58 @@
 # Hotkey Configuration
 # Define your custom hotkeys using chord-based format
+#
+# Actions are organized by namespace:
+# - os.*  : Operating system and macOS actions
+# - pt.*  : Pro Tools actions
+# - sm.*  : Soundminer actions
+#
+# Parameters can be passed using the [hotkey.params] section
 
-# System actions
-[[hotkey]]
-keys = ["cmd", "option", "r"]
-action = "reload_config"
+# ============================================================================
+# System actions (os.* namespace)
+# ============================================================================
 
 [[hotkey]]
-keys = ["cmd", "option", "m"]
-action = "dump_app_menus"
+keys = ["cmd", "shift", "r", "l"]
+action = "os.reload_config"
+notify = true
+
+[[hotkey]]
+keys = ["cmd", "option", "control", "m"]
+action = "os.dump_app_menus"
 
 [[hotkey]]
 keys = ["cmd", "option", "n"]
-action = "test_menu_click"
+action = "os.test_menu_click"
 
 [[hotkey]]
 keys = ["cmd", "shift", "y"]
-action = "test_app_info"
+action = "os.test_app_info"
 
-  [[hotkey]]
-  keys = ["cmd", "shift", "p"]
-  action = "focus_protools"
+[[hotkey]]
+keys = ["cmd", "shift", "p", "t"]
+action = "os.focus_protools"
 
-  [[hotkey]]
-  keys = ["cmd","shift","l"]
-  action = "list_running_apps"
+[[hotkey]]
+keys = ["cmd", "shift", "l"]
+action = "os.list_running_apps"
 
-# ProTools actions (namespaced with pt.)
+[[hotkey]]
+keys = ["cmd", "shift", "k"]
+action = "os.test_notification"
+
+[[hotkey]]
+keys = ["cmd", "shift", "t"]
+action = "os.test_keystroke"
+trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+
+# ============================================================================
+# ProTools actions (pt.* namespace)
+# ============================================================================
+
 [[hotkey]]
 keys = ["cmd", "shift", "s"]
-action = "pt.solo_only_selected_tracks"
+action = "pt.solo_selected_tracks"
 target_application = "Pro Tools"
 app_window = "Edit"
 
@@ -57,119 +80,169 @@ action = "pt.crossfade"
 target_application = "Pro Tools"
 app_window = "Edit"
 
-
 [[hotkey]]
-keys = ["cmd", "shift", "l"]
-action = "test_keystroke"
-trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+keys = ["cmd", "shift", "t"]
+action = "pt.toggle_edit_tool"
+target_application = "Pro Tools"
+app_window = "Edit"
 
-[[hotkey]]
-keys = ["cmd", "shift", "a"]
-action = "test_app_info"
+# ============================================================================
+# Marker Navigation with Parameters
+# ============================================================================
 
+# Navigate to next/previous marker on all rulers
 [[hotkey]]
 keys = ["pad_0", "pad_plus"]
-action = "pt.go_to_next_marker"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
 keys = ["pad_0", "pad_minus"]
-action = "pt.go_to_previous_marker"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
+[hotkey.params]
+reverse = true  # Go backwards
 
-
+# Navigate on specific marker ruler (by name)
+# Replace "Markers 1" with your actual marker ruler name
 [[hotkey]]
 keys = ["pad_1", "pad_plus"]
-action = "pt.go_to_next_marker_lane_1"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 1"
 
 [[hotkey]]
 keys = ["pad_1", "pad_minus"]
-action = "pt.go_to_previous_marker_lane_1"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
+[hotkey.params]
+ruler = "Markers 1"
+reverse = true
 
-
+# Another ruler example
 [[hotkey]]
 keys = ["pad_2", "pad_plus"]
-action = "pt.go_to_next_marker_lane_2"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 2"
 
 [[hotkey]]
 keys = ["pad_2", "pad_minus"]
-action = "pt.go_to_previous_marker_lane_2"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
+[hotkey.params]
+ruler = "Markers 2"
+reverse = true
 
-
+# More ruler examples (customize as needed)
 [[hotkey]]
 keys = ["pad_3", "pad_plus"]
-action = "pt.go_to_next_marker_lane_3"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 3"
 
 [[hotkey]]
 keys = ["pad_3", "pad_minus"]
-action = "pt.go_to_previous_marker_lane_3"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 3"
+reverse = true
 
 [[hotkey]]
 keys = ["pad_4", "pad_plus"]
-action = "pt.go_to_next_marker_lane_4"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 4"
 
 [[hotkey]]
 keys = ["pad_4", "pad_minus"]
-action = "pt.go_to_previous_marker_lane_4"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 4"
+reverse = true
 
 [[hotkey]]
 keys = ["pad_5", "pad_plus"]
-action = "pt.go_to_next_marker_lane_5"
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
-
+[hotkey.params]
+ruler = "Markers 5"
 
 [[hotkey]]
-keys = ["pad_1", "pad_minus"]
-action = "pt.go_to_previous_marker_lane_1"
+keys = ["pad_5", "pad_minus"]
+action = "pt.go_to_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
+[hotkey.params]
+ruler = "Markers 5"
+reverse = true
 
-
-[[hotkey]]
-keys = ["cmd", "shift", "t"]
-action = "pt.toggle_select_grab_tool"
-target_application = "Pro Tools"
-app_window = "Edit"
+# ============================================================================
+# Soundminer actions (sm.* namespace)
+# ============================================================================
 
 [[hotkey]]
 keys = ["control", "s"]
-action = "spot_to_protools"
+action = "sm.spot_to_protools"
 
+# ============================================================================
+# Configuration Guide
+# ============================================================================
 
-# Example: Non-modifier chord (all keys pressed simultaneously)
-# [[hotkey]]
-# keys = ["l", "d", "q"]
-# action = "weird_chord"
-
-# Available key names:
+# Available namespaces:
+# - os.*  : macOS system actions (reload_config, test_notification, focus_protools, etc.)
+# - pt.*  : Pro Tools actions (solo_selected_tracks, crossfade, go_to_marker, etc.)
+# - sm.*  : Soundminer actions (spot_to_protools, etc.)
+#
+# Parameters:
+# Actions can accept parameters using the [hotkey.params] section:
+#
+# [hotkey.params]
+# string_param = "value"      # String parameter
+# bool_param = true           # Boolean parameter
+# int_param = 42              # Integer parameter
+# float_param = 3.14          # Float parameter
+#
+# Available parameters vary by action. Check the action's documentation in the source code.
+#
+# Key Names:
 # - Modifiers: "cmd", "shift", "option"/"alt", "control"/"ctrl"
 # - Letters: "a" through "z"
 # - Numbers: "1" through "0"
+# - Numpad: "pad_0" through "pad_9", "pad_plus", "pad_minus", "pad_multiply", "pad_divide"
 # - Function: "f1" through "f20"
-# - Special: "space", "return", "tab", "delete", "escape", etc.
+# - Special: "space", "return", "tab", "delete", "escape"
 # See src/keycodes.rs for complete list
+#
+# Target Application & Window Filtering:
+# - target_application: Only trigger when this app is focused (fuzzy match)
+#   Can be a single string: target_application = "Pro Tools"
+#   Or an array of apps: target_application = ["Pro Tools", "Logic Pro"]
+# - app_window: Only trigger when window title matches (fuzzy match)
+# - Both are optional and can be used together
+#
+# Example - hotkey works in multiple DAWs:
+# [[hotkey]]
+# keys = ["cmd", "shift", "x"]
+# action = "pt.crossfade"
+# target_application = ["Pro Tools", "Logic Pro", "Ableton Live"]
+#
+# Trigger Options:
+# - trigger_on_release: If true, action triggers when keys are released (useful for modifier keys)

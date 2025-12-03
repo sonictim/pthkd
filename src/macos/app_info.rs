@@ -11,90 +11,7 @@
 use anyhow::{Result, bail};
 use libc::c_void;
 use std::ptr;
-
-// ============================================================================
-// Accessibility Framework FFI
-// ============================================================================
-
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    // AXUIElement functions
-    fn AXUIElementCreateApplication(pid: i32) -> *mut c_void;
-    fn AXUIElementCreateSystemWide() -> *mut c_void;
-    fn AXUIElementCopyAttributeValue(
-        element: *mut c_void,
-        attribute: *mut c_void,
-        value: *mut *mut c_void,
-    ) -> i32;
-
-    // Accessibility permission check
-    fn AXIsProcessTrusted() -> bool;
-}
-
-// Core Foundation functions (for CFString handling)
-#[link(name = "CoreFoundation", kind = "framework")]
-unsafe extern "C" {
-    fn CFRelease(cf: *mut c_void);
-    fn CFStringCreateWithCString(
-        alloc: *mut c_void,
-        c_str: *const i8,
-        encoding: u32,
-    ) -> *mut c_void;
-    fn CFStringGetCString(
-        the_string: *mut c_void,
-        buffer: *mut u8,
-        buffer_size: isize,
-        encoding: u32,
-    ) -> bool;
-    fn CFStringGetLength(the_string: *mut c_void) -> isize;
-}
-
-const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
-
-// Accessibility error codes
-const K_AX_ERROR_SUCCESS: i32 = 0;
-const K_AX_ERROR_INVALID_UI_ELEMENT: i32 = -25204;
-const K_AX_ERROR_API_DISABLED: i32 = -25211;
-const K_AX_ERROR_NO_VALUE: i32 = -25212;
-
-/// Helper to create a CFString from a Rust &str
-unsafe fn create_cfstring(s: &str) -> *mut c_void {
-    let c_str = std::ffi::CString::new(s).unwrap();
-    unsafe { CFStringCreateWithCString(ptr::null_mut(), c_str.as_ptr(), K_CF_STRING_ENCODING_UTF8) }
-}
-
-/// Helper to convert CFString to Rust String
-unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
-    if cfstring.is_null() {
-        return None;
-    }
-
-    let length = unsafe { CFStringGetLength(cfstring) };
-    if length == 0 {
-        return Some(String::new());
-    }
-
-    // Allocate buffer with extra space for null terminator
-    let buffer_size = (length * 4 + 1) as usize; // UTF-8 can be up to 4 bytes per char
-    let mut buffer = vec![0u8; buffer_size];
-
-    let success = unsafe {
-        CFStringGetCString(
-            cfstring,
-            buffer.as_mut_ptr(),
-            buffer_size as isize,
-            K_CF_STRING_ENCODING_UTF8,
-        )
-    };
-
-    if success {
-        // Find the null terminator and create string from bytes
-        let null_pos = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
-        String::from_utf8(buffer[..null_pos].to_vec()).ok()
-    } else {
-        None
-    }
-}
+use super::ffi::*;
 
 // ============================================================================
 // Public API
@@ -468,7 +385,7 @@ pub fn focus_application(app_name: &str) -> Result<()> {
         // Get the count of running applications
         let count: usize = msg_send![running_apps, count];
 
-        // First pass: try exact match (case-insensitive)
+        // Find matching app using soft_match (case + whitespace insensitive, with partial matching)
         for i in 0..count {
             let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
             if app.is_null() {
@@ -484,9 +401,9 @@ pub fn focus_application(app_name: &str) -> Result<()> {
             // Convert to Rust string
             let name = cfstring_to_string(name_nsstring).unwrap_or_default();
 
-            // Check for exact match (case-insensitive)
-            if name.to_lowercase() == app_name.to_lowercase() {
-                // Found exact match! Activate it
+            // Check for match using soft_match (handles exact and partial)
+            if crate::soft_match(app_name, &name) {
+                // Found match! Activate it
                 // NSApplicationActivateAllWindows = 1 << 0 = 1
                 // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
                 // Combine both flags: 1 | 2 = 3
@@ -494,38 +411,7 @@ pub fn focus_application(app_name: &str) -> Result<()> {
                 let success: bool = msg_send![app, activateWithOptions: options];
 
                 if success {
-                    log::info!("Successfully activated application: {} (exact match for '{}')", name, app_name);
-                    return Ok(());
-                } else {
-                    bail!("Failed to activate application: {}", name);
-                }
-            }
-        }
-
-        // Second pass: try contains match (case-insensitive)
-        for i in 0..count {
-            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
-            if app.is_null() {
-                continue;
-            }
-
-            // Get the localized name of this app
-            let name_nsstring: *mut c_void = msg_send![app, localizedName];
-            if name_nsstring.is_null() {
-                continue;
-            }
-
-            // Convert to Rust string
-            let name = cfstring_to_string(name_nsstring).unwrap_or_default();
-
-            // Check if this app name contains our search string (case-insensitive)
-            if name.to_lowercase().contains(&app_name.to_lowercase()) {
-                // Found partial match! Activate it
-                let options: usize = 3;
-                let success: bool = msg_send![app, activateWithOptions: options];
-
-                if success {
-                    log::info!("Successfully activated application: {} (partial match for '{}')", name, app_name);
+                    log::info!("Successfully activated application: {} (matched '{}')", name, app_name);
                     return Ok(());
                 } else {
                     bail!("Failed to activate application: {}", name);

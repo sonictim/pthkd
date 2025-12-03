@@ -133,12 +133,19 @@ pub struct Hotkey {
     pub action_name: String,
 
     /// The action function to execute
-    pub action: fn(),
+    pub action: fn(&crate::params::Params) -> anyhow::Result<()>,
+
+    /// Parameters to pass to the action function
+    pub params: crate::params::Params,
 
     /// Whether to trigger on key release instead of key down
     pub trigger_on_release: bool,
 
-    pub application: Option<String>,
+    /// Whether to show notification on action completion
+    pub notify: bool,
+
+    /// Target applications (hotkey only fires when one of these apps is focused)
+    pub application: Option<Vec<String>>,
 
     pub app_window: Option<String>,
 }
@@ -149,11 +156,9 @@ impl Hotkey {
         self.chord.matches(pressed_keys)
             && (self.application.is_none()
                 || match (&self.application, crate::macos::app_info::get_current_app().ok()) {
-                    (Some(config_app), Some(current_app)) => {
-                        let config_lower = config_app.to_lowercase();
-                        let current_lower = current_app.to_lowercase();
-                        // First try exact match, then contains
-                        config_lower == current_lower || current_lower.contains(&config_lower)
+                    (Some(config_apps), Some(current_app)) => {
+                        // Check if any of the configured apps match the current app
+                        config_apps.iter().any(|app| crate::soft_match(app, &current_app))
                     }
                     _ => false,
                 })
@@ -161,9 +166,7 @@ impl Hotkey {
                 None => true,
                 Some(config_window) => match crate::macos::app_info::get_app_window().ok() {
                     None => false,
-                    Some(app_window) => app_window
-                        .to_lowercase()
-                        .contains(&config_window.to_lowercase()),
+                    Some(app_window) => crate::soft_match(config_window, &app_window),
                 },
             }
     }

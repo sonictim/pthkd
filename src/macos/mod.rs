@@ -1,11 +1,16 @@
 //! macOS platform integration module
 //!
 //! This module provides macOS-specific functionality organized by concern:
+//! - `ffi`: Shared FFI declarations for macOS frameworks
 //! - `events`: Core keyboard event tap (STABLE)
 //! - `notifications`: System notifications (STABLE)
 //! - `keystroke`: Sending keystrokes to apps (EXPERIMENTAL)
 //! - `menu`: Clicking menu items (EXPERIMENTAL)
 //! - `app_info`: Application focus and window information (EXPERIMENTAL)
+//! - `actions`: macOS actions callable from config (namespace: "os")
+
+// FFI declarations (shared across modules)
+pub mod ffi;
 
 // Stable modules
 pub mod events;
@@ -15,6 +20,10 @@ pub mod notifications;
 pub mod keystroke;
 pub mod menu;
 pub mod app_info;
+
+// Commands and Actions
+pub mod commands;
+pub mod actions;
 
 // Re-export commonly used items
 pub use events::*;

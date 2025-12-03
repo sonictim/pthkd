@@ -7,7 +7,7 @@
 //!
 //! STATUS: STABLE - This code is tested and working
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use libc::c_void;
 use std::ptr;
 

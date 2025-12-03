@@ -8,6 +8,7 @@
 
 use anyhow::{Result, bail};
 use libc::c_void;
+use super::ffi::CFRelease;
 
 // ============================================================================
 // Core Graphics Event FFI
@@ -32,7 +33,6 @@ unsafe extern "C" {
     fn CGEventSetFlags(event: *mut c_void, flags: u64);
     fn CGEventPost(tap: u32, event: *mut c_void);
     fn CGEventSourceCreate(source_state_id: i32) -> *mut c_void;
-    fn CFRelease(cf: *mut c_void);
 }
 
 // ============================================================================

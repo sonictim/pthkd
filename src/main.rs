@@ -1,8 +1,8 @@
-mod actions;
 mod config;
 mod hotkey;
 mod keycodes;
 mod macos;
+mod params;
 mod protools;
 mod soundminer;
 
@@ -13,6 +13,175 @@ use hotkey::{HOTKEYS, KEY_STATE, PENDING_HOTKEY, PendingHotkey};
 use libc::c_void;
 use std::io::Write;
 use std::ptr;
+
+// ============================================================================
+// Action Registration Macros
+// ============================================================================
+
+/// Macro to generate sync action functions and registry
+///
+/// Usage:
+/// ```ignore
+/// actions_sync!("namespace", {
+///     function_name_1,
+///     function_name_2,
+/// });
+/// ```
+#[macro_export]
+macro_rules! actions_sync {
+    ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
+        $(
+            pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                super::commands::$action_name(params)
+            }
+        )*
+
+        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+            let mut registry = std::collections::HashMap::new();
+            $(
+                registry.insert(stringify!($action_name), $action_name as fn(&$crate::params::Params) -> anyhow::Result<()>);
+            )*
+            registry
+        }
+    };
+}
+
+/// Macro to generate async action functions and registry (for ProTools-style actions)
+///
+/// Usage:
+/// ```ignore
+/// actions_async!("namespace", {
+///     function_name_1,
+///     function_name_2,
+/// });
+/// ```
+#[macro_export]
+macro_rules! actions_async {
+    ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
+        $(
+            pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                let params = params.clone();
+                $crate::protools::run_command(move || async move {
+                    let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
+                    $crate::protools::commands::$action_name(&mut pt, &params).await.ok();
+                });
+                Ok(())
+            }
+        )*
+
+        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+            let mut registry = std::collections::HashMap::new();
+            $(
+                registry.insert(stringify!($action_name), $action_name as fn(&$crate::params::Params) -> anyhow::Result<()>);
+            )*
+            registry
+        }
+    };
+}
+
+// ============================================================================
+// Hotkey Checking Helpers
+// ============================================================================
+
+/// Check if any registered hotkey matches the current pressed keys and trigger/queue it
+///
+/// Returns true if a hotkey was matched and the event should be consumed
+fn check_and_trigger_hotkey(pressed_keys: &std::collections::HashSet<u16>) -> bool {
+    if let Some(hotkeys_mutex) = HOTKEYS.get() {
+        let hotkeys = hotkeys_mutex.lock().unwrap();
+
+        for (index, hotkey) in hotkeys.iter().enumerate() {
+            if hotkey.matches(pressed_keys) {
+                if hotkey.trigger_on_release {
+                    // Mark as pending, trigger on key release
+                    let pending = PENDING_HOTKEY
+                        .get()
+                        .expect("PENDING_HOTKEY not initialized");
+                    *pending.lock().unwrap() = Some(PendingHotkey {
+                        hotkey_index: index,
+                        chord_keys: pressed_keys.clone(),
+                    });
+                    return true; // Consume event
+                } else {
+                    // Clone action, params, notify, and action_name before dropping lock to avoid deadlock
+                    let action = hotkey.action;
+                    let params = hotkey.params.clone();
+                    let notify = hotkey.notify;
+                    let action_name = hotkey.action_name.clone();
+                    drop(hotkeys); // Explicitly drop the lock before calling action
+
+                    // Trigger immediately (lock is now released)
+                    let result = action(&params);
+
+                    // Show notification if requested
+                    if notify {
+                        match result {
+                            Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
+                            Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                        }
+                    }
+
+                    return true; // Consume event
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Check if a pending hotkey should be triggered (all chord keys released)
+///
+/// Returns true if a hotkey was triggered
+fn check_pending_hotkey_release(pressed_keys: &std::collections::HashSet<u16>) -> bool {
+    let pending_hotkey_guard = PENDING_HOTKEY
+        .get()
+        .expect("PENDING_HOTKEY not initialized");
+    let pending_opt = pending_hotkey_guard.lock().unwrap().clone();
+
+    if let Some(pending) = pending_opt {
+        // Check if any of the chord keys are still pressed
+        let any_chord_key_pressed = pending.chord_keys.iter().any(|k| pressed_keys.contains(k));
+
+        if !any_chord_key_pressed {
+            // All chord keys released - trigger the action!
+            // Small delay to let the system fully process key releases
+            std::thread::sleep(std::time::Duration::from_millis(50));
+
+            // Clone action data before dropping lock to avoid deadlock
+            let action_data = if let Some(hotkeys_mutex) = HOTKEYS.get() {
+                let hotkeys = hotkeys_mutex.lock().unwrap();
+                hotkeys.get(pending.hotkey_index).map(|hotkey| {
+                    (hotkey.action, hotkey.params.clone(), hotkey.notify, hotkey.action_name.clone())
+                })
+            } else {
+                None
+            };
+
+            // Clear the pending hotkey
+            *pending_hotkey_guard.lock().unwrap() = None;
+
+            // Now call the action with all locks released
+            if let Some((action, params, notify, action_name)) = action_data {
+                let result = action(&params);
+
+                // Show notification if requested
+                if notify {
+                    match result {
+                        Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
+                        Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                    }
+                }
+            }
+
+            return true;
+        }
+    }
+    false
+}
+
+// ============================================================================
+// Event Tap Callback
+// ============================================================================
 
 // Event tap callback - tracks key state and checks registered hotkeys
 unsafe extern "C" fn key_event_callback(
@@ -32,44 +201,17 @@ unsafe extern "C" fn key_event_callback(
         // Update key state
         let mut state = key_state.lock().unwrap();
         state.key_down(key_code);
+        let pressed_keys = state.get_pressed_keys().clone();
         drop(state);
 
         // Check all registered hotkeys against current key state
-        if let Some(hotkeys_mutex) = HOTKEYS.get() {
-            let state = key_state.lock().unwrap();
-            let pressed_keys = state.get_pressed_keys();
-            let hotkeys = hotkeys_mutex.lock().unwrap();
-
-            for (index, hotkey) in hotkeys.iter().enumerate() {
-                if hotkey.matches(pressed_keys) {
-                    if hotkey.trigger_on_release {
-                        // Mark as pending, trigger on key release
-                        let pending = PENDING_HOTKEY
-                            .get()
-                            .expect("PENDING_HOTKEY not initialized");
-                        *pending.lock().unwrap() = Some(PendingHotkey {
-                            hotkey_index: index,
-                            chord_keys: pressed_keys.clone(),
-                        });
-                        return ptr::null_mut(); // Consume event
-                    } else {
-                        // Trigger immediately
-                        (hotkey.action)();
-                        return ptr::null_mut(); // Consume event
-                    }
-                }
-            }
+        if check_and_trigger_hotkey(&pressed_keys) {
+            return ptr::null_mut(); // Consume event
         }
     } else if event_type == macos::CG_EVENT_KEY_UP {
         let key_code = unsafe {
             macos::CGEventGetIntegerValueField(event, macos::CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE)
         } as u16;
-
-        // Check if we have a pending hotkey
-        let pending_hotkey_guard = PENDING_HOTKEY
-            .get()
-            .expect("PENDING_HOTKEY not initialized");
-        let pending_opt = pending_hotkey_guard.lock().unwrap().clone();
 
         // Update key state
         let mut state = key_state.lock().unwrap();
@@ -77,27 +219,8 @@ unsafe extern "C" fn key_event_callback(
         let pressed_keys = state.get_pressed_keys().clone();
         drop(state);
 
-        // If we have a pending hotkey, check if all chord keys are released
-        if let Some(pending) = pending_opt {
-            // Check if any of the chord keys are still pressed
-            let any_chord_key_pressed = pending.chord_keys.iter().any(|k| pressed_keys.contains(k));
-
-            if !any_chord_key_pressed {
-                // All chord keys released - trigger the action!
-                // Small delay to let the system fully process key releases
-                std::thread::sleep(std::time::Duration::from_millis(50));
-
-                if let Some(hotkeys_mutex) = HOTKEYS.get() {
-                    let hotkeys = hotkeys_mutex.lock().unwrap();
-                    if let Some(hotkey) = hotkeys.get(pending.hotkey_index) {
-                        (hotkey.action)();
-                    }
-                }
-
-                // Clear the pending hotkey
-                *pending_hotkey_guard.lock().unwrap() = None;
-            }
-        }
+        // Check if pending hotkey should be triggered
+        check_pending_hotkey_release(&pressed_keys);
     } else if event_type == macos::CG_EVENT_FLAGS_CHANGED {
         // Modifier key pressed or released
         let key_code = unsafe {
@@ -127,67 +250,18 @@ unsafe extern "C" fn key_event_callback(
         } else {
             state.key_up(key_code);
         }
+        let pressed_keys = state.get_pressed_keys().clone();
         drop(state);
 
-        // Check hotkeys after modifier change (same logic as KEY_DOWN)
+        // Check hotkeys after modifier change
         if is_pressed {
             // Only check for new matches on key down, not release
-            if let Some(hotkeys_mutex) = HOTKEYS.get() {
-                let state = key_state.lock().unwrap();
-                let pressed_keys = state.get_pressed_keys();
-                let hotkeys = hotkeys_mutex.lock().unwrap();
-
-                for (index, hotkey) in hotkeys.iter().enumerate() {
-                    if hotkey.matches(pressed_keys) {
-                        if hotkey.trigger_on_release {
-                            // Mark as pending, trigger on key release
-                            let pending = PENDING_HOTKEY
-                                .get()
-                                .expect("PENDING_HOTKEY not initialized");
-                            *pending.lock().unwrap() = Some(PendingHotkey {
-                                hotkey_index: index,
-                                chord_keys: pressed_keys.clone(),
-                            });
-                            return ptr::null_mut(); // Consume event
-                        } else {
-                            // Trigger immediately
-                            (hotkey.action)();
-                            return ptr::null_mut(); // Consume event
-                        }
-                    }
-                }
+            if check_and_trigger_hotkey(&pressed_keys) {
+                return ptr::null_mut(); // Consume event
             }
         } else {
-            // Modifier released - check for pending hotkey trigger (same as KEY_UP)
-            let pending_hotkey_guard = PENDING_HOTKEY
-                .get()
-                .expect("PENDING_HOTKEY not initialized");
-            let pending_opt = pending_hotkey_guard.lock().unwrap().clone();
-
-            if let Some(pending) = pending_opt {
-                let state = key_state.lock().unwrap();
-                let pressed_keys = state.get_pressed_keys();
-
-                // Check if any of the chord keys are still pressed
-                let any_chord_key_pressed =
-                    pending.chord_keys.iter().any(|k| pressed_keys.contains(k));
-
-                if !any_chord_key_pressed {
-                    // All chord keys released - trigger the action!
-                    // Small delay to let the system fully process key releases
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-
-                    if let Some(hotkeys_mutex) = HOTKEYS.get() {
-                        let hotkeys = hotkeys_mutex.lock().unwrap();
-                        if let Some(hotkey) = hotkeys.get(pending.hotkey_index) {
-                            (hotkey.action)();
-                        }
-                    }
-
-                    // Clear the pending hotkey
-                    *pending_hotkey_guard.lock().unwrap() = None;
-                }
-            }
+            // Modifier released - check for pending hotkey trigger
+            check_pending_hotkey_release(&pressed_keys);
         }
     }
 
@@ -204,9 +278,12 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     // Initialize logging with file clearing on startup
-    init_logging()?;
+    let log_path = init_logging()?;
 
-    log::info!("Starting hotkey daemon...");
+    log::info!("===========================================");
+    log::info!("Starting macrod hotkey daemon...");
+    log::info!("Log file: {}", log_path);
+    log::info!("===========================================");
 
     // Initialize ProTools tokio runtime
     protools::init_runtime();
@@ -257,10 +334,19 @@ fn run() -> anyhow::Result<()> {
 
 /// Initialize logging system
 /// Note: Log file is cleared on recompile (in build.rs), not on each run
-fn init_logging() -> anyhow::Result<()> {
+/// Returns the absolute path to the log file
+fn init_logging() -> anyhow::Result<String> {
     use std::fs::OpenOptions;
+    use std::env;
 
     let log_file_path = "macrod.log";
+
+    // Get absolute path for logging
+    let absolute_path = env::current_dir()
+        .context("Failed to get current directory")?
+        .join(log_file_path)
+        .to_string_lossy()
+        .to_string();
 
     // Configure env_logger to write to the file (append mode)
     let target = Box::new(
@@ -273,6 +359,7 @@ fn init_logging() -> anyhow::Result<()> {
     );
 
     env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info) // Default to Info level if RUST_LOG not set
         .target(env_logger::Target::Pipe(target))
         .format(|buf, record| {
             writeln!(
@@ -285,5 +372,20 @@ fn init_logging() -> anyhow::Result<()> {
         })
         .init();
 
-    Ok(())
+    Ok(absolute_path)
+}
+/// Normalize a string for comparison: remove whitespace and lowercase
+pub fn normalize(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(|c| c.to_lowercase()) // handles Unicode correctly
+        .collect()
+}
+
+/// Soft string matching: case-insensitive, whitespace-insensitive, with partial matching
+pub fn soft_match(s1: &str, s2: &str) -> bool {
+    let s1 = normalize(s1);
+    let s2 = normalize(s2);
+
+    s1 == s2 || s1.contains(&s2) || s2.contains(&s1)
 }

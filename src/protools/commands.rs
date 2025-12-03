@@ -1,7 +1,12 @@
 use super::client::*;
 use super::ptsl;
 use anyhow::Result;
+use crate::params::Params;
 use ptsl::CommandId;
+
+// ============================================================================
+// Command Implementations
+// ============================================================================
 
 pub async fn keystroke(keys: &[&str]) -> Result<()> {
     crate::macos::keystroke::send_keystroke(keys)?;
@@ -13,7 +18,7 @@ pub async fn menu(menu: &[&str]) -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }
-pub async fn solo_clear(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -38,7 +43,7 @@ pub async fn solo_clear(pt: &mut ProtoolsSession) -> Result<()> {
     Ok(())
 }
 
-pub async fn solo_selected_tracks(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn solo_selected_tracks(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -71,7 +76,7 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession) -> Result<()> {
     Ok(())
 }
 
-pub async fn add_selected_to_solos(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn add_selected_to_solos(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -96,7 +101,7 @@ pub async fn add_selected_to_solos(pt: &mut ProtoolsSession) -> Result<()> {
 
     Ok(())
 }
-pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -123,11 +128,11 @@ pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession) -> Result<()> 
 }
 
 /// Wrapper for crossfade with default preset (for use with pt_actions macro)
-pub async fn crossfade(pt: &mut ProtoolsSession) -> Result<()> {
-    crossfade_and_clear_automation(pt, "TF Default").await
+pub async fn crossfade(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    crossfade_and_clear_automation(pt, "TF Default", _params).await
 }
 
-pub async fn crossfade_and_clear_automation(pt: &mut ProtoolsSession, preset: &str) -> Result<()> {
+pub async fn crossfade_and_clear_automation(pt: &mut ProtoolsSession, preset: &str, _params: &Params) -> Result<()> {
     let result = pt
         .cmd::<_, serde_json::Value>(
             CommandId::CreateFadesBasedOnPreset,
@@ -174,7 +179,7 @@ pub async fn crossfade_and_clear_automation(pt: &mut ProtoolsSession, preset: &s
     Ok(())
 }
 
-pub async fn conform_delete(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Conform Delete");
     let mut flag = false;
     let original_mode = pt.get_edit_mode().await?;
@@ -193,7 +198,7 @@ pub async fn conform_delete(pt: &mut ProtoolsSession) -> Result<()> {
     }
     Ok(())
 }
-pub async fn conform_insert(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Conform Insert");
     let mut flag = false;
     let original_mode = pt.get_edit_mode().await?;
@@ -214,7 +219,7 @@ pub async fn conform_insert(pt: &mut ProtoolsSession) -> Result<()> {
     }
     Ok(())
 }
-pub async fn get_selection_samples(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn get_selection_samples(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     let mut selection = PtSelectionSamples::new(pt).await?;
     selection.slide(pt, 48000).await?;
     let (st, et) = selection.get_io();
@@ -234,6 +239,19 @@ pub async fn get_selection_samples(pt: &mut ProtoolsSession) -> Result<()> {
     Ok(())
 }
 
+/// Navigate to a marker with parameterized ruler name and direction
+///
+/// Parameters:
+/// - `reverse`: boolean - true for previous marker, false for next marker (default: false)
+/// - `ruler`: string - name of the marker ruler to use, empty string for all markers (default: "")
+pub async fn go_to_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let reverse = params.get_bool("reverse", false);
+    let ruler = params.get_str("ruler", "");
+    pt.go_to_next_marker(&ruler, reverse).await?;
+    Ok(())
+}
+
+// Legacy marker functions - kept for backward compatibility but deprecated
 pub async fn go_to_next_marker(pt: &mut ProtoolsSession) -> Result<()> {
     pt.go_to_next_marker("", false).await?;
     Ok(())
@@ -317,7 +335,7 @@ pub async fn go_to_previous_marker_5(pt: &mut ProtoolsSession) -> Result<()> {
     }
     Ok(())
 }
-pub async fn toggle_edit_tool(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     let tool = pt.get_edit_tool().await?;
     if tool != "ET_Selector" {
         pt.set_edit_tool("ET_Selector").await?;
@@ -326,7 +344,7 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession) -> Result<()> {
     }
     Ok(())
 }
-pub async fn spot_to_protools_from_soundminer(pt: &mut ProtoolsSession) -> Result<()> {
+pub async fn spot_to_protools_from_soundminer(_pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Sending to Protools Session");
     crate::macos::menu::run_menu_item("Soundminer_Intel", &["Transfer", "Spot to DAW"])?;
     Ok(())

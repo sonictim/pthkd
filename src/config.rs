@@ -1,11 +1,30 @@
 use crate::hotkey::{ChordPattern, Hotkey};
 use crate::keycodes::key_name_to_codes;
+use crate::params::Params;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 
 /// Embedded default configuration
 const DEFAULT_CONFIG: &str = include_str!("../config.toml");
+
+/// Helper type to deserialize either a single string or array of strings
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StringOrVec {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl StringOrVec {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            StringOrVec::Single(s) => vec![s],
+            StringOrVec::Multiple(v) => v,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -17,8 +36,12 @@ pub struct HotkeyConfig {
     pub keys: Vec<String>,
     pub action: String,
     #[serde(default)]
+    pub params: HashMap<String, toml::Value>,
+    #[serde(default)]
     pub trigger_on_release: bool,
-    pub target_application: Option<String>,
+    #[serde(default)]
+    pub notify: bool,
+    pub target_application: Option<StringOrVec>,
     pub app_window: Option<String>,
 }
 
@@ -86,8 +109,10 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             chord,
             action_name: hk_config.action.clone(),
             action,
+            params: Params::new(hk_config.params),
             trigger_on_release: hk_config.trigger_on_release,
-            application: hk_config.target_application,
+            notify: hk_config.notify,
+            application: hk_config.target_application.map(|app| app.into_vec()),
             app_window: hk_config.app_window,
         });
     }
@@ -126,18 +151,35 @@ fn parse_chord(key_names: &[String]) -> Result<ChordPattern> {
 }
 
 /// Look up an action by name, handling namespaces
-pub fn get_action(name: &str) -> Option<fn()> {
+pub fn get_action(name: &str) -> Option<fn(&Params) -> anyhow::Result<()>> {
     // Check if action is namespaced (contains '.')
     if let Some((namespace, action_name)) = name.split_once('.') {
         match namespace {
             "pt" => crate::protools::actions::get_action_registry()
                 .get(action_name)
                 .copied(),
-            // Future: "logic" => crate::logic::actions::get_action_registry()...
+            "os" => crate::macos::actions::get_action_registry()
+                .get(action_name)
+                .copied(),
+            "sm" => crate::soundminer::actions::get_action_registry()
+                .get(action_name)
+                .copied(),
             _ => None,
         }
     } else {
-        // Unnamespaced - look in main actions
-        crate::actions::get_action_registry().get(name).copied()
+        // Unnamespaced - try each registry in order: os, pt, sm
+        crate::macos::actions::get_action_registry()
+            .get(name)
+            .copied()
+            .or_else(|| {
+                crate::protools::actions::get_action_registry()
+                    .get(name)
+                    .copied()
+            })
+            .or_else(|| {
+                crate::soundminer::actions::get_action_registry()
+                    .get(name)
+                    .copied()
+            })
     }
 }

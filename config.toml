@@ -46,6 +46,19 @@ keys = ["cmd", "shift", "t"]
 action = "os.test_keystroke"
 trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
 
+  # List all buttons in focused plugin window
+  [[hotkey]]
+  keys = ["cmd", "option", "l"]
+  action = "os.list_window_buttons"
+
+  # Click "Render" in any AudioSuite window
+  [[hotkey]]
+  keys = ["cmd", "option", "r"]
+  action = "os.click_window_button"
+  [hotkey.params]
+  window = "AudioSuite"
+  button = "Render"
+
 # ============================================================================
 # ProTools actions (pt.* namespace)
 # ============================================================================
@@ -85,6 +98,12 @@ keys = ["cmd", "shift", "t"]
 action = "pt.toggle_edit_tool"
 target_application = "Pro Tools"
 app_window = "Edit"
+
+[[hotkey]]
+keys = ["ctrl", "backslash"]
+action = "pt.reverse_selection"
+target_application = "Pro Tools"
+notify = true
 
 # ============================================================================
 # Marker Navigation with Parameters

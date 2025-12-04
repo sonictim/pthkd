@@ -20,6 +20,7 @@ pub mod notifications;
 pub mod keystroke;
 pub mod menu;
 pub mod app_info;
+pub mod ui_elements;
 
 // Commands and Actions
 pub mod commands;

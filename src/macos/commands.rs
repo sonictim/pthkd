@@ -170,3 +170,48 @@ pub fn focus_protools(_params: &Params) -> Result<()> {
 
     Ok(())
 }
+
+pub fn list_window_buttons(params: &Params) -> Result<()> {
+    use anyhow::Context;
+
+    let app_name = params.get_str("app", "Pro Tools");
+    let window_name = params.get_str("window", "");
+
+    log::info!("Listing buttons in window '{}' of app '{}'...",
+               if window_name.is_empty() { "<focused>" } else { &window_name },
+               app_name);
+
+    let buttons = super::ui_elements::get_window_buttons(&app_name, &window_name)
+        .context("Failed to get window buttons")?;
+
+    log::info!("Found {} buttons:", buttons.len());
+    println!("\n=== Buttons in window ===");
+    for (i, button) in buttons.iter().enumerate() {
+        log::info!("  {}. {}", i + 1, button);
+        println!("  {}. {}", i + 1, button);
+    }
+
+    Ok(())
+}
+
+pub fn click_window_button(params: &Params) -> Result<()> {
+    use anyhow::Context;
+
+    let app_name = params.get_str("app", "Pro Tools");
+    let window_name = params.get_str("window", "");
+    let button_name = params.get_str("button", "");
+
+    if button_name.is_empty() {
+        anyhow::bail!("button parameter is required");
+    }
+
+    log::info!("Clicking button '{}' in window '{}' of app '{}'...",
+               button_name,
+               if window_name.is_empty() { "<focused>" } else { &window_name },
+               app_name);
+
+    super::ui_elements::click_button(&app_name, &window_name, &button_name)
+        .context("Failed to click button")?;
+
+    Ok(())
+}

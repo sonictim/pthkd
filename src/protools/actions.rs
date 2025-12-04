@@ -16,4 +16,5 @@ actions_async!("pt", {
     toggle_edit_tool,
     go_to_marker,
     spot_to_protools_from_soundminer,
+    reverse_selection,
 });

@@ -13,4 +13,6 @@ actions_sync!("os", {
     test_menu_click,
     list_running_apps,
     focus_protools,
+    list_window_buttons,
+    click_window_button,
 });

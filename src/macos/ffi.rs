@@ -35,6 +35,12 @@ unsafe extern "C" {
 
     /// Get the length of a CFString
     pub fn CFStringGetLength(the_string: *mut c_void) -> isize;
+
+    /// Get the count of elements in a CFArray
+    pub fn CFArrayGetCount(the_array: *mut c_void) -> isize;
+
+    /// Get an element at an index in a CFArray
+    pub fn CFArrayGetValueAtIndex(the_array: *mut c_void, idx: isize) -> *mut c_void;
 }
 
 // ============================================================================

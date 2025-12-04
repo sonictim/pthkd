@@ -17,4 +17,8 @@ actions_async!("pt", {
     go_to_marker,
     spot_to_protools_from_soundminer,
     reverse_selection,
+    preview_audiosuite,
+    open_plugin,
+    open_plugin_type,
+    send_receive_rx,
 });

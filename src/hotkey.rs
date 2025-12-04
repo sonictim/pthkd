@@ -155,10 +155,15 @@ impl Hotkey {
     pub fn matches(&self, pressed_keys: &HashSet<u16>) -> bool {
         self.chord.matches(pressed_keys)
             && (self.application.is_none()
-                || match (&self.application, crate::macos::app_info::get_current_app().ok()) {
+                || match (
+                    &self.application,
+                    crate::macos::app_info::get_current_app().ok(),
+                ) {
                     (Some(config_apps), Some(current_app)) => {
                         // Check if any of the configured apps match the current app
-                        config_apps.iter().any(|app| crate::soft_match(app, &current_app))
+                        config_apps
+                            .iter()
+                            .any(|app| crate::soft_match(app, &current_app))
                     }
                     _ => false,
                 })
@@ -191,3 +196,68 @@ pub struct PendingHotkey {
 
 /// Global pending hotkey state
 pub static PENDING_HOTKEY: OnceLock<Mutex<Option<PendingHotkey>>> = OnceLock::new();
+
+use std::time::{Duration, Instant};
+use tokio::task::JoinHandle;
+use std::future::Future;
+
+pub struct HotkeyCounter {
+    count: u32,
+    last_call: Instant,
+    last_timeout: Duration,
+    pending_task: Option<JoinHandle<()>>,
+}
+
+impl HotkeyCounter {
+    pub fn new() -> Self {
+        Self {
+            count: 0,
+            last_call: Instant::now() - Duration::from_secs(10), // Far in the past
+            last_timeout: Duration::from_millis(500), // Default timeout
+            pending_task: None,
+        }
+    }
+
+    /// Register a keypress and schedule delayed execution
+    ///
+    /// Each call cancels the previous pending execution and starts a new timer.
+    /// When the timer expires, the callback is invoked with the final press count.
+    ///
+    /// # Arguments
+    /// * `timeout_ms` - Timeout in milliseconds before executing the callback
+    /// * `max` - Maximum number of presses to cycle through (e.g., 3 means cycle 0,1,2,0,1,2...)
+    /// * `callback` - Async function to execute after timeout, receives the final press count (0-based)
+    pub fn press<F, Fut>(&mut self, timeout_ms: u64, max: u32, callback: F)
+    where
+        F: FnOnce(u32) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        // Cancel any pending execution
+        if let Some(handle) = self.pending_task.take() {
+            handle.abort();
+        }
+
+        let now = Instant::now();
+        let timeout = Duration::from_millis(timeout_ms);
+
+        // Reset count if timeout has passed since last press
+        if now.duration_since(self.last_call) > self.last_timeout {
+            self.count = 0;
+        }
+
+        self.count += 1;
+        self.last_call = now;
+        self.last_timeout = timeout;
+
+        // Return 0-based index for array indexing
+        let final_count = (self.count - 1) % max;
+
+        // Spawn delayed execution task
+        let handle = tokio::spawn(async move {
+            tokio::time::sleep(timeout).await;
+            callback(final_count).await;
+        });
+
+        self.pending_task = Some(handle);
+    }
+}

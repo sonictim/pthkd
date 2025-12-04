@@ -10,10 +10,10 @@
 // ====== Modifier Flags ======
 // These can be combined with bitwise OR (|)
 
-pub const MOD_CMD: u64 = 1 << 20;      // Command (⌘)
-pub const MOD_SHIFT: u64 = 1 << 17;    // Shift (⇧)
-pub const MOD_OPTION: u64 = 1 << 19;   // Option/Alt (⌥)
-pub const MOD_CONTROL: u64 = 1 << 18;  // Control (⌃)
+pub const MOD_CMD: u64 = 1 << 20; // Command (⌘)
+pub const MOD_SHIFT: u64 = 1 << 17; // Shift (⇧)
+pub const MOD_OPTION: u64 = 1 << 19; // Option/Alt (⌥)
+pub const MOD_CONTROL: u64 = 1 << 18; // Control (⌃)
 
 // ====== Letter Keys ======
 
@@ -53,10 +53,10 @@ pub const KEY_3: u16 = 20;
 pub const KEY_4: u16 = 21;
 pub const KEY_6: u16 = 22;
 pub const KEY_5: u16 = 23;
-pub const KEY_EQUAL: u16 = 24;        // = (Shift = +)
+pub const KEY_EQUAL: u16 = 24; // = (Shift = +)
 pub const KEY_9: u16 = 25;
 pub const KEY_7: u16 = 26;
-pub const KEY_MINUS: u16 = 27;        // - (Shift = _)
+pub const KEY_MINUS: u16 = 27; // - (Shift = _)
 pub const KEY_8: u16 = 28;
 pub const KEY_0: u16 = 29;
 
@@ -119,9 +119,9 @@ pub const KEY_UP: u16 = 126;
 pub const KEY_RETURN: u16 = 36;
 pub const KEY_TAB: u16 = 48;
 pub const KEY_SPACE: u16 = 49;
-pub const KEY_DELETE: u16 = 51;           // Backspace
+pub const KEY_DELETE: u16 = 51; // Backspace
 pub const KEY_ESCAPE: u16 = 53;
-pub const KEY_FORWARD_DELETE: u16 = 117;  // Del key
+pub const KEY_FORWARD_DELETE: u16 = 117; // Del key
 pub const KEY_HOME: u16 = 115;
 pub const KEY_END: u16 = 119;
 pub const KEY_PAGE_UP: u16 = 116;
@@ -137,15 +137,15 @@ pub const KEY_PAGE_DOWN: u16 = 121;
 // / becomes ? with Shift
 // . becomes > with Shift
 
-pub const KEY_LEFT_BRACKET: u16 = 33;     // [  (Shift = {)
-pub const KEY_RIGHT_BRACKET: u16 = 30;    // ]  (Shift = })
-pub const KEY_QUOTE: u16 = 39;            // '  (Shift = ")
-pub const KEY_SEMICOLON: u16 = 41;        // ;  (Shift = :)
-pub const KEY_BACKSLASH: u16 = 42;        // \  (Shift = |)
-pub const KEY_COMMA: u16 = 43;            // ,  (Shift = <)
-pub const KEY_SLASH: u16 = 44;            // /  (Shift = ?)
-pub const KEY_PERIOD: u16 = 47;           // .  (Shift = >)
-pub const KEY_GRAVE: u16 = 50;            // `  (Shift = ~)
+pub const KEY_LEFT_BRACKET: u16 = 33; // [  (Shift = {)
+pub const KEY_RIGHT_BRACKET: u16 = 30; // ]  (Shift = })
+pub const KEY_QUOTE: u16 = 39; // '  (Shift = ")
+pub const KEY_SEMICOLON: u16 = 41; // ;  (Shift = :)
+pub const KEY_BACKSLASH: u16 = 42; // \  (Shift = |)
+pub const KEY_COMMA: u16 = 43; // ,  (Shift = <)
+pub const KEY_SLASH: u16 = 44; // /  (Shift = ?)
+pub const KEY_PERIOD: u16 = 47; // .  (Shift = >)
+pub const KEY_GRAVE: u16 = 50; // `  (Shift = ~)
 
 // ====== Other Special Keys ======
 
@@ -235,7 +235,15 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "pad_8" => vec![KEYPAD_8],
         "pad_9" => vec![KEYPAD_9],
         "pad_0" => vec![KEYPAD_0],
-        
+        "pad_decimal" => vec![KEYPAD_DECIMAL],
+        "pad_multiply" => vec![KEYPAD_MULTIPLY],
+        "pad_plus" => vec![KEYPAD_PLUS],
+        "pad_clear" => vec![KEYPAD_CLEAR],
+        "pad_divide" => vec![KEYPAD_DIVIDE],
+        "pad_enter" | "pad_return" => vec![KEYPAD_ENTER],
+        "pad_minus" => vec![KEYPAD_MINUS],
+        "pad_equal" | "pad_equals" => vec![KEYPAD_EQUALS],
+
         // Function keys
         "f1" => vec![KEY_F1],
         "f2" => vec![KEY_F2],
@@ -276,11 +284,8 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "pagedown" | "page_down" => vec![KEY_PAGE_DOWN],
 
         // Punctuation
-        "plus" | "pad_plus" | "+" => vec![KEYPAD_PLUS],
-        "minus" | "-" => vec![KEY_MINUS],
-        "pad_minus" => vec![KEYPAD_MINUS],
-        "equal" | "equals" | "=" => vec![KEY_EQUAL],
-        "pad_equal" | "pad_equals" => vec![KEYPAD_EQUALS],
+        "minus" | "-" | "underscore" | "_" => vec![KEY_MINUS],
+        "equal" | "equals" | "=" | "plus" => vec![KEY_EQUAL],
         "leftbracket" | "[" => vec![KEY_LEFT_BRACKET],
         "rightbracket" | "]" => vec![KEY_RIGHT_BRACKET],
         "backslash" | "\\" => vec![KEY_BACKSLASH],

@@ -100,10 +100,41 @@ target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
-keys = ["ctrl", "backslash"]
+keys = ["ctrl", "pad_divide"]
 action = "pt.reverse_selection"
 target_application = "Pro Tools"
-notify = true
+
+[[hotkey]]
+keys = ["ctrl", "pad_multiply"]
+action = "pt.send_receive_rx"
+
+[[hotkey]]
+keys = ["ctrl", "space"]
+action = "pt.preview_audiosuite"
+target_application = "Pro Tools"
+
+[[hotkey]]
+keys = ["ctrl", "pad_1"]
+action = "pt.open_plugin_type"
+[hotkey.params]
+timeout = 300
+type = "Reverb"
+plugins = ["Altiverb 8", "ValhallaVintageVerb", "ValhallaSuperMassive", "Irid"]
+
+[[hotkey]]
+keys = ["ctrl", "pad_2"]
+action = "pt.open_plugin_type"
+[hotkey.params]
+timeout = 300
+type = "Delay"
+plugins = ["Slapper", "ValhallaDelay", "GRM Delays"]
+
+[[hotkey]]
+keys = ["ctrl", "pad_4"]
+action = "pt.open_plugin"
+[hotkey.params]
+timeout = 300
+plugins = [["Dynamics", "6060 Ultimate MC"], ["Harmonic", "Black Box Analog Design HG-2"], ["Dynamics", "Analog Channel AC202"]]
 
 # ============================================================================
 # Marker Navigation with Parameters
@@ -211,6 +242,57 @@ target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 ruler = "Markers 5"
+reverse = true
+
+[[hotkey]]
+keys = ["pad_7", "pad_plus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "FX"
+
+[[hotkey]]
+keys = ["pad_7", "pad_minus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "FX"
+reverse = true
+
+[[hotkey]]
+keys = ["pad_8", "pad_plus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "BG"
+
+[[hotkey]]
+keys = ["pad_8", "pad_minus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "BG"
+reverse = true
+
+[[hotkey]]
+keys = ["pad_9", "pad_plus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "Foley"
+
+[[hotkey]]
+keys = ["pad_9", "pad_minus"]
+action = "pt.go_to_marker"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+ruler = "Foley"
 reverse = true
 
 # ============================================================================

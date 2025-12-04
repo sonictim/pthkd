@@ -174,8 +174,8 @@ pub fn focus_protools(_params: &Params) -> Result<()> {
 pub fn list_window_buttons(params: &Params) -> Result<()> {
     use anyhow::Context;
 
-    let app_name = params.get_str("app", "Pro Tools");
-    let window_name = params.get_str("window", "");
+    let app_name = params.get_string("app", "Pro Tools");
+    let window_name = params.get_string("window", "");
 
     log::info!("Listing buttons in window '{}' of app '{}'...",
                if window_name.is_empty() { "<focused>" } else { &window_name },
@@ -197,9 +197,9 @@ pub fn list_window_buttons(params: &Params) -> Result<()> {
 pub fn click_window_button(params: &Params) -> Result<()> {
     use anyhow::Context;
 
-    let app_name = params.get_str("app", "Pro Tools");
-    let window_name = params.get_str("window", "");
-    let button_name = params.get_str("button", "");
+    let app_name = params.get_string("app", "Pro Tools");
+    let window_name = params.get_string("window", "");
+    let button_name = params.get_string("button", "");
 
     if button_name.is_empty() {
         anyhow::bail!("button parameter is required");

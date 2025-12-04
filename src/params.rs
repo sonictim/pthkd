@@ -24,9 +24,9 @@ impl Params {
     ///
     /// # Example
     /// ```ignore
-    /// let direction = params.get_str("direction", "next");
+    /// let direction = params.get_string("direction", "next");
     /// ```
-    pub fn get_str(&self, key: &str, default: &str) -> String {
+    pub fn get_string(&self, key: &str, default: &str) -> String {
         self.0
             .get(key)
             .and_then(|v| v.as_str())
@@ -71,6 +71,94 @@ impl Params {
             .get(key)
             .and_then(|v| v.as_float())
             .unwrap_or(default)
+    }
+
+    /// Get timeout in milliseconds with a default value
+    ///
+    /// Convenience method for getting timeout parameters as u64.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let timeout_ms = params.get_timeout_ms("timeout", 500);
+    /// ```
+    pub fn get_timeout_ms(&self, key: &str, default: u64) -> u64 {
+        self.get_int(key, default as i64) as u64
+    }
+
+    /// Get a simple array of strings
+    ///
+    /// # Example
+    /// ```ignore
+    /// // In config.toml:
+    /// // plugins = ["Reverse", "Normalize", "Gain"]
+    /// let plugins = params.get_string_vec("plugins");
+    /// // Returns: vec!["Reverse", "Normalize", "Gain"]
+    /// ```
+    pub fn get_string_vec(&self, key: &str) -> Vec<String> {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|array| {
+                array
+                    .iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get a nested array of strings (array of arrays)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // In config.toml:
+    /// // plugins = [["Other", "Reverse"], ["Valhalla DSP", "Vintage verb"]]
+    /// let plugins = params.get_nested_strings("plugins");
+    /// // Returns: vec![vec!["Other", "Reverse"], vec!["Valhalla DSP", "Vintage verb"]]
+    /// ```
+    pub fn get_nested_strings(&self, key: &str) -> Vec<Vec<String>> {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|outer_array| {
+                outer_array
+                    .iter()
+                    .filter_map(|inner_value| {
+                        inner_value.as_array().map(|inner_array| {
+                            inner_array
+                                .iter()
+                                .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get a nested array of strings as pairs (tuples)
+    ///
+    /// Convenience method for when you know each inner array has exactly 2 elements.
+    /// If an inner array doesn't have exactly 2 elements, it's skipped.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // In config.toml:
+    /// // plugins = [["Other", "Reverse"], ["Valhalla DSP", "Vintage verb"]]
+    /// let plugins = params.get_string_pairs("plugins");
+    /// // Returns: vec![("Other", "Reverse"), ("Valhalla DSP", "Vintage verb")]
+    /// ```
+    pub fn get_string_pairs(&self, key: &str) -> Vec<(String, String)> {
+        self.get_nested_strings(key)
+            .into_iter()
+            .filter_map(|inner| {
+                if inner.len() == 2 {
+                    Some((inner[0].clone(), inner[1].clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 

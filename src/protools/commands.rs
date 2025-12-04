@@ -1,8 +1,12 @@
 use super::client::*;
 use super::ptsl;
+use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
 use anyhow::Result;
 use ptsl::CommandId;
+
+use lazy_static::lazy_static;
+use std::sync::{Arc, Mutex};
 
 // ============================================================================
 // Command Implementations
@@ -13,7 +17,7 @@ async fn keystroke(keys: &[&str]) -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
     Ok(())
 }
-async fn menu(menu: &[&str]) -> Result<()> {
+async fn call_menu(menu: &[&str]) -> Result<()> {
     crate::macos::menu::run_menu_item("Pro Tools", menu)?;
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
@@ -166,10 +170,10 @@ pub async fn crossfade_and_clear_automation(
     let mut sel = PtSelectionSamples::new(pt).await?;
     let c = sel.get_io();
     sel.set_io(pt, c.1, c.1).await?;
-    menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+    call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
     // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0, c.0).await?;
-    menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+    call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
     // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0 + 100, c.1 - 100).await?;
 
@@ -183,7 +187,7 @@ pub async fn crossfade_and_clear_automation(
         .await?;
 
     sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
-    menu(&["Edit", "Automation", "Thin All"]).await?;
+    call_menu(&["Edit", "Automation", "Thin All"]).await?;
     // keystroke(&["cmd", "option", "control", "t"]).await?;
     sel.set_io(pt, c.0, c.1).await?;
     Ok(())
@@ -220,7 +224,7 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Resul
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
-    menu(&["Edit", "Insert Silence"]).await?;
+    call_menu(&["Edit", "Insert Silence"]).await?;
     // keystroke(&["cmd", "shift", "e"]).await?;
     // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
@@ -256,8 +260,9 @@ pub async fn get_selection_samples(pt: &mut ProtoolsSession, _params: &Params) -
 /// - `ruler`: string - name of the marker ruler to use, empty string for all markers (default: "")
 pub async fn go_to_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let reverse = params.get_bool("reverse", false);
-    let ruler = params.get_str("ruler", "");
+    let ruler = params.get_string("ruler", "");
     pt.go_to_next_marker(&ruler, reverse).await?;
+    keystroke(&["left"]).await?;
     Ok(())
 }
 pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
@@ -278,10 +283,118 @@ pub async fn spot_to_protools_from_soundminer(
     Ok(())
 }
 
-pub async fn reverse_selection(_pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    menu(&["AudioSuite", "Other", "Reverse"]).await?;
-    crate::macos::ui_elements::wait_for_window("Pro Tools", "AudioSuite: Reverse", 5000)?;
-    button("AudioSuite: Reverse", "Render").await?;
-    crate::macos::ui_elements::close_window_with_retry("Pro Tools", "AudioSuite: Reverse", 10000)?;
+async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
+    let window = format!("AudioSuite: {}", plugin);
+    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+        call_menu(&["AudioSuite", menu, plugin]).await?;
+    }
+    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+    button(&window, "Render").await?;
+    if close {
+        crate::macos::ui_elements::close_window_with_retry(
+            "Pro Tools",
+            &window,  // Fixed: was hardcoded to "AudioSuite: Reverse"
+            10000,
+        )?;
+    }
+    Ok(())
+}
+async fn plugin_analyze(menu: &str, plugin: &str) -> Result<()> {
+    let window = format!("AudioSuite: {}", plugin);
+    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+        call_menu(&["AudioSuite", menu, plugin]).await?;
+    }
+    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+    button(&window, "Analyze").await?;
+    Ok(())
+}
+
+pub async fn reverse_selection(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let close = params.get_bool("close", true);
+    plugin_render("Other", "Reverse", close).await?;
+    Ok(())
+}
+pub async fn preview_audiosuite(_pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    button("AudioSuite", "Preview Processing").await?;
+    Ok(())
+}
+pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let version = params.get_int("version", 11);
+    let plugin = format!("RX {} Connect", version);
+    let rx_app = format!("RX {}", version);
+
+    let app = crate::macos::app_info::get_current_app()?;
+    if app == "Pro Tools" {
+        // Send to RX for analysis
+        plugin_analyze("Noise Reduction", &plugin).await?;
+    } else if crate::soft_match(&app, &rx_app) {
+        // Send back to Pro Tools - Cmd+Enter returns to DAW
+        keystroke(&["cmd", "enter"]).await?;
+
+        // Wait for Pro Tools to be focused (any window)
+        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", "", 10000)?;
+
+        // Now render the changes back
+        plugin_render("Noise Reduction", &plugin, false).await?;
+    }
+
+    Ok(())
+}
+lazy_static! {
+    static ref PLUGIN_COUNTER: Arc<Mutex<HotkeyCounter>> =
+        Arc::new(Mutex::new(HotkeyCounter::new()));
+}
+
+pub async fn open_plugin(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let mut counter = PLUGIN_COUNTER.lock().unwrap();
+    let plugins = params.get_string_pairs("plugins");
+    let timeout_ms = params.get_timeout_ms("timeout", 500);
+
+    // Clone plugins to move into the async closure
+    let plugins_clone = plugins.clone();
+
+    // Pass timeout, max, and async callback - cycle through all plugins (0-based indexing)
+    counter.press(timeout_ms, plugins.len() as u32, |count| async move {
+        if let Some((manufacturer, name)) = plugins_clone.get(count as usize) {
+            let menu_path = ["AudioSuite", manufacturer.as_str(), name.as_str()];
+            if let Err(e) = call_menu(&menu_path).await {
+                log::error!("Failed to open plugin {}/{}: {:#}", manufacturer, name, e);
+            }
+        }
+    });
+
+    Ok(())
+}
+
+lazy_static! {
+    static ref PLUGIN_TYPE_COUNTER: Arc<Mutex<HotkeyCounter>> =
+        Arc::new(Mutex::new(HotkeyCounter::new()));
+}
+
+pub async fn open_plugin_type(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let mut counter = PLUGIN_TYPE_COUNTER.lock().unwrap();
+    let plugin_type = params.get_string("type", "");
+    let plugins = params.get_string_vec("plugins");
+    let timeout_ms = params.get_timeout_ms("timeout", 500);
+
+    // Clone to move into the async closure
+    let plugins_clone = plugins.clone();
+    let plugin_type_clone = plugin_type.clone();
+
+    // Pass timeout, max, and async callback - cycle through all plugins (0-based indexing)
+    counter.press(timeout_ms, plugins.len() as u32, |count| async move {
+        if let Some(name) = plugins_clone.get(count as usize) {
+            let menu_path = ["AudioSuite", plugin_type_clone.as_str(), name.as_str()];
+            if let Err(e) = call_menu(&menu_path).await {
+                log::error!(
+                    "Failed to open plugin {}/{}: {:#}",
+                    plugin_type_clone,
+                    name,
+                    e
+                );
+            }
+        }
+    });
+
     Ok(())
 }

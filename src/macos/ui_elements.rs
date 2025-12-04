@@ -350,6 +350,79 @@ pub fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Re
         std::thread::sleep(poll_interval);
     }
 }
+
+/// Wait for a window to become focused
+///
+/// Polls every 100ms until the specified window becomes the focused window or timeout is reached
+///
+/// # Arguments
+/// * `app_name` - Name of the application
+/// * `window_name` - Name of window to wait for to be focused (soft matched).
+///                   If empty string, just waits for the app to be focused (any window)
+/// * `timeout_ms` - Maximum time to wait in milliseconds
+pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let poll_interval = Duration::from_millis(100);
+
+    if window_name.is_empty() {
+        log::info!(
+            "Waiting for '{}' to be focused (timeout: {}ms)",
+            app_name,
+            timeout_ms
+        );
+    } else {
+        log::info!(
+            "Waiting for window '{}' in '{}' to be focused (timeout: {}ms)",
+            window_name,
+            app_name,
+            timeout_ms
+        );
+    }
+
+    loop {
+        // Check if the specified app is the current app
+        if let Ok(current_app) = crate::macos::app_info::get_current_app() {
+            if crate::soft_match(&current_app, app_name) {
+                // App is focused
+                if window_name.is_empty() {
+                    // If no specific window requested, just app focus is enough
+                    log::info!("✅ '{}' is now focused", app_name);
+                    return Ok(());
+                }
+
+                // Check if the right window is focused
+                if let Ok(current_window) = crate::macos::app_info::get_app_window() {
+                    if crate::soft_match(&current_window, window_name) {
+                        log::info!("✅ Window '{}' is now focused", window_name);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        if start.elapsed() >= timeout {
+            if window_name.is_empty() {
+                bail!(
+                    "Timeout waiting for '{}' to be focused ({}ms)",
+                    app_name,
+                    timeout_ms
+                );
+            } else {
+                bail!(
+                    "Timeout waiting for window '{}' to be focused ({}ms)",
+                    window_name,
+                    timeout_ms
+                );
+            }
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
 pub fn close_window(app_name: &str, window_name: &str) -> Result<()> {
     unsafe {
         let pid = get_pid_by_name(app_name)?;

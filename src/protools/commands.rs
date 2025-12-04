@@ -293,7 +293,7 @@ async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
     if close {
         crate::macos::ui_elements::close_window_with_retry(
             "Pro Tools",
-            &window,  // Fixed: was hardcoded to "AudioSuite: Reverse"
+            &window, // Fixed: was hardcoded to "AudioSuite: Reverse"
             10000,
         )?;
     }
@@ -334,6 +334,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
         // Wait for Pro Tools to be focused (any window)
         crate::macos::ui_elements::wait_for_window_focused("Pro Tools", "", 10000)?;
 
+        std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
         // Now render the changes back
         plugin_render("Noise Reduction", &plugin, false).await?;
     }

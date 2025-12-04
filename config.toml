@@ -100,13 +100,16 @@ target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
-keys = ["ctrl", "pad_divide"]
+keys = ["control", "pad_divide"]
 action = "pt.reverse_selection"
 target_application = "Pro Tools"
 
 [[hotkey]]
-keys = ["ctrl", "pad_multiply"]
+keys = ["control", "pad_multiply"]
 action = "pt.send_receive_rx"
+[hotkey.params]
+version = 10
+notify = true
 
 [[hotkey]]
 keys = ["ctrl", "space"]

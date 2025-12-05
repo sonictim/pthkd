@@ -7,14 +7,14 @@
 //! - Need proper main thread dispatch mechanism
 //! - NSAutoreleasePool and Objective-C exception handling
 
+use super::ffi::*;
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use super::ffi::*;
 
 // Type alias for CoreFoundation compatibility (CFArray needs *const)
 type CFAXUIElementRef = *const std::ffi::c_void;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct MenuItem {
     pub title: String,
     pub enabled: bool,
@@ -71,7 +71,12 @@ unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
         if crate::soft_match(app_name, &name) {
             // Found match! Get its PID
             let pid: i32 = msg_send![app, processIdentifier];
-            log::info!("Found app '{}' (matched '{}'), PID: {}", name, app_name, pid);
+            log::info!(
+                "Found app '{}' (matched '{}'), PID: {}",
+                name,
+                app_name,
+                pid
+            );
             return Ok(pid);
         }
     }
@@ -89,13 +94,19 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
 
     // Check accessibility permissions first
     if !crate::macos::app_info::has_accessibility_permission() {
-        bail!("Accessibility permissions not granted. Enable in System Preferences > Security & Privacy > Accessibility");
+        bail!(
+            "Accessibility permissions not granted. Enable in System Preferences > Security & Privacy > Accessibility"
+        );
     }
 
     unsafe {
         // Get PID for the specified application
         let pid = get_pid_for_app(app_name)?;
-        log::info!("Attempting to get menus for app: {} (PID: {})", app_name, pid);
+        log::info!(
+            "Attempting to get menus for app: {} (PID: {})",
+            app_name,
+            pid
+        );
 
         // Create accessibility element for the application
         let app_ref = AXUIElementCreateApplication(pid);
@@ -116,13 +127,20 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
         if result != 0 {
             CFRelease(app_ref);
             let error_msg = match result {
-                -25212 => "No menu bar value (kAXErrorNoValue). The app may not expose its menu bar via Accessibility API.",
+                -25212 => {
+                    "No menu bar value (kAXErrorNoValue). The app may not expose its menu bar via Accessibility API."
+                }
                 -25205 => "Menu bar attribute not supported (kAXErrorAttributeUnsupported)",
                 -25211 => "Accessibility API is disabled (kAXErrorAPIDisabled)",
                 -25202 => "Invalid UI element (kAXErrorInvalidUIElement)",
                 _ => "Unknown error",
             };
-            bail!("Failed to get menu bar for {}: {} (error code: {})", app_name, error_msg, result);
+            bail!(
+                "Failed to get menu bar for {}: {} (error code: {})",
+                app_name,
+                error_msg,
+                result
+            );
         }
 
         if menu_bar_value.is_null() {
@@ -148,7 +166,10 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
             bail!("Failed to get menu bar children");
         }
 
-        let children_array = core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_create_rule(children_value as *const _);
+        let children_array =
+            core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_create_rule(
+                children_value as *const _,
+            );
 
         let mut menus = Vec::new();
         for i in 0..children_array.len() {
@@ -198,7 +219,8 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
     );
 
     let enabled = if !enabled_value.is_null() {
-        let cf_bool = core_foundation::boolean::CFBoolean::wrap_under_get_rule(enabled_value as *const _);
+        let cf_bool =
+            core_foundation::boolean::CFBoolean::wrap_under_get_rule(enabled_value as *const _);
         cf_bool.into()
     } else {
         true
@@ -215,7 +237,10 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
 
     let mut children = Vec::new();
     if !children_value.is_null() {
-        let children_array = core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(children_value as *const _);
+        let children_array =
+            core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
+                children_value as *const _,
+            );
 
         for i in 0..children_array.len() {
             if let Some(child_ref) = children_array.get(i) {
@@ -263,7 +288,12 @@ pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
 
     unsafe {
         let pid = get_pid_for_app(app_name)?;
-        log::info!("Clicking menu item in {} (PID: {}): {:?}", app_name, pid, menu_path);
+        log::info!(
+            "Clicking menu item in {} (PID: {}): {:?}",
+            app_name,
+            pid,
+            menu_path
+        );
 
         let app_ref = AXUIElementCreateApplication(pid);
         if app_ref.is_null() {
@@ -306,10 +336,17 @@ pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
             if result != 0 || children_value.is_null() {
                 CFRelease(menu_bar_ref);
                 CFRelease(app_ref);
-                bail!("Failed to get children for menu level {} ({})", i, menu_title);
+                bail!(
+                    "Failed to get children for menu level {} ({})",
+                    i,
+                    menu_title
+                );
             }
 
-            let children_array = core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(children_value as *const _);
+            let children_array =
+                core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
+                    children_value as *const _,
+                );
 
             // Find the menu item with matching title
             let mut found = false;
@@ -337,7 +374,10 @@ pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
                             if i == menu_path.len() - 1 {
                                 log::info!("Clicking final menu item: {}", menu_title);
                                 let press_key = CFString::from_static_string("AXPress");
-                                let press_result = AXUIElementPerformAction(child, press_key.as_concrete_TypeRef() as *mut c_void);
+                                let press_result = AXUIElementPerformAction(
+                                    child,
+                                    press_key.as_concrete_TypeRef() as *mut c_void,
+                                );
 
                                 CFRelease(menu_bar_ref);
                                 CFRelease(app_ref);
@@ -359,7 +399,11 @@ pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
                                 );
 
                                 if !submenu_value.is_null() {
-                                    let submenu_array = core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(submenu_value as *const _);
+                                    let submenu_array = core_foundation::array::CFArray::<
+                                        CFAXUIElementRef,
+                                    >::wrap_under_get_rule(
+                                        submenu_value as *const _
+                                    );
                                     if submenu_array.len() > 0 {
                                         if let Some(submenu) = submenu_array.get(0) {
                                             // This is the actual menu container, use it as current element

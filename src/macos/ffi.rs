@@ -41,6 +41,12 @@ unsafe extern "C" {
 
     /// Get an element at an index in a CFArray
     pub fn CFArrayGetValueAtIndex(the_array: *mut c_void, idx: isize) -> *mut c_void;
+
+    /// Get the type ID of a Core Foundation object
+    pub fn CFGetTypeID(cf: *mut c_void) -> usize;
+
+    /// Get the type ID for CFString type
+    pub fn CFStringGetTypeID() -> usize;
 }
 
 // ============================================================================
@@ -90,9 +96,22 @@ pub unsafe fn create_cfstring(s: &str) -> *mut c_void {
     CFStringCreateWithCString(std::ptr::null_mut(), c_str.as_ptr(), K_CF_STRING_ENCODING_UTF8)
 }
 
+/// Check if a Core Foundation object is a CFString
+pub unsafe fn is_cfstring(value: *mut c_void) -> bool {
+    if value.is_null() {
+        return false;
+    }
+    CFGetTypeID(value) == CFStringGetTypeID()
+}
+
 /// Helper to convert CFString to Rust String
 pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
     if cfstring.is_null() {
+        return None;
+    }
+
+    // Check if it's actually a CFString before calling CFString functions
+    if !is_cfstring(cfstring) {
         return None;
     }
 

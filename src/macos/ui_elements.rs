@@ -351,6 +351,60 @@ pub fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Re
     }
 }
 
+/// Wait for a window to disappear/hide
+///
+/// Polls every 50ms until window is gone or timeout is reached
+///
+/// # Arguments
+/// * `app_name` - Name of the application
+/// * `window_name` - Name of window to wait for to disappear (soft matched)
+/// * `timeout_ms` - Maximum time to wait in milliseconds
+pub fn wait_for_window_to_close(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let poll_interval = Duration::from_millis(50);
+
+    println!(
+        "⏳ Waiting for window '{}' in '{}' to close (timeout: {}ms)",
+        window_name,
+        app_name,
+        timeout_ms
+    );
+    log::info!(
+        "Waiting for window '{}' in '{}' to close (timeout: {}ms)",
+        window_name,
+        app_name,
+        timeout_ms
+    );
+
+    loop {
+        // Check if window still exists
+        let exists = window_exists(app_name, window_name)?;
+        println!("🔍 Checking if window '{}' in '{}' still exists: {}", window_name, app_name, exists);
+
+        if !exists {
+            println!("✅ Window '{}' has closed", window_name);
+            log::info!("✅ Window '{}' has closed", window_name);
+            return Ok(());
+        } else {
+            println!("⏳ Window '{}' still exists, waiting...", window_name);
+        }
+
+        if start.elapsed() >= timeout {
+            println!("❌ Timeout waiting for window '{}' to close ({}ms)", window_name, timeout_ms);
+            bail!(
+                "Timeout waiting for window '{}' to close ({}ms)",
+                window_name,
+                timeout_ms
+            );
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
 /// Wait for a window to become focused
 ///
 /// Polls every 100ms until the specified window becomes the focused window or timeout is reached
@@ -365,7 +419,7 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
 
     let start = Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
-    let poll_interval = Duration::from_millis(100);
+    let poll_interval = Duration::from_millis(50);
 
     if window_name.is_empty() {
         log::info!(
@@ -382,25 +436,53 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
         );
     }
 
+    // Try to focus the application first
+    println!("🎯 Attempting to focus '{}'...", app_name);
+    if let Err(e) = crate::macos::app_info::focus_application(app_name) {
+        println!("⚠️  Failed to focus app: {}", e);
+        log::warn!("Failed to focus app '{}': {}", app_name, e);
+    }
+
     loop {
+        // Sleep first, then check
+        std::thread::sleep(poll_interval);
+
         // Check if the specified app is the current app
         if let Ok(current_app) = crate::macos::app_info::get_current_app() {
+            println!("🔍 Current app: '{}', looking for: '{}'", current_app, app_name);
+            log::debug!("Current app: '{}', looking for: '{}'", current_app, app_name);
+
             if crate::soft_match(&current_app, app_name) {
+                println!("✅ App matches!");
                 // App is focused
                 if window_name.is_empty() {
                     // If no specific window requested, just app focus is enough
+                    println!("✅ '{}' is now focused (no specific window required)", app_name);
                     log::info!("✅ '{}' is now focused", app_name);
                     return Ok(());
                 }
 
                 // Check if the right window is focused
                 if let Ok(current_window) = crate::macos::app_info::get_app_window() {
+                    println!("🔍 Current window: '{}', looking for: '{}'", current_window, window_name);
+                    log::debug!("Current window: '{}', looking for: '{}'", current_window, window_name);
                     if crate::soft_match(&current_window, window_name) {
+                        println!("✅ Window '{}' is now focused", window_name);
                         log::info!("✅ Window '{}' is now focused", window_name);
                         return Ok(());
+                    } else {
+                        println!("❌ Window doesn't match");
                     }
+                } else {
+                    println!("❌ Failed to get current window title");
+                    log::debug!("Failed to get current window title");
                 }
+            } else {
+                println!("❌ App doesn't match");
             }
+        } else {
+            println!("❌ Failed to get current app");
+            log::debug!("Failed to get current app");
         }
 
         if start.elapsed() >= timeout {
@@ -418,8 +500,6 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
                 );
             }
         }
-
-        std::thread::sleep(poll_interval);
     }
 }
 
@@ -503,4 +583,131 @@ pub fn close_window_with_retry(app_name: &str, window_name: &str, timeout_ms: u6
             );
         }
     }
+}
+
+/// Get all text content from a window
+///
+/// Recursively searches for AXStaticText elements and collects their values
+///
+/// # Arguments
+/// * `app_name` - Name of the application
+/// * `window_name` - Name of the window, or "" for focused window
+///
+/// # Returns
+/// Vector of text strings found in the window
+///
+/// # Example
+/// ```ignore
+/// let text = get_window_text("Pro Tools", "AudioSuite: Reverb")?;
+/// // Returns: ["Press RENDER to commit changes", "Render", "Cancel", ...]
+/// ```
+pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        let pid = get_pid_by_name(app_name)?;
+        let app_element = AXUIElementCreateApplication(pid);
+
+        // Get the target window
+        let window = if window_name.is_empty() {
+            get_focused_window(app_element)?
+        } else {
+            find_window_by_name(app_element, window_name)?
+        };
+
+        // Get all text in the window
+        let text_elements = find_text_in_element(window)?;
+
+        // Clean up
+        CFRelease(app_element);
+        CFRelease(window);
+
+        Ok(text_elements)
+    }
+}
+
+/// Find all text-containing elements recursively
+/// Returns strings in format "Role: Text" so user can see what element type contains the text
+unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
+    let mut text_strings = Vec::new();
+
+    // Get role
+    let role_attr = create_cfstring("AXRole");
+    let mut role_value: *mut c_void = ptr::null_mut();
+    let role_result = AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+    CFRelease(role_attr);
+
+    let role = if role_result == K_AX_ERROR_SUCCESS && !role_value.is_null() {
+        let r = cfstring_to_string(role_value).unwrap_or_else(|| "Unknown".to_string());
+        CFRelease(role_value);
+        r
+    } else {
+        "Unknown".to_string()
+    };
+
+    // Try to get AXValue from ANY element (not just specific roles)
+    let value_attr = create_cfstring("AXValue");
+    let mut value: *mut c_void = ptr::null_mut();
+    let value_result = AXUIElementCopyAttributeValue(element, value_attr, &mut value);
+    CFRelease(value_attr);
+
+    if value_result == K_AX_ERROR_SUCCESS && !value.is_null() {
+        // cfstring_to_string now safely checks if value is a CFString
+        if let Some(text) = cfstring_to_string(value) {
+            if !text.is_empty() {
+                // Include the role type so user can see what contains the text
+                text_strings.push(format!("[{}] {}", role, text));
+            }
+        }
+        CFRelease(value);
+    }
+
+    // Also try AXTitle attribute (some elements use this for text)
+    let title_attr = create_cfstring("AXTitle");
+    let mut title_value: *mut c_void = ptr::null_mut();
+    let title_result = AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+    CFRelease(title_attr);
+
+    if title_result == K_AX_ERROR_SUCCESS && !title_value.is_null() {
+        if let Some(text) = cfstring_to_string(title_value) {
+            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
+                text_strings.push(format!("[{} Title] {}", role, text));
+            }
+        }
+        CFRelease(title_value);
+    }
+
+    // Also try AXDescription attribute
+    let desc_attr = create_cfstring("AXDescription");
+    let mut desc_value: *mut c_void = ptr::null_mut();
+    let desc_result = AXUIElementCopyAttributeValue(element, desc_attr, &mut desc_value);
+    CFRelease(desc_attr);
+
+    if desc_result == K_AX_ERROR_SUCCESS && !desc_value.is_null() {
+        if let Some(text) = cfstring_to_string(desc_value) {
+            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
+                text_strings.push(format!("[{} Description] {}", role, text));
+            }
+        }
+        CFRelease(desc_value);
+    }
+
+    // Recursively search children
+    let children_attr = create_cfstring("AXChildren");
+    let mut children_value: *mut c_void = ptr::null_mut();
+    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+    CFRelease(children_attr);
+
+    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+        let children_count = CFArrayGetCount(children_value);
+
+        for i in 0..children_count {
+            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            if let Ok(mut child_text) = find_text_in_element(child) {
+                text_strings.append(&mut child_text);
+            }
+        }
+
+        CFRelease(children_value);
+    }
+
+    Ok(text_strings)
 }

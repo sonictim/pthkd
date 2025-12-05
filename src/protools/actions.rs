@@ -15,10 +15,7 @@ actions_async!("pt", {
     remove_selected_from_solos,
     toggle_edit_tool,
     go_to_marker,
-    spot_to_protools_from_soundminer,
-    reverse_selection,
-    preview_audiosuite,
-    open_plugin,
-    open_plugin_type,
+    audiosuite,
+    multitap_plugin_selector,
     send_receive_rx,
 });

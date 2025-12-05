@@ -215,3 +215,30 @@ pub fn click_window_button(params: &Params) -> Result<()> {
 
     Ok(())
 }
+
+pub fn display_window_text(_params: &Params) -> Result<()> {
+    log::info!("Getting text from focused window...");
+
+    // Get current app
+    let app_name = super::app_info::get_current_app()?;
+    log::info!("Current app: {}", app_name);
+    println!("Current app: {}", app_name);
+
+    // Get text from focused window (empty string = focused window)
+    match super::ui_elements::get_window_text(&app_name, "") {
+        Ok(text_elements) => {
+            log::info!("Found {} text elements", text_elements.len());
+            println!("\n=== Window Text ({} elements) ===", text_elements.len());
+            for (i, text) in text_elements.iter().enumerate() {
+                log::info!("  {}. {}", i + 1, text);
+                println!("  {}. {}", i + 1, text);
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to get window text: {}", e);
+            println!("❌ Failed to get window text: {}", e);
+        }
+    }
+
+    Ok(())
+}

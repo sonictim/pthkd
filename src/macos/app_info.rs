@@ -8,10 +8,10 @@
 //! - User must enable this in: System Preferences > Security & Privacy > Accessibility
 //! - `get_current_app()` does NOT require special permissions
 
+use super::ffi::*;
 use anyhow::{Result, bail};
 use libc::c_void;
 use std::ptr;
-use super::ffi::*;
 
 // ============================================================================
 // Public API
@@ -111,11 +111,8 @@ pub fn get_app_window() -> Result<String> {
         let focused_window_attr = create_cfstring("AXFocusedWindow");
         let mut focused_window: *mut c_void = ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            app_element,
-            focused_window_attr,
-            &mut focused_window,
-        );
+        let result =
+            AXUIElementCopyAttributeValue(app_element, focused_window_attr, &mut focused_window);
 
         CFRelease(focused_window_attr);
 
@@ -140,11 +137,7 @@ pub fn get_app_window() -> Result<String> {
         let title_attr = create_cfstring("AXTitle");
         let mut title_cfstring: *mut c_void = ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            focused_window,
-            title_attr,
-            &mut title_cfstring,
-        );
+        let result = AXUIElementCopyAttributeValue(focused_window, title_attr, &mut title_cfstring);
 
         CFRelease(title_attr);
         CFRelease(focused_window);
@@ -160,7 +153,8 @@ pub fn get_app_window() -> Result<String> {
         }
 
         // Convert CFString to Rust String
-        let title = cfstring_to_string(title_cfstring).unwrap_or_else(|| String::from("(Untitled)"));
+        let title =
+            cfstring_to_string(title_cfstring).unwrap_or_else(|| String::from("(Untitled)"));
 
         if !title_cfstring.is_null() {
             CFRelease(title_cfstring);
@@ -205,11 +199,8 @@ pub fn is_in_text_field() -> Result<bool> {
         let focused_element_attr = create_cfstring("AXFocusedUIElement");
         let mut focused_element: *mut c_void = ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            system_wide,
-            focused_element_attr,
-            &mut focused_element,
-        );
+        let result =
+            AXUIElementCopyAttributeValue(system_wide, focused_element_attr, &mut focused_element);
 
         CFRelease(focused_element_attr);
         CFRelease(system_wide);
@@ -225,7 +216,10 @@ pub fn is_in_text_field() -> Result<bool> {
             } else if result == K_AX_ERROR_API_DISABLED {
                 bail!("Accessibility API disabled");
             } else {
-                log::warn!("Failed to get focused element (error code: {}), assuming not a text field", result);
+                log::warn!(
+                    "Failed to get focused element (error code: {}), assuming not a text field",
+                    result
+                );
                 return Ok(false);
             }
         }
@@ -238,11 +232,7 @@ pub fn is_in_text_field() -> Result<bool> {
         let role_attr = create_cfstring("AXRole");
         let mut role_cfstring: *mut c_void = ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            focused_element,
-            role_attr,
-            &mut role_cfstring,
-        );
+        let result = AXUIElementCopyAttributeValue(focused_element, role_attr, &mut role_cfstring);
 
         CFRelease(role_attr);
         CFRelease(focused_element);
@@ -267,7 +257,7 @@ pub fn is_in_text_field() -> Result<bool> {
             || role == "AXTextArea"
             || role == "AXComboBox"
             || role == "AXSearchField"
-            || role == "AXStaticText";  // Sometimes editable text shows as this
+            || role == "AXStaticText"; // Sometimes editable text shows as this
 
         Ok(is_text)
     }
@@ -411,7 +401,11 @@ pub fn focus_application(app_name: &str) -> Result<()> {
                 let success: bool = msg_send![app, activateWithOptions: options];
 
                 if success {
-                    log::info!("Successfully activated application: {} (matched '{}')", name, app_name);
+                    log::info!(
+                        "Successfully activated application: {} (matched '{}')",
+                        name,
+                        app_name
+                    );
                     return Ok(());
                 } else {
                     bail!("Failed to activate application: {}", name);
@@ -464,5 +458,256 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
         }
 
         bail!("No running application found matching '{}'", app_name)
+    }
+}
+
+/// Launch an application by name
+///
+/// **Permissions:** None required
+///
+/// # Arguments
+/// * `app_name` - Name of the application to launch (case-insensitive)
+///
+/// # Example
+/// ```ignore
+/// launch_application("Pro Tools")?;
+/// ```
+fn launch_application(app_name: &str) -> Result<()> {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    unsafe {
+        let workspace_class = class!(NSWorkspace);
+        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
+        if workspace.is_null() {
+            bail!("Failed to get NSWorkspace");
+        }
+
+        // Create NSString for the app name
+        let app_name_cfstring = create_cfstring(app_name);
+
+        // Launch the application
+        let success: bool = msg_send![workspace, launchApplication: app_name_cfstring];
+
+        CFRelease(app_name_cfstring);
+
+        if success {
+            log::info!("Successfully launched application: {}", app_name);
+            Ok(())
+        } else {
+            bail!("Failed to launch application: {}", app_name)
+        }
+    }
+}
+
+/// Check if the current focused app has a visible/focused window
+///
+/// Returns true if there's a focused window, false if windows are hidden
+pub fn has_focused_window() -> bool {
+    get_app_window().is_ok()
+}
+
+/// Wait for the focused app to have no visible windows (all windows hidden)
+///
+/// Useful for waiting for apps like RX that hide their window after Cmd+Enter
+///
+/// # Arguments
+/// * `timeout_ms` - Maximum time to wait in milliseconds
+pub fn wait_for_windows_to_hide(timeout_ms: u64) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let poll_interval = Duration::from_millis(50);
+
+    println!("⏳ Waiting for windows to hide (timeout: {}ms)", timeout_ms);
+    log::info!("Waiting for windows to hide (timeout: {}ms)", timeout_ms);
+
+    loop {
+        if let Ok(window) = get_app_window() {
+            println!("⏳ Window still visible: '{}', waiting...", window);
+        } else {
+            println!("✅ All windows are now hidden");
+            log::info!("✅ All windows are now hidden");
+            return Ok(());
+        }
+
+        if start.elapsed() >= timeout {
+            println!("❌ Timeout waiting for windows to hide ({}ms)", timeout_ms);
+            bail!("Timeout waiting for windows to hide ({}ms)", timeout_ms);
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
+/// Wait for an app to no longer be focused
+///
+/// Polls every 50ms until the app is no longer the frontmost app
+///
+/// # Arguments
+/// * `app_name` - Name of the application to wait for to lose focus
+/// * `timeout_ms` - Maximum time to wait in milliseconds
+///
+/// # Example
+/// ```ignore
+/// // Wait for RX to lose focus (e.g., after Cmd+Enter sends it to background)
+/// wait_for_app_to_lose_focus("RX 11", 10000)?;
+/// ```
+pub fn wait_for_app_to_lose_focus(app_name: &str, timeout_ms: u64) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let poll_interval = Duration::from_millis(50);
+
+    println!(
+        "⏳ Waiting for '{}' to lose focus (timeout: {}ms)",
+        app_name, timeout_ms
+    );
+    log::info!(
+        "Waiting for '{}' to lose focus (timeout: {}ms)",
+        app_name,
+        timeout_ms
+    );
+
+    loop {
+        if let Ok(current_app) = get_current_app() {
+            println!("🔍 Current focused app: '{}'", current_app);
+
+            if !crate::soft_match(&current_app, app_name) {
+                println!("✅ '{}' is no longer focused", app_name);
+                log::info!("✅ '{}' is no longer focused", app_name);
+                return Ok(());
+            } else {
+                println!("⏳ '{}' is still focused, waiting...", app_name);
+            }
+        }
+
+        if start.elapsed() >= timeout {
+            println!(
+                "❌ Timeout waiting for '{}' to lose focus ({}ms)",
+                app_name, timeout_ms
+            );
+            bail!(
+                "Timeout waiting for '{}' to lose focus ({}ms)",
+                app_name,
+                timeout_ms
+            );
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
+/// Focus an application, optionally switching and/or launching, and wait for confirmation
+///
+/// This is a robust all-in-one function that:
+/// 1. If `switch` is true, tries to switch to the application
+/// 2. If switch fails (or is disabled) and `launch` is true, launches the app
+/// 3. Polls to confirm the app (and optionally specific window) is actually focused
+///
+/// **Permissions:** None required (but window checking requires Accessibility permissions)
+///
+/// # Arguments
+/// * `app_name` - Name of the application (case-insensitive)
+/// * `window_name` - Name of specific window to wait for, or "" for any window
+/// * `switch` - If true, attempts to switch to app if already running
+/// * `launch` - If true, attempts to launch app if not running or switch fails
+/// * `timeout_ms` - Maximum time to wait for focus in milliseconds
+///
+/// # Example
+/// ```ignore
+/// // Focus Pro Tools, switch and launch if needed, any window
+/// focus_app("Pro Tools", "", true, true, 5000)?;
+///
+/// // Focus existing app only (switch but don't launch), wait for specific window
+/// focus_app("Pro Tools", "Edit", true, false, 1000)?;
+/// ```
+pub fn focus_app(
+    app_name: &str,
+    window_name: &str,
+    switch: bool, // Try to switch to app if already running
+    launch: bool, // Try to launch app if not running or switch fails
+    timeout_ms: u64,
+) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    if window_name.is_empty() {
+        println!("🎯 Attempting to focus '{}'...", app_name);
+    } else {
+        println!(
+            "🎯 Attempting to focus '{}' (window: '{}')...",
+            app_name, window_name
+        );
+    }
+
+    // Try to switch to the application if already running
+    if switch {
+        println!("🔄 Attempting to switch to '{}'...", app_name);
+        if let Err(e) = focus_application(app_name) {
+            println!("⚠️  Switch failed: {}", e);
+
+            // If switch failed and launch is enabled, try launching
+            if launch {
+                println!("🚀 Launching '{}'...", app_name);
+                launch_application(app_name)?;
+            }
+        } else {
+            println!("✅ Switch successful");
+        }
+    } else if launch {
+        // If switch is disabled but launch is enabled, just launch
+        println!("🚀 Launching '{}'...", app_name);
+        launch_application(app_name)?;
+    }
+
+    // Now poll to confirm the app is focused
+    let start = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    let poll_interval = Duration::from_millis(50);
+
+    loop {
+        if let Ok(current_app) = get_current_app()
+            && crate::soft_match(&current_app, app_name)
+        {
+            // App is focused
+            if window_name.is_empty() {
+                // If no specific window requested, just app focus is enough
+                println!(
+                    "✅ '{}' is now focused (no specific window required)",
+                    app_name
+                );
+                log::info!("✅ '{}' is now focused", app_name);
+                return Ok(());
+            }
+
+            // Check if the right window is focused
+            if let Ok(current_window) = get_app_window()
+                && crate::soft_match(&current_window, window_name)
+            {
+                println!("✅ Window '{}' is now focused", window_name);
+                log::info!("✅ Window '{}' is now focused", window_name);
+                return Ok(());
+            }
+        }
+
+        if start.elapsed() >= timeout {
+            if window_name.is_empty() {
+                bail!(
+                    "Timeout waiting for '{}' to be focused ({}ms)",
+                    app_name,
+                    timeout_ms
+                );
+            } else {
+                bail!(
+                    "Timeout waiting for window '{}' to be focused ({}ms)",
+                    window_name,
+                    timeout_ms
+                );
+            }
+        }
+
+        std::thread::sleep(poll_interval);
     }
 }

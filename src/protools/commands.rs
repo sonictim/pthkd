@@ -2,7 +2,7 @@ use super::client::*;
 use super::ptsl;
 use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
-use anyhow::Result;
+use anyhow::{Result, bail};
 use ptsl::CommandId;
 
 use lazy_static::lazy_static;
@@ -22,7 +22,7 @@ async fn call_menu(menu: &[&str]) -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }
-async fn button(window: &str, button: &str) -> Result<()> {
+async fn click_button(window: &str, button: &str) -> Result<()> {
     crate::macos::ui_elements::click_button("Pro Tools", window, button)?;
     std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 50ms
     Ok(())
@@ -171,10 +171,8 @@ pub async fn crossfade_and_clear_automation(
     let c = sel.get_io();
     sel.set_io(pt, c.1, c.1).await?;
     call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
-    // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0, c.0).await?;
     call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
-    // keystroke(&["cmd", "option", "slash"]).await?;
     sel.set_io(pt, c.0 + 100, c.1 - 100).await?;
 
     let _: serde_json::Value = pt
@@ -274,14 +272,6 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Res
     }
     Ok(())
 }
-pub async fn spot_to_protools_from_soundminer(
-    _pt: &mut ProtoolsSession,
-    _params: &Params,
-) -> Result<()> {
-    println!("Sending to Protools Session");
-    crate::macos::menu::run_menu_item("Soundminer_Intel", &["Transfer", "Spot to DAW"])?;
-    Ok(())
-}
 
 async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin);
@@ -289,7 +279,7 @@ async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
         call_menu(&["AudioSuite", menu, plugin]).await?;
     }
     crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
-    button(&window, "Render").await?;
+    click_button(&window, "Render").await?;
     if close {
         crate::macos::ui_elements::close_window_with_retry(
             "Pro Tools",
@@ -305,17 +295,98 @@ async fn plugin_analyze(menu: &str, plugin: &str) -> Result<()> {
         call_menu(&["AudioSuite", menu, plugin]).await?;
     }
     crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
-    button(&window, "Analyze").await?;
+    click_button(&window, "Analyze").await?;
+    Ok(())
+}
+async fn find_audiosuite_plugin(plugin_name: &str) -> Result<Vec<String>> {
+    println!("Searching for {} in Audiosuite Menus", plugin_name);
+    let menu_bar = crate::macos::menu::get_app_menus("Pro Tools")?;
+    let audiosuite_menu = menu_bar
+        .menus
+        .iter()
+        .find(|m| m.title == "AudioSuite")
+        .ok_or_else(|| anyhow::anyhow!("AudioSuite menu not found"))?;
+
+    for middleman in &audiosuite_menu.children {
+        for category in &middleman.children {
+            for middleman2 in &category.children {
+                for plugin in &middleman2.children {
+                    if plugin.title == plugin_name {
+                        println!("found plugin location");
+                        return Ok(vec![
+                            "AudioSuite".to_string(),
+                            category.title.clone(),
+                            plugin_name.to_string(),
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+    for middleman in &audiosuite_menu.children {
+        for category in &middleman.children {
+            for middleman2 in &category.children {
+                for plugin in &middleman2.children {
+                    if crate::soft_match(&plugin.title, plugin_name) {
+                        println!("found plugin location");
+                        return Ok(vec![
+                            "AudioSuite".to_string(),
+                            category.title.clone(),
+                            plugin_name.to_string(),
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+    println!("did not find plugin location");
+    bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
+}
+
+async fn activate_plugin(plugin_name: &str) -> Result<()> {
+    let window = format!("AudioSuite: {}", plugin_name);
+
+    // Check if already open
+    if crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+        println!("Plugin '{}' window already open", plugin_name);
+        return Ok(());
+    }
+
+    let menu_path = find_audiosuite_plugin(plugin_name).await?;
+    println!("menu path for {}:  {:?}", plugin_name, menu_path);
+    // Convert Vec<String> to Vec<&str> for call_menu
+    let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
+
+    // Open it
+    call_menu(&menu_path_refs).await?;
+
+    // Wait for window
+    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+
     Ok(())
 }
 
-pub async fn reverse_selection(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    let close = params.get_bool("close", true);
-    plugin_render("Other", "Reverse", close).await?;
-    Ok(())
-}
-pub async fn preview_audiosuite(_pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    button("AudioSuite", "Preview Processing").await?;
+pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let plugin = params.get_string("plugin", "");
+    let button = params.get_string("button", "");
+    let close = params.get_bool("close", false);
+
+    // Activate plugin if specified
+    if !plugin.is_empty() {
+        activate_plugin(&plugin).await?;
+    }
+    // Click button if specified
+    if !button.is_empty() {
+        let window = format!("AudioSuite: {}", plugin);
+        click_button(&window, &button).await?;
+    }
+
+    // Close window if requested
+    if close {
+        let window = format!("AudioSuite: {}", plugin);
+        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000)?;
+    }
+
     Ok(())
 }
 pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
@@ -331,10 +402,10 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
         // Send back to Pro Tools - Cmd+Enter returns to DAW
         keystroke(&["cmd", "enter"]).await?;
 
-        // Wait for Pro Tools to be focused (any window)
-        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", "", 10000)?;
+        std::thread::sleep(std::time::Duration::from_millis(500)); // Wait 50ms
+        // Focus Pro Tools and wait for confirmation (switch but don't launch)
+        // let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 2000);
 
-        std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
         // Now render the changes back
         plugin_render("Noise Reduction", &plugin, false).await?;
     }
@@ -345,54 +416,24 @@ lazy_static! {
     static ref PLUGIN_COUNTER: Arc<Mutex<HotkeyCounter>> =
         Arc::new(Mutex::new(HotkeyCounter::new()));
 }
-
-pub async fn open_plugin(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let mut counter = PLUGIN_COUNTER.lock().unwrap();
-    let plugins = params.get_string_pairs("plugins");
-    let timeout_ms = params.get_timeout_ms("timeout", 500);
-
-    // Clone plugins to move into the async closure
-    let plugins_clone = plugins.clone();
-
-    // Pass timeout, max, and async callback - cycle through all plugins (0-based indexing)
-    counter.press(timeout_ms, plugins.len() as u32, |count| async move {
-        if let Some((manufacturer, name)) = plugins_clone.get(count as usize) {
-            let menu_path = ["AudioSuite", manufacturer.as_str(), name.as_str()];
-            if let Err(e) = call_menu(&menu_path).await {
-                log::error!("Failed to open plugin {}/{}: {:#}", manufacturer, name, e);
-            }
-        }
-    });
-
-    Ok(())
-}
-
-lazy_static! {
-    static ref PLUGIN_TYPE_COUNTER: Arc<Mutex<HotkeyCounter>> =
-        Arc::new(Mutex::new(HotkeyCounter::new()));
-}
-
-pub async fn open_plugin_type(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    let mut counter = PLUGIN_TYPE_COUNTER.lock().unwrap();
-    let plugin_type = params.get_string("type", "");
     let plugins = params.get_string_vec("plugins");
     let timeout_ms = params.get_timeout_ms("timeout", 500);
 
     // Clone to move into the async closure
     let plugins_clone = plugins.clone();
-    let plugin_type_clone = plugin_type.clone();
 
     // Pass timeout, max, and async callback - cycle through all plugins (0-based indexing)
     counter.press(timeout_ms, plugins.len() as u32, |count| async move {
         if let Some(name) = plugins_clone.get(count as usize) {
-            let menu_path = ["AudioSuite", plugin_type_clone.as_str(), name.as_str()];
-            if let Err(e) = call_menu(&menu_path).await {
-                log::error!(
-                    "Failed to open plugin {}/{}: {:#}",
-                    plugin_type_clone,
-                    name,
-                    e
-                );
+            let menu_path = find_audiosuite_plugin(name).await;
+            if let Ok(path) = menu_path {
+                let refs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
+                let slice: &[&str] = &refs;
+                if let Err(e) = call_menu(slice).await {
+                    log::error!("Failed to open plugin {}: {:#}", name, e);
+                }
             }
         }
     });

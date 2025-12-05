@@ -59,6 +59,10 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
   window = "AudioSuite"
   button = "Render"
 
+  [[hotkey]]
+  keys = ["cmd", "shift", "w"]
+  action = "os.display_window_text"
+
 # ============================================================================
 # ProTools actions (pt.* namespace)
 # ============================================================================
@@ -101,43 +105,56 @@ app_window = "Edit"
 
 [[hotkey]]
 keys = ["control", "pad_divide"]
-action = "pt.reverse_selection"
+action = "pt.audiosuite"
 target_application = "Pro Tools"
+notify = true
+[hotkey.params]
+plugin = "Reverse"
+button = "Render"
+close = true
 
 [[hotkey]]
 keys = ["control", "pad_multiply"]
 action = "pt.send_receive_rx"
 [hotkey.params]
-version = 10
+version = 11
 notify = true
 
 [[hotkey]]
 keys = ["ctrl", "space"]
-action = "pt.preview_audiosuite"
+action = "pt.audiosuite"
 target_application = "Pro Tools"
+[hotkey.params]
+button = "Preview Processing"
+
+[[hotkey]]
+keys = ["ctrl", "pad_enter"]
+action = "pt.audiosuite"
+target_application = "Pro Tools"
+[hotkey.params]
+button = "Render"
+
 
 [[hotkey]]
 keys = ["ctrl", "pad_1"]
-action = "pt.open_plugin_type"
+action = "pt.multitap_plugin_selector"
 [hotkey.params]
 timeout = 300
-type = "Reverb"
 plugins = ["Altiverb 8", "ValhallaVintageVerb", "ValhallaSuperMassive", "Irid"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_2"]
-action = "pt.open_plugin_type"
+action = "pt.multitap_plugin_selector"
 [hotkey.params]
 timeout = 300
-type = "Delay"
-plugins = ["Slapper", "ValhallaDelay", "GRM Delays"]
+plugins = ["ValhallaDelay", "Slapper", "GRM Delays"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_4"]
-action = "pt.open_plugin"
+action = "pt.multitap_plugin_selector"
 [hotkey.params]
 timeout = 300
-plugins = [["Dynamics", "6060 Ultimate MC"], ["Harmonic", "Black Box Analog Design HG-2"], ["Dynamics", "Analog Channel AC202"]]
+plugins = ["6060 Ultimate MC","Black Box Analog Design HG-2", "Analog Channel AC202"]
 
 # ============================================================================
 # Marker Navigation with Parameters

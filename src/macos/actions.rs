@@ -15,4 +15,5 @@ actions_sync!("os", {
     focus_protools,
     list_window_buttons,
     click_window_button,
+    display_window_text,
 });

@@ -60,12 +60,28 @@ macro_rules! actions_async {
     ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
         $(
             pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                use std::sync::{Arc, Mutex};
                 let params = params.clone();
+
+                // Create a shared error container (None = success, Some(msg) = error)
+                let error = Arc::new(Mutex::new(None::<String>));
+                let error_clone = error.clone();
+
                 $crate::protools::run_command(move || async move {
                     let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
-                    $crate::protools::commands::$action_name(&mut pt, &params).await.ok();
+                    if let Err(e) = $crate::protools::commands::$action_name(&mut pt, &params).await {
+                        *error_clone.lock().unwrap() = Some(format!("{:#}", e));
+                    }
                 });
-                Ok(())
+
+                // Wait a moment for the command to start and potentially fail quickly
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                // Return the result
+                match error.lock().unwrap().as_ref() {
+                    Some(msg) => Err(anyhow::anyhow!("{}", msg)),
+                    None => Ok(()),
+                }
             }
         )*
 

@@ -23,7 +23,9 @@ action = "os.dump_app_menus"
 
 [[hotkey]]
 keys = ["cmd", "option", "n"]
-action = "os.test_menu_click"
+action = "pt.click_a_button"
+[hotkey.params]
+button = "Track List pop-up"
 
 [[hotkey]]
 keys = ["cmd", "shift", "y"]
@@ -51,13 +53,6 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
   keys = ["cmd", "option", "l"]
   action = "os.list_window_buttons"
 
-  # Click "Render" in any AudioSuite window
-  [[hotkey]]
-  keys = ["cmd", "option", "r"]
-  action = "os.click_window_button"
-  [hotkey.params]
-  window = "AudioSuite"
-  button = "Render"
 
   [[hotkey]]
   keys = ["cmd", "shift", "w"]
@@ -92,8 +87,35 @@ target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
+keys = ["cmd", "control", "f"]
+action = "pt.crossfade"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+preset = "TF Default"
+crossfade_automation = true
+fill_selection = true
+adjust_selection_ms = 41
+
+[[hotkey]]
 keys = ["f"]
 action = "pt.crossfade"
+target_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+preset = "TF Default"
+crossfade_automation = true
+fill_selection = false
+
+[[hotkey]]
+keys = ["cmd", "t"]
+action = "pt.adjust_clip_to_match_selection"
+target_application = "Pro Tools"
+app_window = "Edit"
+
+[[hotkey]]
+keys = ["cmd", "pad_delete"]
+action = "pt.reset_clip"
 target_application = "Pro Tools"
 app_window = "Edit"
 
@@ -134,6 +156,14 @@ target_application = "Pro Tools"
 [hotkey.params]
 button = "Render"
 
+[[hotkey]]
+keys = ["ctrl", "option", "pad_enter"]
+action = "pt.audiosuite"
+target_application = "Pro Tools"
+[hotkey.params]
+button = "Render"
+close = true
+
 
 [[hotkey]]
 keys = ["ctrl", "pad_1"]
@@ -163,13 +193,13 @@ plugins = ["6060 Ultimate MC","Black Box Analog Design HG-2", "Analog Channel AC
 # Navigate to next/previous marker on all rulers
 [[hotkey]]
 keys = ["pad_0", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 
 [[hotkey]]
 keys = ["pad_0", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -179,7 +209,7 @@ reverse = true  # Go backwards
 # Replace "Markers 1" with your actual marker ruler name
 [[hotkey]]
 keys = ["pad_1", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -187,7 +217,7 @@ ruler = "Markers 1"
 
 [[hotkey]]
 keys = ["pad_1", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -197,7 +227,7 @@ reverse = true
 # Another ruler example
 [[hotkey]]
 keys = ["pad_2", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -205,7 +235,7 @@ ruler = "Markers 2"
 
 [[hotkey]]
 keys = ["pad_2", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -215,7 +245,7 @@ reverse = true
 # More ruler examples (customize as needed)
 [[hotkey]]
 keys = ["pad_3", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -223,7 +253,7 @@ ruler = "Markers 3"
 
 [[hotkey]]
 keys = ["pad_3", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -232,7 +262,7 @@ reverse = true
 
 [[hotkey]]
 keys = ["pad_4", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -240,7 +270,7 @@ ruler = "Markers 4"
 
 [[hotkey]]
 keys = ["pad_4", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -249,7 +279,7 @@ reverse = true
 
 [[hotkey]]
 keys = ["pad_5", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -257,7 +287,7 @@ ruler = "Markers 5"
 
 [[hotkey]]
 keys = ["pad_5", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -266,7 +296,7 @@ reverse = true
 
 [[hotkey]]
 keys = ["pad_7", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -274,7 +304,7 @@ ruler = "FX"
 
 [[hotkey]]
 keys = ["pad_7", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -283,7 +313,7 @@ reverse = true
 
 [[hotkey]]
 keys = ["pad_8", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -291,7 +321,7 @@ ruler = "BG"
 
 [[hotkey]]
 keys = ["pad_8", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -300,7 +330,7 @@ reverse = true
 
 [[hotkey]]
 keys = ["pad_9", "pad_plus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
@@ -308,12 +338,78 @@ ruler = "Foley"
 
 [[hotkey]]
 keys = ["pad_9", "pad_minus"]
-action = "pt.go_to_marker"
+action = "pt.go_to_next_marker"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 ruler = "Foley"
 reverse = true
+
+[[hotkey]]
+keys = ["shift", "pad_0"]
+action = "pt.go_to_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 0
+
+[[hotkey]]
+keys = ["shift", "control", "pad_0"]
+action = "pt.update_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 0
+name = "WORKING HERE"
+color = "green"
+
+[[hotkey]]
+keys = ["shift", "pad_1"]
+action = "pt.go_to_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 1
+
+[[hotkey]]
+keys = ["shift", "control", "pad_1"]
+action = "pt.update_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 1
+
+[[hotkey]]
+keys = ["shift", "pad_2"]
+action = "pt.go_to_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 2
+
+[[hotkey]]
+keys = ["shift", "control", "pad_2"]
+action = "pt.update_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 2
+
+[[hotkey]]
+keys = ["shift", "pad_3"]
+action = "pt.go_to_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 3
+
+[[hotkey]]
+keys = ["shift", "control", "pad_3"]
+action = "pt.update_quick_marker"
+ttarget_application = "Pro Tools"
+app_window = "Edit"
+[hotkey.params]
+number = 3
 
 # ============================================================================
 # Soundminer actions (sm.* namespace)
@@ -329,7 +425,7 @@ action = "sm.spot_to_protools"
 
 # Available namespaces:
 # - os.*  : macOS system actions (reload_config, test_notification, focus_protools, etc.)
-# - pt.*  : Pro Tools actions (solo_selected_tracks, crossfade, go_to_marker, etc.)
+# - pt.*  : Pro Tools actions (solo_selected_tracks, crossfade, go_to_next_marker, etc.)
 # - sm.*  : Soundminer actions (spot_to_protools, etc.)
 #
 # Parameters:

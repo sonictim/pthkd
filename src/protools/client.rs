@@ -78,6 +78,7 @@ impl ProtoolsSession {
             Ok(serde_json::from_str(&response.response_body_json)?)
         }
     }
+
     pub async fn get_all_tracks(&mut self) -> Option<Vec<serde_json::Value>> {
         println!("\nFetching track list...");
         let response: serde_json::Value = self
@@ -121,28 +122,28 @@ impl ProtoolsSession {
 
         response["memory_locations"].as_array().cloned()
     }
-  pub async fn get_used_marker_ruler_names(&mut self) -> Option<Vec<String>> {
-      let markers = self.get_all_markers().await?;
+    pub async fn get_used_marker_ruler_names(&mut self) -> Option<Vec<String>> {
+        let markers = self.get_all_markers().await?;
 
-      let mut ruler_names = Vec::new();
+        let mut ruler_names = Vec::new();
 
-      for marker in markers {
-          // Check if marker is on a named ruler
-          if marker["location"].as_str() == Some("MarkerLocation_NamedRuler") {
-              if let Some(ruler_name) = marker["track_name"].as_str() {
-                  if !ruler_name.is_empty() {
-                      let ruler_name = ruler_name.to_string();
-                      // Only add if not already in the list (preserve order)
-                      if !ruler_names.contains(&ruler_name) {
-                          ruler_names.push(ruler_name);
-                      }
-                  }
-              }
-          }
-      }
+        for marker in markers {
+            // Check if marker is on a named ruler
+            if marker["location"].as_str() == Some("MarkerLocation_NamedRuler") {
+                if let Some(ruler_name) = marker["track_name"].as_str() {
+                    if !ruler_name.is_empty() {
+                        let ruler_name = ruler_name.to_string();
+                        // Only add if not already in the list (preserve order)
+                        if !ruler_names.contains(&ruler_name) {
+                            ruler_names.push(ruler_name);
+                        }
+                    }
+                }
+            }
+        }
 
-      Some(ruler_names)
-  }
+        Some(ruler_names)
+    }
     pub async fn solo_tracks(&mut self, tracks: Vec<String>, state: bool) -> Result<()> {
         if !tracks.is_empty() {
             let _: serde_json::Value = self
@@ -157,6 +158,21 @@ impl ProtoolsSession {
         }
         Ok(())
     }
+    pub async fn get_samplerate(&mut self) -> Result<i64> {
+        let response: serde_json::Value = self
+            .cmd(CommandId::GetSessionSampleRate, serde_json::json!({}))
+            .await?;
+
+        let rate = response["sample_rate"]
+            .as_str()
+            .unwrap()
+            .replace("SR_", "")
+            .parse::<i64>()
+            .unwrap_or(48000);
+        println!("Samplerate is: {}", rate);
+        Ok(rate)
+    }
+
     pub async fn get_edit_mode(&mut self) -> Result<String> {
         let response: serde_json::Value = self
             .cmd(CommandId::GetEditMode, serde_json::json!({}))
@@ -207,7 +223,27 @@ impl ProtoolsSession {
         end_time: i64,
         destination: MarkerLocation,
         destination_name: &str,
+        color: &str,
     ) -> Result<()> {
+        let color_index = match color.to_lowercase().as_str() {
+            "dark purple" => 1,
+            "purple" => 2,
+            "pink" => 3,
+            "magenta" => 4,
+            "red" => 5,
+            "orange" => 6,
+            "dark yellow" => 7,
+            "yellow" => 8,
+            "light green" => 9,
+            "green" => 10,
+            "light blue" => 11,
+            "blue" => 12,
+            "dark blue" => 13,
+            "white" => 14,
+            "grey" => 15,
+            "black" => 16,
+            _ => 1,
+        };
         let _: serde_json::Value = self
             .cmd(
                 CommandId::EditMemoryLocation,
@@ -230,7 +266,7 @@ impl ProtoolsSession {
                     "venue_snapshot_index": 1
                 },
                 "comments": "comments",
-                "color_index": 1,
+                "color_index": color_index,
                 "location": destination.as_str(),
                 "track_name": destination_name
 
@@ -239,20 +275,23 @@ impl ProtoolsSession {
             .await?;
         Ok(())
     }
-pub async fn go_to_next_marker(&mut self, location: &str, reverse: bool) -> Result<()> {
-    let mut selection = PtSelectionSamples::new(self).await?;
-    let (selection_time, _) = selection.get_io();
-    let markers = self.get_all_markers().await.unwrap_or(Vec::new());
 
-    let mut next_marker_time: Option<i64> = None;
+    pub async fn go_to_next_marker(&mut self, location: &str, reverse: bool) -> Result<()> {
+        let mut selection = PtSelectionSamples::new(self).await?;
+        let (selection_time, _) = selection.get_io();
+        let markers = self.get_all_markers().await.unwrap_or(Vec::new());
 
-    for marker in markers {
-        let marker_location = marker["track_name"].as_str().unwrap_or("");
-        if !location.is_empty() && location != marker_location {continue;};
-        let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
-        let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
+        let mut next_marker_time: Option<i64> = None;
 
-        match reverse {
+        for marker in markers {
+            let marker_location = marker["track_name"].as_str().unwrap_or("");
+            if !location.is_empty() && location != marker_location {
+                continue;
+            };
+            let marker_time_str = marker["start_time"].as_str().unwrap_or("0");
+            let marker_time = marker_time_str.parse::<i64>().unwrap_or(0);
+
+            match reverse {
                 true => {
                     if marker_time < selection_time {
                         match next_marker_time {
@@ -260,32 +299,33 @@ pub async fn go_to_next_marker(&mut self, location: &str, reverse: bool) -> Resu
                             Some(current_next) => {
                                 if marker_time > current_next {
                                     next_marker_time = Some(marker_time);
-                                    }
                                 }
-                            }
-                        }
-                },
-               false => {
-                if marker_time > selection_time {
-                    match next_marker_time {
-                        None => next_marker_time = Some(marker_time),
-                        Some(current_next) => {
-                            if marker_time < current_next {
-                                next_marker_time = Some(marker_time);
                             }
                         }
                     }
                 }
-                },
+                false => {
+                    if marker_time > selection_time {
+                        match next_marker_time {
+                            None => next_marker_time = Some(marker_time),
+                            Some(current_next) => {
+                                if marker_time < current_next {
+                                    next_marker_time = Some(marker_time);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-    }
 
-    if let Some(time) = next_marker_time {
-        selection.set_io(self, time, time).await?;
-    }
+        if let Some(time) = next_marker_time {
+            selection.set_io(self, time, time).await?;
+        }
 
-    Ok(())
-}}
+        Ok(())
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct PtSelectionSamples {

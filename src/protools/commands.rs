@@ -137,21 +137,25 @@ pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Para
     Ok(())
 }
 
-/// Wrapper for crossfade with default preset (for use with pt_actions macro)
-pub async fn crossfade(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    crossfade_and_clear_automation(pt, "TF Default", _params).await
-}
-
-pub async fn crossfade_and_clear_automation(
-    pt: &mut ProtoolsSession,
-    preset: &str,
-    _params: &Params,
-) -> Result<()> {
+pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let preset = params.get_string("preset", "");
+    let crossfade = params.get_bool("crossfade_automation", false);
+    let fill = params.get_bool("fill_selection", false);
+    let sr = pt.get_samplerate().await? / 1000;
+    let adjust = params.get_int("adjust_selection_ms", 0) * sr;
+    println!("adjustment frames: {}", adjust);
+    let mut sel = PtSelectionSamples::new(pt).await?;
+    let io = sel.get_io();
+    sel.set_io(pt, io.0 - adjust, io.1 + adjust).await?;
+    if fill {
+        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
+        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    }
     let result = pt
         .cmd::<_, serde_json::Value>(
             CommandId::CreateFadesBasedOnPreset,
             ptsl::CreateFadesBasedOnPresetRequestBody {
-                fade_preset_name: preset.to_string(),
+                fade_preset_name: preset,
                 auto_adjust_bounds: true,
             },
         )
@@ -167,30 +171,64 @@ pub async fn crossfade_and_clear_automation(
         )
         .await?;
     }
-    let mut sel = PtSelectionSamples::new(pt).await?;
-    let c = sel.get_io();
-    sel.set_io(pt, c.1, c.1).await?;
-    call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
-    sel.set_io(pt, c.0, c.0).await?;
-    call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
-    sel.set_io(pt, c.0 + 100, c.1 - 100).await?;
+    if crossfade {
+        let c = sel.get_io();
+        sel.set_io(pt, c.1, c.1).await?;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        sel.set_io(pt, c.0, c.0).await?;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
 
-    let _: serde_json::Value = pt
+        let _: serde_json::Value = pt
+            .cmd(
+                CommandId::ClearSpecial,
+                ptsl::ClearSpecialRequestBody {
+                    automation_data_option: ptsl::AutomationDataOptions::AllAutomation.into(),
+                },
+            )
+            .await?;
+
+        // sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
+        // call_menu(&["Edit", "Automation", "Thin All"]).await?;
+        // keystroke(&["cmd", "option", "control", "t"]).await?;
+        sel.set_io(pt, c.0, c.1).await?;
+    }
+    Ok(())
+}
+pub async fn adjust_clip_to_match_selection(
+    _pt: &mut ProtoolsSession,
+    _params: &Params,
+) -> Result<()> {
+    call_menu(&["Edit", "Trim Clip", "To Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "To Fill Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    Ok(())
+}
+pub async fn reset_clip(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    call_menu(&["Edit", "Fades", "Delete"]).await?;
+    call_menu(&["Edit", "Clear Special", "Clip Gain"]).await?;
+    call_menu(&["Edit", "Clear Special", "Clip Effects"]).await?;
+    let result: serde_json::Value = pt
         .cmd(
             CommandId::ClearSpecial,
             ptsl::ClearSpecialRequestBody {
-                automation_data_option: ptsl::AutomationDataOptions::AllAutomation.into(),
+                automation_data_option: ptsl::AutomationDataOptions::ClipGain.into(),
             },
         )
         .await?;
-
-    sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
-    call_menu(&["Edit", "Automation", "Thin All"]).await?;
-    // keystroke(&["cmd", "option", "control", "t"]).await?;
-    sel.set_io(pt, c.0, c.1).await?;
+    println!("clip gain: {:?}", result);
+    let result: serde_json::Value = pt
+        .cmd(
+            CommandId::ClearSpecial,
+            ptsl::ClearSpecialRequestBody {
+                automation_data_option: ptsl::AutomationDataOptions::ClipEffects.into(),
+            },
+        )
+        .await?;
+    println!("clip effects: {:?}", result);
     Ok(())
 }
-
 pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     println!("Running Conform Delete");
     let mut flag = false;
@@ -231,32 +269,64 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Resul
     }
     Ok(())
 }
-pub async fn get_selection_samples(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn update_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let mut number = params.get_int("number", 0);
+    let default_text = format!("QM {}", number);
+    let text = params.get_string("name", &default_text);
+    let color = params.get_string("color", "magenta");
+    number += 31000;
     let mut selection = PtSelectionSamples::new(pt).await?;
     selection.slide(pt, 48000).await?;
     let (st, et) = selection.get_io();
     pt.edit_marker(
-        1,
-        "Tim's Cool Marker",
+        number as u32,
+        &text,
         st,
         et,
-        MarkerLocation::NamedRuler,
-        "Markers 5",
+        MarkerLocation::MainRuler,
+        "",
+        &color,
     )
     .await?;
-    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
-    println!("Marker List: {:?}", markers);
-    let rulers = pt.get_used_marker_ruler_names().await.unwrap_or(Vec::new());
-    println!("Marker Ruler Names: {:?}", rulers);
     Ok(())
 }
 
+pub async fn go_to_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let mut number = params.get_int("number", 0);
+    number += 31000;
+    let mut selection = PtSelectionSamples::new(pt).await?;
+    let (st, et) = selection.get_io();
+    let markers = pt.get_all_markers().await.unwrap_or(Vec::new());
+    for marker in &markers {
+        let marker_num = marker["number"].as_i64().unwrap_or(0);
+        println!(
+            "marker number vs requested number {}/{}",
+            marker_num, number
+        );
+        if marker_num == number {
+            println!("Success! marker: {:?}", marker);
+            let start_time = marker["start_time"]
+                .as_str()
+                .unwrap_or("")
+                .parse::<i64>()
+                .unwrap_or(st);
+            let end_time = marker["end_time"]
+                .as_str()
+                .unwrap_or("")
+                .parse::<i64>()
+                .unwrap_or(et);
+            selection.set_io(pt, start_time, end_time).await?;
+            return Ok(());
+        }
+    }
+    Ok(())
+}
 /// Navigate to a marker with parameterized ruler name and direction
 ///
 /// Parameters:
 /// - `reverse`: boolean - true for previous marker, false for next marker (default: false)
 /// - `ruler`: string - name of the marker ruler to use, empty string for all markers (default: "")
-pub async fn go_to_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn go_to_next_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let reverse = params.get_bool("reverse", false);
     let ruler = params.get_string("ruler", "");
     pt.go_to_next_marker(&ruler, reverse).await?;
@@ -438,5 +508,14 @@ pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params
         }
     });
 
+    Ok(())
+}
+
+pub async fn click_a_button(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let button = params.get_string("button", "");
+    if button.is_empty() {
+        return Ok(());
+    };
+    click_button("Edit", &button).await?;
     Ok(())
 }

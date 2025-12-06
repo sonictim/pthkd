@@ -277,6 +277,7 @@ pub fn key_name_to_codes(name: &str) -> Option<Vec<u16>> {
         "return" | "enter" => vec![KEY_RETURN],
         "tab" => vec![KEY_TAB],
         "delete" | "backspace" => vec![KEY_DELETE],
+        "pad_delete" => vec![KEY_FORWARD_DELETE],
         "escape" | "esc" => vec![KEY_ESCAPE],
         "home" => vec![KEY_HOME],
         "end" => vec![KEY_END],

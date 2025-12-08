@@ -242,3 +242,39 @@ pub fn display_window_text(_params: &Params) -> Result<()> {
 
     Ok(())
 }
+
+pub fn test_input_dialog(_params: &Params) -> Result<()> {
+    use super::input_dialog;
+
+    log::info!("=== test_input_dialog: START ===");
+
+    log::info!("About to show dialog...");
+    let dialog_result = input_dialog::show_input_dialog(
+        "Enter some text:",
+        Some("Type anything you want:"),
+        Some("default value"),
+    );
+
+    log::info!("Dialog returned, processing result...");
+
+    match dialog_result {
+        Ok(Some(text)) => {
+            let msg = format!("You entered: {}", text);
+            log::info!("Showing success notification: {}", msg);
+            show_notification(&msg);
+            log::info!("Notification shown");
+        }
+        Ok(None) => {
+            log::info!("User cancelled, showing cancel notification");
+            show_notification("Input cancelled");
+            log::info!("Cancel notification shown");
+        }
+        Err(e) => {
+            log::error!("Dialog error: {}", e);
+            return Err(e);
+        }
+    }
+
+    log::info!("=== test_input_dialog: END ===");
+    Ok(())
+}

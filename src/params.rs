@@ -3,35 +3,51 @@
 //! Provides a clean API for accessing typed parameters from config.toml
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use toml::Value;
 
 /// Wrapper for action parameters with type-safe accessor methods
-#[derive(Debug, Clone, Default)]
-pub struct Params(HashMap<String, Value>);
+/// Uses Arc for cheap cloning when passing to async actions
+#[derive(Debug, Clone)]
+pub struct Params(Arc<HashMap<String, Value>>);
 
 impl Params {
     /// Create a new Params from a HashMap
     pub fn new(map: HashMap<String, Value>) -> Self {
-        Params(map)
+        Params(Arc::new(map))
     }
 
     /// Create an empty Params (for actions with no parameters)
     pub fn empty() -> Self {
-        Params(HashMap::new())
+        Params(Arc::new(HashMap::new()))
+    }
+
+    /// Get a string parameter as a borrowed &str with a default value
+    ///
+    /// Use this when you don't need ownership of the string (avoids allocation).
+    /// The returned reference is valid for the lifetime of the Params or the default parameter.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let direction = params.get_str("direction", "next");
+    /// ```
+    pub fn get_str<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or(default)
     }
 
     /// Get a string parameter with a default value
+    ///
+    /// Returns an owned String. Use get_str() if you don't need ownership.
     ///
     /// # Example
     /// ```ignore
     /// let direction = params.get_string("direction", "next");
     /// ```
     pub fn get_string(&self, key: &str, default: &str) -> String {
-        self.0
-            .get(key)
-            .and_then(|v| v.as_str())
-            .unwrap_or(default)
-            .to_string()
+        self.get_str(key, default).to_string()
     }
 
     /// Get an integer parameter with a default value
@@ -162,8 +178,14 @@ impl Params {
     }
 }
 
+impl Default for Params {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl From<HashMap<String, Value>> for Params {
     fn from(map: HashMap<String, Value>) -> Self {
-        Params(map)
+        Params(Arc::new(map))
     }
 }

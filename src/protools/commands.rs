@@ -54,10 +54,15 @@ pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> Result<()
 }
 
 pub async fn solo_selected_tracks(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    println!("Running Solo Selected Tracks");
+    log::info!("=== solo_selected_tracks: START ===");
+
+    log::info!("Fetching all tracks from Pro Tools...");
     let Some(tracks) = pt.get_all_tracks().await else {
+        log::warn!("get_all_tracks returned None");
         return Ok(());
     };
+    log::info!("Received {} tracks from Pro Tools", tracks.len());
+
     let mut solos = Vec::new();
     let mut unsolos = Vec::new();
 
@@ -74,15 +79,30 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession, _params: &Params) ->
 
         if is_soloed != is_selected {
             if is_selected {
+                log::info!("  Track '{}': selected but not soloed -> will solo", name);
                 solos.push(name.to_string());
             } else {
+                log::info!("  Track '{}': soloed but not selected -> will unsolo", name);
                 unsolos.push(name.to_string());
             }
         }
     }
-    pt.solo_tracks(solos, true).await?;
-    pt.solo_tracks(unsolos, false).await?;
 
+    log::info!("Soloing {} tracks, unsoloing {} tracks", solos.len(), unsolos.len());
+
+    if !solos.is_empty() {
+        log::info!("Calling pt.solo_tracks for {} solos...", solos.len());
+        pt.solo_tracks(solos, true).await?;
+        log::info!("Solo tracks completed");
+    }
+
+    if !unsolos.is_empty() {
+        log::info!("Calling pt.solo_tracks for {} unsolos...", unsolos.len());
+        pt.solo_tracks(unsolos, false).await?;
+        log::info!("Unsolo tracks completed");
+    }
+
+    log::info!("=== solo_selected_tracks: END ===");
     Ok(())
 }
 

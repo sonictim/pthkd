@@ -86,7 +86,7 @@ impl ProtoolsSession {
                 CommandId::GetTrackList,
                 ptsl::GetTrackListRequestBody {
                     pagination_request: Some(ptsl::PaginationRequest {
-                        limit: 100,
+                        limit: 0,
                         offset: 0,
                     }),
                     track_filter_list: vec![ptsl::TrackListInvertibleFilter {

@@ -21,6 +21,7 @@ pub mod keystroke;
 pub mod menu;
 pub mod app_info;
 pub mod ui_elements;
+pub mod input_dialog;
 
 // Commands and Actions
 pub mod commands;

@@ -18,17 +18,17 @@ action = "os.reload_config"
 notify = true
 
 [[hotkey]]
-keys = ["cmd", "option", "control", "m"]
+keys = ["cmd", "shift", "a", "m"]
 action = "os.dump_app_menus"
 
 [[hotkey]]
-keys = ["cmd", "option", "n"]
+keys = ["cmd", "shift", "b"]
 action = "pt.click_a_button"
 [hotkey.params]
 button = "Track List pop-up"
 
 [[hotkey]]
-keys = ["cmd", "shift", "y"]
+keys = ["cmd", "shift", "a", "i"]
 action = "os.test_app_info"
 
 [[hotkey]]
@@ -36,12 +36,12 @@ keys = ["cmd", "shift", "p", "t"]
 action = "os.focus_protools"
 
 [[hotkey]]
-keys = ["cmd", "shift", "l"]
+keys = ["cmd", "shift", "a", "l"]
 action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.test_notification"
+action = "os.test_input_dialog"
 
 [[hotkey]]
 keys = ["cmd", "shift", "t"]
@@ -50,12 +50,12 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
 
   # List all buttons in focused plugin window
   [[hotkey]]
-  keys = ["cmd", "option", "l"]
+  keys = ["cmd", "shift", "l", "b"]
   action = "os.list_window_buttons"
 
 
   [[hotkey]]
-  keys = ["cmd", "shift", "w"]
+  keys = ["cmd", "shift", "w", "t"]
   action = "os.display_window_text"
 
 # ============================================================================
@@ -73,6 +73,20 @@ keys = ["shift", "option", "s"]
 action = "pt.solo_clear"
 target_application = "Pro Tools"
 app_window = "Edit"
+
+# [[hotkey]]
+# keys = ["shift", "ctrl", "s'"]
+# action = "pt.add_selected_to_solos"
+# target_application = "Pro Tools"
+# # app_window = "Edit"
+#
+#
+# [[hotkey]]
+# keys = ["shift", "ctrl", "option", "s'"]
+# action = "pt.remove_selected_from_solos"
+# target_application = "Pro Tools"
+# app_window = "Edit"
+#
 
 [[hotkey]]
 keys = ["cmd", "option", "control", "pad_minus"]
@@ -401,23 +415,16 @@ action = "pt.go_to_quick_marker"
 ttarget_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
-number = 3
+number = 3 
 
 [[hotkey]]
-keys = ["shift", "control", "pad_3"]
+keys = ["shift", "control", "pad_2"]
 action = "pt.update_quick_marker"
 ttarget_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 3
 
-# ============================================================================
-# Soundminer actions (sm.* namespace)
-# ============================================================================
-
-[[hotkey]]
-keys = ["control", "s"]
-action = "sm.spot_to_protools"
 
 # ============================================================================
 # Configuration Guide

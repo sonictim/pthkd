@@ -1,39 +1,51 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 // ============================================================================
 // Key State Tracking
 // ============================================================================
 
 /// Tracks the current state of pressed keys
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct KeyState {
-    /// Set of currently pressed key codes
-    pub pressed_keys: HashSet<u16>,
+    /// Set of currently pressed key codes (Arc for cheap cloning)
+    pressed_keys: Arc<HashSet<u16>>,
     // Future: Track press history with timestamps for sequential chord support
     // press_history: VecDeque<(u16, Instant)>,
+}
+
+impl Default for KeyState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyState {
     pub fn new() -> Self {
         Self {
-            pressed_keys: HashSet::new(),
+            pressed_keys: Arc::new(HashSet::new()),
         }
     }
 
     /// Records a key press
     pub fn key_down(&mut self, key_code: u16) {
-        self.pressed_keys.insert(key_code);
+        // Clone-on-write: create new HashSet with the key added
+        let mut new_set = (*self.pressed_keys).clone();
+        new_set.insert(key_code);
+        self.pressed_keys = Arc::new(new_set);
     }
 
     /// Records a key release
     pub fn key_up(&mut self, key_code: u16) {
-        self.pressed_keys.remove(&key_code);
+        // Clone-on-write: create new HashSet with the key removed
+        let mut new_set = (*self.pressed_keys).clone();
+        new_set.remove(&key_code);
+        self.pressed_keys = Arc::new(new_set);
     }
 
-    /// Returns the current set of pressed keys
-    pub fn get_pressed_keys(&self) -> &HashSet<u16> {
-        &self.pressed_keys
+    /// Returns the current set of pressed keys (Arc clone is cheap - just a pointer copy)
+    pub fn get_pressed_keys(&self) -> Arc<HashSet<u16>> {
+        Arc::clone(&self.pressed_keys)
     }
 }
 
@@ -190,8 +202,8 @@ pub struct PendingHotkey {
     /// Index into HOTKEYS array
     pub hotkey_index: usize,
 
-    /// The keys that were part of the matched chord
-    pub chord_keys: HashSet<u16>,
+    /// The keys that were part of the matched chord (Arc for cheap cloning)
+    pub chord_keys: Arc<HashSet<u16>>,
 }
 
 /// Global pending hotkey state

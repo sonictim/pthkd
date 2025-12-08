@@ -13,6 +13,7 @@ use hotkey::{HOTKEYS, KEY_STATE, PENDING_HOTKEY, PendingHotkey};
 use libc::c_void;
 use std::io::Write;
 use std::ptr;
+use std::sync::Arc;
 
 // ============================================================================
 // Action Registration Macros
@@ -102,12 +103,12 @@ macro_rules! actions_async {
 /// Check if any registered hotkey matches the current pressed keys and trigger/queue it
 ///
 /// Returns true if a hotkey was matched and the event should be consumed
-fn check_and_trigger_hotkey(pressed_keys: &std::collections::HashSet<u16>) -> bool {
+fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) -> bool {
     if let Some(hotkeys_mutex) = HOTKEYS.get() {
         let hotkeys = hotkeys_mutex.lock().unwrap();
 
         for (index, hotkey) in hotkeys.iter().enumerate() {
-            if hotkey.matches(pressed_keys) {
+            if hotkey.matches(&**pressed_keys) {
                 if hotkey.trigger_on_release {
                     // Mark as pending, trigger on key release
                     let pending = PENDING_HOTKEY
@@ -115,7 +116,7 @@ fn check_and_trigger_hotkey(pressed_keys: &std::collections::HashSet<u16>) -> bo
                         .expect("PENDING_HOTKEY not initialized");
                     *pending.lock().unwrap() = Some(PendingHotkey {
                         hotkey_index: index,
-                        chord_keys: pressed_keys.clone(),
+                        chord_keys: Arc::clone(&pressed_keys),
                     });
                     return true; // Consume event
                 } else {
@@ -148,7 +149,7 @@ fn check_and_trigger_hotkey(pressed_keys: &std::collections::HashSet<u16>) -> bo
 /// Check if a pending hotkey should be triggered (all chord keys released)
 ///
 /// Returns true if a hotkey was triggered
-fn check_pending_hotkey_release(pressed_keys: &std::collections::HashSet<u16>) -> bool {
+fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16>>) -> bool {
     let pending_hotkey_guard = PENDING_HOTKEY
         .get()
         .expect("PENDING_HOTKEY not initialized");
@@ -217,7 +218,7 @@ unsafe extern "C" fn key_event_callback(
         // Update key state
         let mut state = key_state.lock().unwrap();
         state.key_down(key_code);
-        let pressed_keys = state.get_pressed_keys().clone();
+        let pressed_keys = state.get_pressed_keys();
         drop(state);
 
         // Check all registered hotkeys against current key state
@@ -232,7 +233,7 @@ unsafe extern "C" fn key_event_callback(
         // Update key state
         let mut state = key_state.lock().unwrap();
         state.key_up(key_code);
-        let pressed_keys = state.get_pressed_keys().clone();
+        let pressed_keys = state.get_pressed_keys();
         drop(state);
 
         // Check if pending hotkey should be triggered
@@ -266,7 +267,7 @@ unsafe extern "C" fn key_event_callback(
         } else {
             state.key_up(key_code);
         }
-        let pressed_keys = state.get_pressed_keys().clone();
+        let pressed_keys = state.get_pressed_keys();
         drop(state);
 
         // Check hotkeys after modifier change

@@ -1,10 +1,10 @@
 //! ProTools actions (namespace: "pt")
 
-use crate::actions_async;
+use crate::actions;
 
-// Define all ProTools actions using the async macro
+// Define all ProTools actions using the unified async macro
 // Actions are automatically registered with the "pt" namespace
-actions_async!("pt", {
+actions!("pt", {
     solo_selected_tracks,
     solo_clear,
     crossfade,

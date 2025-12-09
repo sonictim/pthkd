@@ -18,12 +18,14 @@ async fn keystroke(keys: &[&str]) -> Result<()> {
     Ok(())
 }
 async fn call_menu(menu: &[&str]) -> Result<()> {
-    crate::macos::menu::run_menu_item("Pro Tools", menu)?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    macos.click_menu_item("Pro Tools", menu).await?;
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }
 async fn click_button(window: &str, button: &str) -> Result<()> {
-    crate::macos::ui_elements::click_button("Pro Tools", window, button)?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    macos.click_button("Pro Tools", window, button).await?;
     std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 50ms
     Ok(())
 }
@@ -365,26 +367,48 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Res
 
 async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin);
-    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+    let mut macos = crate::macos::MacOSSession::new()?;
+
+    if !macos.window_exists("Pro Tools", &window).await? {
         call_menu(&["AudioSuite", menu, plugin]).await?;
     }
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+
+    // Wait for window
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let timeout = Duration::from_millis(5000);
+    while start.elapsed() < timeout {
+        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     click_button(&window, "Render").await?;
     if close {
-        crate::macos::ui_elements::close_window_with_retry(
-            "Pro Tools",
-            &window, // Fixed: was hardcoded to "AudioSuite: Reverse"
-            10000,
-        )?;
+        macos.close_window("Pro Tools", &window).await?;
     }
     Ok(())
 }
 async fn plugin_analyze(menu: &str, plugin: &str) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin);
-    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+    let mut macos = crate::macos::MacOSSession::new()?;
+
+    if !macos.window_exists("Pro Tools", &window).await? {
         call_menu(&["AudioSuite", menu, plugin]).await?;
     }
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+
+    // Wait for window
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let timeout = Duration::from_millis(5000);
+    while start.elapsed() < timeout {
+        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
     click_button(&window, "Analyze").await?;
     Ok(())
 }
@@ -435,9 +459,10 @@ async fn find_audiosuite_plugin(plugin_name: &str) -> Result<Vec<String>> {
 
 async fn activate_plugin(plugin_name: &str) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin_name);
+    let mut macos = crate::macos::MacOSSession::new()?;
 
     // Check if already open
-    if crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+    if macos.window_exists("Pro Tools", &window).await? {
         println!("Plugin '{}' window already open", plugin_name);
         return Ok(());
     }
@@ -451,7 +476,15 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     call_menu(&menu_path_refs).await?;
 
     // Wait for window
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+    use std::time::{Duration, Instant};
+    let start = Instant::now();
+    let timeout = Duration::from_millis(5000);
+    while start.elapsed() < timeout {
+        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 
     Ok(())
 }
@@ -474,7 +507,7 @@ pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()
     // Close window if requested
     if close {
         let window = format!("AudioSuite: {}", plugin);
-        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000)?;
+        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000).await?;
     }
 
     Ok(())
@@ -484,7 +517,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
     let plugin = format!("RX {} Connect", version);
     let rx_app = format!("RX {}", version);
 
-    let app = crate::macos::app_info::get_current_app()?;
+    let app = crate::macos::app_info::get_current_app().await?;
     if app == "Pro Tools" {
         // Send to RX for analysis
         plugin_analyze("Noise Reduction", &plugin).await?;

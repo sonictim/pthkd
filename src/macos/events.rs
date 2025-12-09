@@ -24,44 +24,31 @@ use std::ptr;
 unsafe extern "C" {}
 
 // ============================================================================
-// Constants
+// Constants (only what this module needs)
 // ============================================================================
 
-#[allow(dead_code)]
-mod constants {
-    // Event types
-    pub const CG_EVENT_KEY_DOWN: u32 = 10;
-    pub const CG_EVENT_KEY_UP: u32 = 11;
-    pub const CG_EVENT_FLAGS_CHANGED: u32 = 12;
+// Event types
+pub const CG_EVENT_KEY_DOWN: u32 = 10;
+pub const CG_EVENT_KEY_UP: u32 = 11;
+pub const CG_EVENT_FLAGS_CHANGED: u32 = 12;
 
-    // Event fields
-    pub const CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE: u32 = 9;
+// Event fields
+pub const CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 
-    // Event tap locations
-    pub const CG_SESSION_EVENT_TAP: u32 = 1;
+// Event tap locations
+pub const CG_SESSION_EVENT_TAP: u32 = 1;
 
-    // Event tap placements
-    pub const CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
+// Event tap placements
+pub const CG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 
-    // Event tap options
-    pub const CG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
+// Event tap options
+pub const CG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
 
-    // Event source state
-    pub const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
-
-    // Event posting locations
-    pub const CG_HID_EVENT_TAP: u32 = 0;
-
-    // Modifier key flags (same as CGEventFlags)
-    pub const CG_EVENT_FLAG_MASK_SHIFT: u64 = 0x00020000;
-    pub const CG_EVENT_FLAG_MASK_CONTROL: u64 = 0x00040000;
-    pub const CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 0x00080000; // Option key
-    pub const CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
-    pub const CG_EVENT_FLAG_MASK_SECONDARY_FN: u64 = 0x00800000; // Fn key
-}
-
-// Re-export commonly used constants
-pub use constants::*;
+// Modifier key flags (same as CGEventFlags)
+pub const CG_EVENT_FLAG_MASK_SHIFT: u64 = 0x00020000;
+pub const CG_EVENT_FLAG_MASK_CONTROL: u64 = 0x00040000;
+pub const CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 0x00080000; // Option key
+pub const CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
 
 // ============================================================================
 // Core Graphics Event FFI

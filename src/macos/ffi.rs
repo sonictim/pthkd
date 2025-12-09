@@ -87,6 +87,32 @@ unsafe extern "C" {
 }
 
 // ============================================================================
+// Core Graphics Event Framework (for keystroke sending)
+// ============================================================================
+
+pub const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
+pub const CG_HID_EVENT_TAP: u32 = 0;
+
+// Modifier key flags
+pub const CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
+pub const CG_EVENT_FLAG_MASK_SHIFT: u64 = 0x00020000;
+pub const CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 0x00080000; // Option key
+pub const CG_EVENT_FLAG_MASK_CONTROL: u64 = 0x00040000;
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    pub fn CGEventCreateKeyboardEvent(
+        source: *mut c_void,
+        virtual_key: u16,
+        key_down: bool,
+    ) -> *mut c_void;
+
+    pub fn CGEventSetFlags(event: *mut c_void, flags: u64);
+    pub fn CGEventPost(tap: u32, event: *mut c_void);
+    pub fn CGEventSourceCreate(source_state_id: i32) -> *mut c_void;
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -137,5 +163,72 @@ pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
         String::from_utf8(buffer[..null_pos].to_vec()).ok()
     } else {
         None
+    }
+}
+
+/// Get accessibility string attribute safely
+///
+/// Returns Ok(None) if attribute doesn't exist or isn't a string
+/// Returns Err if accessibility API fails
+pub unsafe fn get_ax_string_attribute(
+    element: AXUIElementRef,
+    attribute: &str,
+) -> anyhow::Result<Option<String>> {
+    let attr_key = create_cfstring(attribute);
+    let mut value: *mut c_void = std::ptr::null_mut();
+    let result = AXUIElementCopyAttributeValue(element, attr_key, &mut value);
+    CFRelease(attr_key);
+
+    if result != K_AX_ERROR_SUCCESS {
+        return Ok(None);
+    }
+
+    let text = if !value.is_null() {
+        let s = cfstring_to_string(value);
+        CFRelease(value);
+        s
+    } else {
+        None
+    };
+    Ok(text)
+}
+
+/// Create app accessibility element safely
+pub unsafe fn create_app_element(pid: i32) -> anyhow::Result<AXUIElementRef> {
+    let element = AXUIElementCreateApplication(pid);
+    if element.is_null() {
+        anyhow::bail!("Failed to create accessibility element for PID {}", pid)
+    }
+    Ok(element)
+}
+
+/// Get PID for app by name (authoritative version)
+///
+/// Uses soft_match for fuzzy name matching
+pub fn get_pid_by_name(app_name: &str) -> anyhow::Result<i32> {
+    use objc2::{class, msg_send};
+    use objc2::runtime::AnyObject;
+
+    unsafe {
+        let workspace_class = class!(NSWorkspace);
+        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
+        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
+        let count: usize = msg_send![running_apps, count];
+
+        for i in 0..count {
+            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
+            let name_ns: *mut c_void = msg_send![app, localizedName];
+
+            if !name_ns.is_null() {
+                if let Some(name) = cfstring_to_string(name_ns) {
+                    if crate::soft_match(&name, app_name) {
+                        let pid: i32 = msg_send![app, processIdentifier];
+                        return Ok(pid);
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("App '{}' not found in running applications", app_name)
     }
 }

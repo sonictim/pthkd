@@ -17,9 +17,9 @@ keys = ["cmd", "shift", "r", "l"]
 action = "os.reload_config"
 notify = true
 
-[[hotkey]]
-keys = ["cmd", "shift", "a", "m"]
-action = "os.dump_app_menus"
+# [[hotkey]]
+# keys = ["cmd", "shift", "a", "m"]
+# action = "os.dump_app_menus"  # Removed - use menu.get_app_menus() directly in Phase 1
 
 [[hotkey]]
 keys = ["cmd", "shift", "b"]
@@ -41,7 +41,7 @@ action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.test_input_dialog"
+action = "os.test_notification"
 
 [[hotkey]]
 keys = ["cmd", "shift", "t"]

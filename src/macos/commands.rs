@@ -1,47 +1,54 @@
 //! macOS system command implementations
+//!
+//! Phase 1: Commands are now async and take &mut MacOSSession parameter
 
 use crate::params::Params;
-use super::{show_notification, app_info, menu, keystroke};
+use super::{show_notification, MacOSSession};
 use anyhow::Result;
 
 // ============================================================================
 // Command Implementations
 // ============================================================================
 
-pub fn test_notification(_params: &Params) -> Result<()> {
+pub async fn test_notification(_macos: &mut MacOSSession, _params: &Params) -> Result<()> {
+    log::info!("test_notification: Showing notification");
     show_notification("CMD+Shift+K pressed!");
+    log::info!("test_notification: Notification shown");
+
+    // Give the notification thread a moment to start
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     Ok(())
 }
 
-pub fn test_keystroke(_params: &Params) -> Result<()> {
+pub async fn test_keystroke(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     log::info!("Testing global keystroke - sending CMD+F1");
-    keystroke::send_keystroke(&["cmd", "f1"])?;
+    macos.send_keystroke(0x7A, &["cmd"]).await?; // F1 key with Cmd
     log::info!("Keystroke sent successfully");
     Ok(())
 }
 
-pub fn test_app_info(_params: &Params) -> Result<()> {
+pub async fn test_app_info(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     use std::time::Instant;
 
     log::info!("=== App Focus Information ===");
     println!("=== App Focus Information ===");
 
-    // Benchmark get_current_app()
+    // Benchmark get_focused_app()
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = app_info::get_current_app();
+        let _ = macos.get_focused_app().await;
     }
     let elapsed = start.elapsed();
     let msg = format!(
-        "⏱️  get_current_app() benchmark: {:?} per call (1000 calls in {:?})",
+        "⏱️  get_focused_app() benchmark: {:?} per call (1000 calls in {:?})",
         elapsed / 1000,
         elapsed
     );
     log::info!("{}", msg);
     println!("{}", msg);
 
-    // Get current app (no permissions needed)
-    match app_info::get_current_app() {
+    // Get current app
+    match macos.get_focused_app().await {
         Ok(app_name) => {
             log::info!("Current App: {}", app_name);
             println!("Current App: {}", app_name);
@@ -50,7 +57,7 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     }
 
     // Check if we have accessibility permissions
-    if !app_info::has_accessibility_permission() {
+    if !macos.has_accessibility_permission() {
         log::warn!(
             "⚠️  Accessibility permissions not granted! \
             Enable in System Preferences > Security & Privacy > Accessibility"
@@ -60,13 +67,13 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     }
 
     // Get window title (requires permissions)
-    match app_info::get_app_window() {
+    match macos.get_focused_window().await {
         Ok(title) => println!("Window Title: {}", title),
         Err(e) => log::error!("Failed to get window: {}", e),
     }
 
     // Check if in text field (requires permissions)
-    match app_info::is_in_text_field() {
+    match macos.is_in_text_field().await {
         Ok(is_text) => {
             if is_text {
                 println!("Text Field: ✅ Yes (cursor is in a text entry field)");
@@ -80,7 +87,7 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn reload_config(_params: &Params) -> Result<()> {
+pub async fn reload_config(_macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     use crate::config::{config_to_hotkeys, load_config};
     use crate::hotkey::HOTKEYS;
     use anyhow::{Context, bail};
@@ -112,42 +119,12 @@ pub fn reload_config(_params: &Params) -> Result<()> {
     }
 }
 
-pub fn dump_app_menus(_params: &Params) -> Result<()> {
-    use anyhow::Context;
-
-    // Get menu structure for Pro Tools
-    let app_name = "Pro Tools";
-    log::info!("Getting menu structure for {}...", app_name);
-
-    let menu_bar = menu::get_app_menus(app_name)
-        .context(format!("Failed to get menus for {}", app_name))?;
-
-    let json = serde_json::to_string_pretty(&menu_bar)?;
-    log::info!("Menu structure for {}:\n{}", app_name, json);
-    println!("Menu structure for {}:\n{}", app_name, json);
-
-    Ok(())
-}
-
-pub fn test_menu_click(_params: &Params) -> Result<()> {
-    log::info!("Testing menu click...");
-
-    // Test with a simple menu item - adjust this to whatever you want to test
-    menu::run_menu_item("Soundminer_Intel", &["DAW", "Pro Tools"])?;
-    log::info!("✅ Menu click 1 succeeded!");
-
-    menu::run_menu_item("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
-    log::info!("✅ Menu click 2 succeeded!");
-
-    Ok(())
-}
-
-pub fn list_running_apps(_params: &Params) -> Result<()> {
+pub async fn list_running_apps(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     use anyhow::Context;
 
     log::info!("Getting list of running applications...");
 
-    let apps = app_info::get_all_running_applications()
+    let apps = macos.get_running_apps().await
         .context("Failed to get running applications")?;
 
     log::info!("Running applications ({}):", apps.len());
@@ -160,28 +137,28 @@ pub fn list_running_apps(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn focus_protools(_params: &Params) -> Result<()> {
+pub async fn focus_protools(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     use anyhow::Context;
 
     log::info!("Focusing Pro Tools...");
-    app_info::focus_application("Pro Tools")
+    macos.focus_app("Pro Tools").await
         .context("Failed to focus Pro Tools")?;
     log::info!("✅ Pro Tools focused successfully!");
 
     Ok(())
 }
 
-pub fn list_window_buttons(params: &Params) -> Result<()> {
+pub async fn list_window_buttons(macos: &mut MacOSSession, params: &Params) -> Result<()> {
     use anyhow::Context;
 
-    let app_name = params.get_string("app", "Pro Tools");
-    let window_name = params.get_string("window", "");
+    let app_name = params.get_str("app", "Pro Tools");
+    let window_name = params.get_str("window", "");
 
     log::info!("Listing buttons in window '{}' of app '{}'...",
-               if window_name.is_empty() { "<focused>" } else { &window_name },
+               if window_name.is_empty() { "<focused>" } else { window_name },
                app_name);
 
-    let buttons = super::ui_elements::get_window_buttons(&app_name, &window_name)
+    let buttons = macos.get_window_buttons(app_name, window_name).await
         .context("Failed to get window buttons")?;
 
     log::info!("Found {} buttons:", buttons.len());
@@ -194,12 +171,12 @@ pub fn list_window_buttons(params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn click_window_button(params: &Params) -> Result<()> {
+pub async fn click_window_button(macos: &mut MacOSSession, params: &Params) -> Result<()> {
     use anyhow::Context;
 
-    let app_name = params.get_string("app", "Pro Tools");
-    let window_name = params.get_string("window", "");
-    let button_name = params.get_string("button", "");
+    let app_name = params.get_str("app", "Pro Tools");
+    let window_name = params.get_str("window", "");
+    let button_name = params.get_str("button", "");
 
     if button_name.is_empty() {
         anyhow::bail!("button parameter is required");
@@ -207,25 +184,25 @@ pub fn click_window_button(params: &Params) -> Result<()> {
 
     log::info!("Clicking button '{}' in window '{}' of app '{}'...",
                button_name,
-               if window_name.is_empty() { "<focused>" } else { &window_name },
+               if window_name.is_empty() { "<focused>" } else { window_name },
                app_name);
 
-    super::ui_elements::click_button(&app_name, &window_name, &button_name)
+    macos.click_button(app_name, window_name, button_name).await
         .context("Failed to click button")?;
 
     Ok(())
 }
 
-pub fn display_window_text(_params: &Params) -> Result<()> {
+pub async fn display_window_text(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     log::info!("Getting text from focused window...");
 
     // Get current app
-    let app_name = super::app_info::get_current_app()?;
+    let app_name = macos.get_focused_app().await?;
     log::info!("Current app: {}", app_name);
     println!("Current app: {}", app_name);
 
     // Get text from focused window (empty string = focused window)
-    match super::ui_elements::get_window_text(&app_name, "") {
+    match macos.get_window_text(&app_name, "").await {
         Ok(text_elements) => {
             log::info!("Found {} text elements", text_elements.len());
             println!("\n=== Window Text ({} elements) ===", text_elements.len());
@@ -243,17 +220,15 @@ pub fn display_window_text(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_input_dialog(_params: &Params) -> Result<()> {
-    use super::input_dialog;
-
+pub async fn test_input_dialog(macos: &mut MacOSSession, _params: &Params) -> Result<()> {
     log::info!("=== test_input_dialog: START ===");
 
     log::info!("About to show dialog...");
-    let dialog_result = input_dialog::show_input_dialog(
+    let dialog_result = macos.show_input_dialog(
         "Enter some text:",
         Some("Type anything you want:"),
         Some("default value"),
-    );
+    ).await;
 
     log::info!("Dialog returned, processing result...");
 
@@ -278,3 +253,6 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
     log::info!("=== test_input_dialog: END ===");
     Ok(())
 }
+
+// Note: dump_app_menus and test_menu_click removed - menu functionality
+// will be added back via macos.click_menu_item() when needed

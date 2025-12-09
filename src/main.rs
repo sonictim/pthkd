@@ -1,3 +1,4 @@
+mod async_runtime;
 mod config;
 mod hotkey;
 mod keycodes;
@@ -19,21 +20,60 @@ use std::sync::Arc;
 // Action Registration Macros
 // ============================================================================
 
-/// Macro to generate sync action functions and registry
+/// Unified action macro for both ProTools and macOS actions
 ///
-/// Usage:
+/// Creates sync wrapper functions that spawn async commands on the shared runtime
+///
+/// Usage for ProTools:
 /// ```ignore
-/// actions_sync!("namespace", {
-///     function_name_1,
-///     function_name_2,
+/// actions!("pt", {
+///     solo_selected_tracks,
+///     go_to_next_marker,
+/// });
+/// ```
+///
+/// Usage for macOS:
+/// ```ignore
+/// actions!("os", {
+///     test_notification,
+///     focus_protools,
 /// });
 /// ```
 #[macro_export]
-macro_rules! actions_sync {
-    ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
+macro_rules! actions {
+    // ProTools-style (takes ProtoolsSession)
+    ("pt", { $($action_name:ident),* $(,)? }) => {
         $(
             pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
-                super::commands::$action_name(params)
+                use tokio::sync::oneshot;
+                let params = params.clone();
+                let (tx, rx) = oneshot::channel();
+
+                $crate::async_runtime::spawn_action(async move {
+                    let result = async {
+                        let mut pt = $crate::protools::ProtoolsSession::new().await?;
+                        $crate::protools::commands::$action_name(&mut pt, &params).await
+                    }.await;
+
+                    if let Err(ref e) = result {
+                        log::error!("ProTools action '{}' failed: {:#}", stringify!($action_name), e);
+                    }
+
+                    let _ = tx.send(result);
+                });
+
+                // Wait briefly for result (for notification support)
+                // This allows notify=true to work correctly
+                match $crate::async_runtime::runtime().block_on(async {
+                    tokio::time::timeout(
+                        tokio::time::Duration::from_millis(50),
+                        rx
+                    ).await
+                }) {
+                    Ok(Ok(result)) => result,
+                    Ok(Err(_)) => Ok(()), // Channel closed, action still running
+                    Err(_) => Ok(()), // Timeout, action still running
+                }
             }
         )*
 
@@ -45,44 +85,57 @@ macro_rules! actions_sync {
             registry
         }
     };
-}
 
-/// Macro to generate async action functions and registry (for ProTools-style actions)
-///
-/// Usage:
-/// ```ignore
-/// actions_async!("namespace", {
-///     function_name_1,
-///     function_name_2,
-/// });
-/// ```
-#[macro_export]
-macro_rules! actions_async {
-    ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
+    // MacOS-style (takes MacOSSession)
+    ("os", { $($action_name:ident),* $(,)? }) => {
         $(
             pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
-                use std::sync::{Arc, Mutex};
+                use tokio::sync::oneshot;
                 let params = params.clone();
+                let (tx, rx) = oneshot::channel();
 
-                // Create a shared error container (None = success, Some(msg) = error)
-                let error = Arc::new(Mutex::new(None::<String>));
-                let error_clone = error.clone();
+                $crate::async_runtime::spawn_action(async move {
+                    let result = async {
+                        let mut macos = $crate::macos::MacOSSession::new()?;
+                        $crate::macos::commands::$action_name(&mut macos, &params).await
+                    }.await;
 
-                $crate::protools::run_command(move || async move {
-                    let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
-                    if let Err(e) = $crate::protools::commands::$action_name(&mut pt, &params).await {
-                        *error_clone.lock().unwrap() = Some(format!("{:#}", e));
+                    if let Err(ref e) = result {
+                        log::error!("macOS action '{}' failed: {:#}", stringify!($action_name), e);
                     }
+
+                    let _ = tx.send(result);
                 });
 
-                // Wait a moment for the command to start and potentially fail quickly
-                std::thread::sleep(std::time::Duration::from_millis(100));
-
-                // Return the result
-                match error.lock().unwrap().as_ref() {
-                    Some(msg) => Err(anyhow::anyhow!("{}", msg)),
-                    None => Ok(()),
+                // Wait briefly for result (for notification support)
+                // This allows notify=true to work correctly
+                match $crate::async_runtime::runtime().block_on(async {
+                    tokio::time::timeout(
+                        tokio::time::Duration::from_millis(50),
+                        rx
+                    ).await
+                }) {
+                    Ok(Ok(result)) => result,
+                    Ok(Err(_)) => Ok(()), // Channel closed, action still running
+                    Err(_) => Ok(()), // Timeout, action still running
                 }
+            }
+        )*
+
+        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+            let mut registry = std::collections::HashMap::new();
+            $(
+                registry.insert(stringify!($action_name), $action_name as fn(&$crate::params::Params) -> anyhow::Result<()>);
+            )*
+            registry
+        }
+    };
+
+    // Simple sync style (no session needed, just calls commands directly)
+    ("sync", { $($action_name:ident),* $(,)? }) => {
+        $(
+            pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                super::commands::$action_name(params)
             }
         )*
 
@@ -179,14 +232,26 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
 
             // Now call the action with all locks released
             if let Some((action, params, notify, action_name)) = action_data {
+                log::info!("Executing action: {}, notify={}", action_name, notify);
                 let result = action(&params);
+                log::info!("Action '{}' returned: {:?}", action_name, result.is_ok());
 
                 // Show notification if requested
                 if notify {
+                    log::info!("Notification requested for action '{}'", action_name);
                     match result {
-                        Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
-                        Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                        Ok(_) => {
+                            let msg = format!("✅ {}", action_name);
+                            log::info!("Showing success notification: {}", msg);
+                            macos::show_notification(&msg);
+                        }
+                        Err(e) => {
+                            let msg = format!("❌ {}: {}", action_name, e);
+                            log::error!("Showing error notification: {}", msg);
+                            macos::show_notification(&msg);
+                        }
                     }
+                    log::info!("Notification call completed");
                 }
             }
 
@@ -302,8 +367,8 @@ fn run() -> anyhow::Result<()> {
     log::info!("Log file: {}", log_path);
     log::info!("===========================================");
 
-    // Initialize ProTools tokio runtime
-    protools::init_runtime();
+    // Initialize shared async runtime (used by both ProTools and macOS)
+    async_runtime::init();
 
     // Initialize key state tracker
     use hotkey::KeyState;
@@ -335,6 +400,12 @@ fn run() -> anyhow::Result<()> {
         .set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
 
+    // Setup menu bar app (must be done before event loop)
+    unsafe {
+        macos::menu_bar::setup_menu_bar_app()
+            .context("Failed to setup menu bar app")?;
+    }
+
     // Create and install event tap for keyboard events
     unsafe {
         let event_tap = macos::create_keyboard_event_tap(key_event_callback)
@@ -343,9 +414,12 @@ fn run() -> anyhow::Result<()> {
         macos::install_event_tap_on_run_loop(event_tap);
 
         log::info!("Hotkey daemon is running. Listening for hotkeys...");
+
+        // Run event loop (no need to restart - async actions don't block it)
         macos::run_event_loop();
     }
 
+    #[allow(unreachable_code)]
     Ok(())
 }
 

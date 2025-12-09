@@ -94,26 +94,13 @@ unsafe fn show_input_dialog_internal(
         anyhow::bail!("Failed to create NSAlert");
     }
 
-    // Transform app from background daemon to foreground app temporarily
-    // This is required for the app to receive keyboard input
-    // Get NSApp (shared application instance)
+    // Activate app to bring dialog to front
+    // NOTE: App should be running as Accessory (menu bar app) by this point,
+    // which allows it to receive keyboard input
     let ns_app_class = class!(NSApplication);
     let ns_app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
 
-    // Save current activation policy
-    let current_policy: isize = msg_send![ns_app, activationPolicy];
-    log::info!("Current activation policy: {}", current_policy);
-
-    // NSApplicationActivationPolicyRegular = 0 (normal app, appears in Dock)
-    // NSApplicationActivationPolicyAccessory = 1 (menu bar app)
-    // NSApplicationActivationPolicyProhibited = 2 (background only, no UI)
-    let regular_policy: isize = 0;
-
-    // Change to regular app so we can receive keyboard input
-    let _: bool = msg_send![ns_app, setActivationPolicy: regular_policy];
-    log::info!("Changed to regular activation policy for dialog");
-
-    // Activate ignoring other apps (brings to front)
+    // Activate ignoring other apps (brings dialog to front)
     let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
 
     // Set alert style to critical
@@ -201,10 +188,6 @@ unsafe fn show_input_dialog_internal(
         // User cancelled (Cancel button or ESC key)
         None
     };
-
-    // Restore previous activation policy
-    let _: bool = msg_send![ns_app, setActivationPolicy: current_policy];
-    log::info!("Restored activation policy to {}", current_policy);
 
     // Drain the autorelease pool
     let _: () = msg_send![pool, drain];

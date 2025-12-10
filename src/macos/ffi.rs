@@ -215,14 +215,32 @@ pub fn get_pid_by_name(app_name: &str) -> anyhow::Result<i32> {
         let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
         let count: usize = msg_send![running_apps, count];
 
+        // FIRST PASS: Look for exact match (case-insensitive)
         for i in 0..count {
             let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
             let name_ns: *mut c_void = msg_send![app, localizedName];
 
             if !name_ns.is_null() {
                 if let Some(name) = cfstring_to_string(name_ns) {
-                    if crate::soft_match(&name, app_name) {
+                    if name.to_lowercase() == app_name.to_lowercase() {
                         let pid: i32 = msg_send![app, processIdentifier];
+                        log::info!("Found exact match: '{}', PID: {}", name, pid);
+                        return Ok(pid);
+                    }
+                }
+            }
+        }
+
+        // SECOND PASS: Look for soft match, but skip helper processes (names with parentheses)
+        for i in 0..count {
+            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
+            let name_ns: *mut c_void = msg_send![app, localizedName];
+
+            if !name_ns.is_null() {
+                if let Some(name) = cfstring_to_string(name_ns) {
+                    if !name.contains('(') && crate::soft_match(&name, app_name) {
+                        let pid: i32 = msg_send![app, processIdentifier];
+                        log::info!("Found soft match: '{}', PID: {}", name, pid);
                         return Ok(pid);
                     }
                 }

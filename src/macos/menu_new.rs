@@ -54,7 +54,6 @@ impl MacOSSession {
 
             // Navigate through the menu path
             let mut current_element = menu_bar_value;
-            let mut elements_to_release = vec![app_ref, menu_bar_value];
 
             for (i, &menu_title) in menu_path.iter().enumerate() {
                 log::info!("Looking for menu item: {}", menu_title);
@@ -71,9 +70,8 @@ impl MacOSSession {
                 ffi::CFRelease(children_key);
 
                 if result != ffi::K_AX_ERROR_SUCCESS || children_value.is_null() {
-                    for elem in elements_to_release {
-                        ffi::CFRelease(elem);
-                    }
+                    ffi::CFRelease(menu_bar_value);
+                    ffi::CFRelease(app_ref);
                     bail!("Failed to get children at path level {} (error: {})", i, result);
                 }
 
@@ -85,51 +83,63 @@ impl MacOSSession {
 
                     // Get title
                     if let Ok(Some(title)) = ffi::get_ax_string_attribute(child, "AXTitle") {
-                        if crate::soft_match(&title, menu_title) {
-                            log::info!("Found menu item: {}", title);
+                        if crate::normalize(&title) == crate::normalize(menu_title) {
+                            log::info!("Found menu item: {} (matched '{}')", title, menu_title);
 
                             // Last item in path - click it
                             if i == menu_path.len() - 1 {
+                                log::info!("Clicking final menu item: {}", menu_title);
                                 let press_action = ffi::create_cfstring("AXPress");
                                 let result = ffi::AXUIElementPerformAction(child, press_action);
                                 ffi::CFRelease(press_action);
 
-                                ffi::CFRelease(children_value);
-                                for elem in elements_to_release {
-                                    ffi::CFRelease(elem);
-                                }
+                                ffi::CFRelease(menu_bar_value);
+                                ffi::CFRelease(app_ref);
 
                                 if result != ffi::K_AX_ERROR_SUCCESS {
                                     bail!("Failed to click menu item '{}' (error: {})", menu_title, result);
                                 }
 
-                                log::info!("✅ Clicked menu item: {:?}", menu_path);
+                                log::info!("✅ Successfully clicked menu item");
                                 return Ok(());
                             } else {
-                                // Not the last item - navigate deeper
-                                current_element = child;
-                                found = true;
-                                break;
+                                // For menu items, get the submenu container (first child)
+                                let mut submenu_value: *mut c_void = ptr::null_mut();
+
+                                ffi::AXUIElementCopyAttributeValue(
+                                    child,
+                                    children_key,
+                                    &mut submenu_value,
+                                );
+
+                                if !submenu_value.is_null() {
+                                    let submenu_count = ffi::CFArrayGetCount(submenu_value);
+                                    if submenu_count > 0 {
+                                        // Get first child - the actual submenu container
+                                        current_element = ffi::CFArrayGetValueAtIndex(submenu_value, 0) as ffi::AXUIElementRef;
+                                        found = true;
+                                        // Note: Don't release submenu_value - it's managed by CF
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                ffi::CFRelease(children_value);
+                // Note: Don't release children_value - elements from it may still be in use
 
-                if !found {
-                    for elem in elements_to_release {
-                        ffi::CFRelease(elem);
-                    }
-                    bail!("Menu item '{}' not found at path level {}", menu_title, i);
+                if !found && i < menu_path.len() - 1 {
+                    ffi::CFRelease(menu_bar_value);
+                    ffi::CFRelease(app_ref);
+                    bail!("Could not find menu item: {} at level {}", menu_title, i);
                 }
             }
 
-            for elem in elements_to_release {
-                ffi::CFRelease(elem);
-            }
+            ffi::CFRelease(menu_bar_value);
+            ffi::CFRelease(app_ref);
 
-            Ok(())
+            bail!("Menu navigation completed but item not clicked")
         }
     }
 }

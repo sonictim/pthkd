@@ -155,6 +155,7 @@ action = "pt.send_receive_rx"
 [hotkey.params]
 version = 11
 notify = true
+close = true
 
 [[hotkey]]
 keys = ["ctrl", "space"]

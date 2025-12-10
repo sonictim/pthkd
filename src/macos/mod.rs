@@ -87,14 +87,14 @@ pub mod menu {
 pub mod app_info {
     use anyhow::Result;
 
-    pub async fn get_current_app() -> Result<String> {
+    pub fn get_current_app() -> Result<String> {
         let mut macos = super::MacOSSession::new()?;
-        macos.get_focused_app().await
+        crate::async_runtime::runtime().block_on(macos.get_focused_app())
     }
 
-    pub async fn get_app_window() -> Result<String> {
+    pub fn get_app_window() -> Result<String> {
         let mut macos = super::MacOSSession::new()?;
-        macos.get_focused_window().await
+        crate::async_runtime::runtime().block_on(macos.get_focused_window())
     }
 
     pub fn has_accessibility_permission() -> bool {
@@ -105,9 +105,9 @@ pub mod app_info {
         }
     }
 
-    pub async fn focus_application(app_name: &str) -> Result<()> {
+    pub fn focus_application(app_name: &str) -> Result<()> {
         let mut macos = super::MacOSSession::new()?;
-        macos.focus_app(app_name).await
+        crate::async_runtime::runtime().block_on(macos.focus_app(app_name))
     }
 }
 
@@ -115,42 +115,42 @@ pub mod app_info {
 pub mod ui_elements {
     use anyhow::Result;
 
-    pub async fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
+    pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
         let mut macos = super::MacOSSession::new()?;
-        macos.click_button(app_name, window_name, button_name).await
+        crate::async_runtime::runtime().block_on(macos.click_button(app_name, window_name, button_name))
     }
 
-    pub async fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
+    pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
         let mut macos = super::MacOSSession::new()?;
-        macos.window_exists(app_name, window_name).await
+        crate::async_runtime::runtime().block_on(macos.window_exists(app_name, window_name))
     }
 
-    pub async fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<bool> {
+    pub fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<bool> {
         use std::time::{Duration, Instant};
         let start = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
 
         while start.elapsed() < timeout {
-            if window_exists(app_name, window_name).await.unwrap_or(false) {
+            if window_exists(app_name, window_name).unwrap_or(false) {
                 return Ok(true);
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            std::thread::sleep(Duration::from_millis(100));
         }
         Ok(false)
     }
 
-    pub async fn close_window_with_retry(app_name: &str, window_name: &str, max_retries: usize) -> Result<()> {
+    pub fn close_window_with_retry(app_name: &str, window_name: &str, max_retries: usize) -> Result<()> {
         let mut macos = super::MacOSSession::new()?;
 
         for attempt in 0..max_retries {
-            match macos.close_window(app_name, window_name).await {
+            match crate::async_runtime::runtime().block_on(macos.close_window(app_name, window_name)) {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     if attempt == max_retries - 1 {
                         return Err(e);
                     }
                     log::warn!("Close window attempt {} failed: {}", attempt + 1, e);
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
         }

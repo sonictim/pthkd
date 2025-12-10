@@ -17,14 +17,16 @@ async fn keystroke(keys: &[&str]) -> Result<()> {
     std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
     Ok(())
 }
-async fn call_menu(menu: &[&str]) -> Result<()> {
-    let mut macos = crate::macos::MacOSSession::new()?;
+async fn call_menu(macos: &mut crate::macos::MacOSSession, menu: &[&str]) -> Result<()> {
     macos.click_menu_item("Pro Tools", menu).await?;
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }
-async fn click_button(window: &str, button: &str) -> Result<()> {
-    let mut macos = crate::macos::MacOSSession::new()?;
+async fn click_button(
+    macos: &mut crate::macos::MacOSSession,
+    window: &str,
+    button: &str,
+) -> Result<()> {
     macos.click_button("Pro Tools", window, button).await?;
     std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 50ms
     Ok(())
@@ -90,7 +92,11 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession, _params: &Params) ->
         }
     }
 
-    log::info!("Soloing {} tracks, unsoloing {} tracks", solos.len(), unsolos.len());
+    log::info!(
+        "Soloing {} tracks, unsoloing {} tracks",
+        solos.len(),
+        unsolos.len()
+    );
 
     if !solos.is_empty() {
         log::info!("Calling pt.solo_tracks for {} solos...", solos.len());
@@ -169,9 +175,16 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
     let mut sel = PtSelectionSamples::new(pt).await?;
     let io = sel.get_io();
     sel.set_io(pt, io.0 - adjust, io.1 + adjust).await?;
+
+    let mut macos = crate::macos::MacOSSession::new()?;
+
     if fill {
-        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
-        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+        call_menu(
+            &mut macos,
+            &["Edit", "Trim Clip", "Start to Fill Selection"],
+        )
+        .await?;
+        call_menu(&mut macos, &["Edit", "Trim Clip", "End to Fill Selection"]).await?;
     }
     let result = pt
         .cmd::<_, serde_json::Value>(
@@ -196,9 +209,9 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
     if crossfade {
         let c = sel.get_io();
         sel.set_io(pt, c.1, c.1).await?;
-        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        call_menu(&mut macos, &["Edit", "Automation", "Write to All Enabled"]).await?;
         sel.set_io(pt, c.0, c.0).await?;
-        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        call_menu(&mut macos, &["Edit", "Automation", "Write to All Enabled"]).await?;
         sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
 
         let _: serde_json::Value = pt
@@ -221,16 +234,22 @@ pub async fn adjust_clip_to_match_selection(
     _pt: &mut ProtoolsSession,
     _params: &Params,
 ) -> Result<()> {
-    call_menu(&["Edit", "Trim Clip", "To Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "To Fill Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    call_menu(&mut macos, &["Edit", "Trim Clip", "To Selection"]).await?;
+    call_menu(&mut macos, &["Edit", "Trim Clip", "To Fill Selection"]).await?;
+    call_menu(
+        &mut macos,
+        &["Edit", "Trim Clip", "Start to Fill Selection"],
+    )
+    .await?;
+    call_menu(&mut macos, &["Edit", "Trim Clip", "End to Fill Selection"]).await?;
     Ok(())
 }
 pub async fn reset_clip(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    call_menu(&["Edit", "Fades", "Delete"]).await?;
-    call_menu(&["Edit", "Clear Special", "Clip Gain"]).await?;
-    call_menu(&["Edit", "Clear Special", "Clip Effects"]).await?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    call_menu(&mut macos, &["Edit", "Fades", "Delete"]).await?;
+    call_menu(&mut macos, &["Edit", "Clear Special", "Clip Gain"]).await?;
+    call_menu(&mut macos, &["Edit", "Clear Special", "Clip Effects"]).await?;
     let result: serde_json::Value = pt
         .cmd(
             CommandId::ClearSpecial,
@@ -282,7 +301,9 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Resul
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
-    call_menu(&["Edit", "Insert Silence"]).await?;
+
+    let mut macos = crate::macos::MacOSSession::new()?;
+    call_menu(&mut macos, &["Edit", "Insert Silence"]).await?;
     // keystroke(&["cmd", "shift", "e"]).await?;
     // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
@@ -365,53 +386,6 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Res
     Ok(())
 }
 
-async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin);
-    let mut macos = crate::macos::MacOSSession::new()?;
-
-    if !macos.window_exists("Pro Tools", &window).await? {
-        call_menu(&["AudioSuite", menu, plugin]).await?;
-    }
-
-    // Wait for window
-    use std::time::{Duration, Instant};
-    let start = Instant::now();
-    let timeout = Duration::from_millis(5000);
-    while start.elapsed() < timeout {
-        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-
-    click_button(&window, "Render").await?;
-    if close {
-        macos.close_window("Pro Tools", &window).await?;
-    }
-    Ok(())
-}
-async fn plugin_analyze(menu: &str, plugin: &str) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin);
-    let mut macos = crate::macos::MacOSSession::new()?;
-
-    if !macos.window_exists("Pro Tools", &window).await? {
-        call_menu(&["AudioSuite", menu, plugin]).await?;
-    }
-
-    // Wait for window
-    use std::time::{Duration, Instant};
-    let start = Instant::now();
-    let timeout = Duration::from_millis(5000);
-    while start.elapsed() < timeout {
-        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-
-    click_button(&window, "Analyze").await?;
-    Ok(())
-}
 async fn find_audiosuite_plugin(plugin_name: &str) -> Result<Vec<String>> {
     println!("Searching for {} in Audiosuite Menus", plugin_name);
     let menu_bar = crate::macos::menu::get_app_menus("Pro Tools")?;
@@ -457,9 +431,8 @@ async fn find_audiosuite_plugin(plugin_name: &str) -> Result<Vec<String>> {
     bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
 }
 
-async fn activate_plugin(plugin_name: &str) -> Result<()> {
+async fn activate_plugin(macos: &mut crate::macos::MacOSSession, plugin_name: &str) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin_name);
-    let mut macos = crate::macos::MacOSSession::new()?;
 
     // Check if already open
     if macos.window_exists("Pro Tools", &window).await? {
@@ -473,14 +446,18 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
 
     // Open it
-    call_menu(&menu_path_refs).await?;
+    call_menu(macos, &menu_path_refs).await?;
 
     // Wait for window
     use std::time::{Duration, Instant};
     let start = Instant::now();
     let timeout = Duration::from_millis(5000);
     while start.elapsed() < timeout {
-        if macos.window_exists("Pro Tools", &window).await.unwrap_or(false) {
+        if macos
+            .window_exists("Pro Tools", &window)
+            .await
+            .unwrap_or(false)
+        {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -493,21 +470,28 @@ pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()
     let plugin = params.get_string("plugin", "");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
+    call_audiosuite(&plugin, &button, close).await?;
+    Ok(())
+}
+pub async fn call_audiosuite(plugin: &str, button: &str, close: bool) -> Result<()> {
+    // Create MacOSSession once and reuse it (avoids multiple PID lookups)
+    let mut macos = crate::macos::MacOSSession::new()?;
 
     // Activate plugin if specified
     if !plugin.is_empty() {
-        activate_plugin(&plugin).await?;
+        activate_plugin(&mut macos, plugin).await?;
     }
     // Click button if specified
     if !button.is_empty() {
         let window = format!("AudioSuite: {}", plugin);
-        click_button(&window, &button).await?;
+        click_button(&mut macos, &window, button).await?;
     }
 
+    std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     // Close window if requested
     if close {
         let window = format!("AudioSuite: {}", plugin);
-        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000).await?;
+        macos.close_window("Pro Tools", &window).await?;
     }
 
     Ok(())
@@ -516,21 +500,40 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
     let version = params.get_int("version", 11);
     let plugin = format!("RX {} Connect", version);
     let rx_app = format!("RX {}", version);
+    let close = params.get_bool("close", false);
 
-    let app = crate::macos::app_info::get_current_app().await?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    let app = macos.get_focused_app().await?;
     if app == "Pro Tools" {
         // Send to RX for analysis
-        plugin_analyze("Noise Reduction", &plugin).await?;
+        call_audiosuite(&plugin, "Analyze", false).await?;
     } else if crate::soft_match(&app, &rx_app) {
         // Send back to Pro Tools - Cmd+Enter returns to DAW
         keystroke(&["cmd", "enter"]).await?;
 
-        std::thread::sleep(std::time::Duration::from_millis(500)); // Wait 50ms
-        // Focus Pro Tools and wait for confirmation (switch but don't launch)
-        // let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 2000);
+        // Wait for Pro Tools to actually get focus before proceeding
+        let window = format!("AudioSuite: {}", plugin);
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let timeout = Duration::from_millis(2000);
+        while start.elapsed() < timeout {
+            if let Ok(focused_app) = macos.get_focused_app().await {
+                if focused_app == "Pro Tools" {
+                    // Also verify window exists and is ready
+                    if macos
+                        .window_exists("Pro Tools", &window)
+                        .await
+                        .unwrap_or(false)
+                    {
+                        break;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         // Now render the changes back
-        plugin_render("Noise Reduction", &plugin, false).await?;
+        call_audiosuite(&plugin, "Render", close).await?;
     }
 
     Ok(())
@@ -552,9 +555,16 @@ pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params
         if let Some(name) = plugins_clone.get(count as usize) {
             let menu_path = find_audiosuite_plugin(name).await;
             if let Ok(path) = menu_path {
+                let mut macos = match crate::macos::MacOSSession::new() {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::error!("Failed to create MacOSSession: {}", e);
+                        return;
+                    }
+                };
                 let refs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
                 let slice: &[&str] = &refs;
-                if let Err(e) = call_menu(slice).await {
+                if let Err(e) = call_menu(&mut macos, slice).await {
                     log::error!("Failed to open plugin {}: {:#}", name, e);
                 }
             }
@@ -564,11 +574,12 @@ pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params
     Ok(())
 }
 
-pub async fn click_a_button(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn click_a_button(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let button = params.get_string("button", "");
     if button.is_empty() {
         return Ok(());
     };
-    click_button("Edit", &button).await?;
+    let mut macos = crate::macos::MacOSSession::new()?;
+    click_button(&mut macos, "Edit", &button).await?;
     Ok(())
 }

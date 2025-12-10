@@ -224,13 +224,12 @@ unsafe fn find_window_by_name(
 
         if let Ok(Some(title)) = ffi::get_ax_string_attribute(window, "AXTitle") {
             if crate::soft_match(&title, window_name) {
-                ffi::CFRelease(windows_value);
+                // Don't release windows_value - window element is from it
                 return Ok(window);
             }
         }
     }
 
-    ffi::CFRelease(windows_value);
     bail!("Window '{}' not found", window_name)
 }
 
@@ -280,12 +279,11 @@ unsafe fn collect_buttons_recursive(
     for i in 0..count {
         let child = ffi::CFArrayGetValueAtIndex(children, i) as ffi::AXUIElementRef;
         if let Ok(button) = collect_buttons_recursive(child, target_name, false) {
-            ffi::CFRelease(children);
+            // Don't release children - button element is from it
             return Ok(button);
         }
     }
 
-    ffi::CFRelease(children);
     bail!("Button '{}' not found", target_name)
 }
 

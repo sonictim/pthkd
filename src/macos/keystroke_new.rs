@@ -47,6 +47,8 @@ impl MacOSSession {
             ffi::CFRelease(key_down);
 
             // Small delay between down and up
+            // Note: Using thread::sleep here because we're in an unsafe block holding raw pointers
+            // that are not Send. This is a very short sleep (10ms) so blocking is acceptable.
             std::thread::sleep(std::time::Duration::from_millis(10));
 
             // Create and post key up event

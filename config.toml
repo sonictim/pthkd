@@ -419,7 +419,7 @@ app_window = "Edit"
 number = 3 
 
 [[hotkey]]
-keys = ["shift", "control", "pad_2"]
+keys = ["shift", "control", "pad_3"]
 action = "pt.update_quick_marker"
 ttarget_application = "Pro Tools"
 app_window = "Edit"

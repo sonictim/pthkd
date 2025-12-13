@@ -11,9 +11,7 @@ use anyhow::Result;
 // ============================================================================
 
 pub async fn test_notification(_macos: &mut MacOSSession, _params: &Params) -> Result<()> {
-    log::info!("test_notification: Showing notification");
     show_notification("CMD+Shift+K pressed!");
-    log::info!("test_notification: Notification shown");
 
     // Give the notification thread a moment to start
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

@@ -10,6 +10,7 @@ pub mod ptsl {
 pub mod actions;
 pub mod client;
 pub mod commands;
+pub mod plugins;
 
 // Re-exports
 pub use client::ProtoolsSession;

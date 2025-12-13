@@ -62,17 +62,20 @@ macro_rules! actions {
                     let _ = tx.send(result);
                 });
 
-                // Wait briefly for result (for notification support)
+                // Wait for result (for notification support)
                 // This allows notify=true to work correctly
                 match $crate::async_runtime::runtime().block_on(async {
                     tokio::time::timeout(
-                        tokio::time::Duration::from_millis(50),
+                        tokio::time::Duration::from_secs(10),
                         rx
                     ).await
                 }) {
                     Ok(Ok(result)) => result,
                     Ok(Err(_)) => Ok(()), // Channel closed, action still running
-                    Err(_) => Ok(()), // Timeout, action still running
+                    Err(_) => {
+                        log::warn!("Action timed out after 10 seconds");
+                        Ok(())
+                    }
                 }
             }
         )*
@@ -107,17 +110,20 @@ macro_rules! actions {
                     let _ = tx.send(result);
                 });
 
-                // Wait briefly for result (for notification support)
+                // Wait for result (for notification support)
                 // This allows notify=true to work correctly
                 match $crate::async_runtime::runtime().block_on(async {
                     tokio::time::timeout(
-                        tokio::time::Duration::from_millis(50),
+                        tokio::time::Duration::from_secs(10),
                         rx
                     ).await
                 }) {
                     Ok(Ok(result)) => result,
                     Ok(Err(_)) => Ok(()), // Channel closed, action still running
-                    Err(_) => Ok(()), // Timeout, action still running
+                    Err(_) => {
+                        log::warn!("Action '{}' timed out after 10 seconds", stringify!($action_name));
+                        Ok(())
+                    }
                 }
             }
         )*
@@ -180,16 +186,19 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     let action_name = hotkey.action_name.clone();
                     drop(hotkeys); // Explicitly drop the lock before calling action
 
-                    // Trigger immediately (lock is now released)
-                    let result = action(&params);
+                    // Spawn action execution in a separate thread so event tap returns immediately
+                    // This prevents macOS from disabling the event tap due to slow callback
+                    std::thread::spawn(move || {
+                        let result = action(&params);
 
-                    // Show notification if requested
-                    if notify {
-                        match result {
-                            Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
-                            Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                        // Show notification if requested
+                        if notify {
+                            match result {
+                                Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
+                                Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                            }
                         }
-                    }
+                    });
 
                     return true; // Consume event
                 }
@@ -230,29 +239,31 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
             // Clear the pending hotkey
             *pending_hotkey_guard.lock().unwrap() = None;
 
-            // Now call the action with all locks released
+            // Spawn action execution in a separate thread so event tap returns immediately
             if let Some((action, params, notify, action_name)) = action_data {
-                log::info!("Executing action: {}, notify={}", action_name, notify);
-                let result = action(&params);
-                log::info!("Action '{}' returned: {:?}", action_name, result.is_ok());
+                std::thread::spawn(move || {
+                    log::info!("Executing action: {}, notify={}", action_name, notify);
+                    let result = action(&params);
+                    log::info!("Action '{}' returned: {:?}", action_name, result.is_ok());
 
-                // Show notification if requested
-                if notify {
-                    log::info!("Notification requested for action '{}'", action_name);
-                    match result {
-                        Ok(_) => {
-                            let msg = format!("✅ {}", action_name);
-                            log::info!("Showing success notification: {}", msg);
-                            macos::show_notification(&msg);
+                    // Show notification if requested
+                    if notify {
+                        log::info!("Notification requested for action '{}'", action_name);
+                        match result {
+                            Ok(_) => {
+                                let msg = format!("✅ {}", action_name);
+                                log::info!("Showing success notification: {}", msg);
+                                macos::show_notification(&msg);
+                            }
+                            Err(e) => {
+                                let msg = format!("❌ {}: {}", action_name, e);
+                                log::error!("Showing error notification: {}", msg);
+                                macos::show_notification(&msg);
+                            }
                         }
-                        Err(e) => {
-                            let msg = format!("❌ {}: {}", action_name, e);
-                            log::error!("Showing error notification: {}", msg);
-                            macos::show_notification(&msg);
-                        }
+                        log::info!("Notification call completed");
                     }
-                    log::info!("Notification call completed");
-                }
+                });
             }
 
             return true;

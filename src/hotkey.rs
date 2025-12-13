@@ -209,9 +209,9 @@ pub struct PendingHotkey {
 /// Global pending hotkey state
 pub static PENDING_HOTKEY: OnceLock<Mutex<Option<PendingHotkey>>> = OnceLock::new();
 
+use std::future::Future;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
-use std::future::Future;
 
 pub struct HotkeyCounter {
     count: u32,
@@ -221,11 +221,14 @@ pub struct HotkeyCounter {
 }
 
 impl HotkeyCounter {
+    pub fn get_count(&self) -> u32 {
+        self.count
+    }
     pub fn new() -> Self {
         Self {
             count: 0,
             last_call: Instant::now() - Duration::from_secs(10), // Far in the past
-            last_timeout: Duration::from_millis(500), // Default timeout
+            last_timeout: Duration::from_millis(500),            // Default timeout
             pending_task: None,
         }
     }

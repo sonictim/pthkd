@@ -58,6 +58,9 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
   keys = ["cmd", "shift", "w", "t"]
   action = "os.display_window_text"
 
+[[hotkey]]
+keys = ["control", "option", "command", "return"]
+action = "os.fast_pw"
 # ============================================================================
 # ProTools actions (pt.* namespace)
 # ============================================================================
@@ -199,6 +202,14 @@ action = "pt.multitap_plugin_selector"
 [hotkey.params]
 timeout = 300
 plugins = ["6060 Ultimate MC","Black Box Analog Design HG-2", "Analog Channel AC202"]
+
+[[hotkey]]
+keys = ["ctrl", "pad_7"]
+action = "pt.multitap_plugin_selector"
+[hotkey.params]
+timeout = 300
+plugins = ["Pitch Shift Legacy","Pitch 'n Time Pro", "X-Form", "Vari-Fi"]
+button = "Analyze"
 
 # ============================================================================
 # Marker Navigation with Parameters
@@ -380,7 +391,7 @@ color = "green"
 [[hotkey]]
 keys = ["shift", "pad_1"]
 action = "pt.go_to_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 1
@@ -388,15 +399,16 @@ number = 1
 [[hotkey]]
 keys = ["shift", "control", "pad_1"]
 action = "pt.update_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 1
+color = "magenta"
 
 [[hotkey]]
 keys = ["shift", "pad_2"]
 action = "pt.go_to_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 2
@@ -404,26 +416,28 @@ number = 2
 [[hotkey]]
 keys = ["shift", "control", "pad_2"]
 action = "pt.update_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 2
+color = "magenta"
 
 [[hotkey]]
 keys = ["shift", "pad_3"]
 action = "pt.go_to_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 3 
 
 [[hotkey]]
-keys = ["shift", "control", "pad_2"]
+keys = ["shift", "control", "pad_3"]
 action = "pt.update_quick_marker"
-ttarget_application = "Pro Tools"
+target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
 number = 3
+color = "magenta"
 
 
 # ============================================================================
@@ -470,3 +484,5 @@ number = 3
 #
 # Trigger Options:
 # - trigger_on_release: If true, action triggers when keys are released (useful for modifier keys)
+
+

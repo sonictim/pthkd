@@ -1,4 +1,5 @@
 use super::client::*;
+use super::plugins::*;
 use super::ptsl;
 use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
@@ -88,7 +89,11 @@ pub async fn solo_selected_tracks(pt: &mut ProtoolsSession, _params: &Params) ->
         }
     }
 
-    log::info!("Soloing {} tracks, unsoloing {} tracks", solos.len(), unsolos.len());
+    log::info!(
+        "Soloing {} tracks, unsoloing {} tracks",
+        solos.len(),
+        unsolos.len()
+    );
 
     if !solos.is_empty() {
         log::info!("Calling pt.solo_tracks for {} solos...", solos.len());
@@ -362,120 +367,12 @@ pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Res
     }
     Ok(())
 }
-
-async fn plugin_render(menu: &str, plugin: &str, close: bool) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin);
-    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
-        call_menu(&["AudioSuite", menu, plugin]).await?;
-    }
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
-    click_button(&window, "Render").await?;
-    if close {
-        crate::macos::ui_elements::close_window_with_retry(
-            "Pro Tools",
-            &window, // Fixed: was hardcoded to "AudioSuite: Reverse"
-            10000,
-        )?;
-    }
-    Ok(())
-}
-async fn plugin_analyze(menu: &str, plugin: &str) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin);
-    if !crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
-        call_menu(&["AudioSuite", menu, plugin]).await?;
-    }
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
-    click_button(&window, "Analyze").await?;
-    Ok(())
-}
-async fn find_audiosuite_plugin(plugin_name: &str) -> Result<Vec<String>> {
-    println!("Searching for {} in Audiosuite Menus", plugin_name);
-    let menu_bar = crate::macos::menu::get_app_menus("Pro Tools")?;
-    let audiosuite_menu = menu_bar
-        .menus
-        .iter()
-        .find(|m| m.title == "AudioSuite")
-        .ok_or_else(|| anyhow::anyhow!("AudioSuite menu not found"))?;
-
-    for middleman in &audiosuite_menu.children {
-        for category in &middleman.children {
-            for middleman2 in &category.children {
-                for plugin in &middleman2.children {
-                    if plugin.title == plugin_name {
-                        println!("found plugin location");
-                        return Ok(vec![
-                            "AudioSuite".to_string(),
-                            category.title.clone(),
-                            plugin_name.to_string(),
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-    for middleman in &audiosuite_menu.children {
-        for category in &middleman.children {
-            for middleman2 in &category.children {
-                for plugin in &middleman2.children {
-                    if crate::soft_match(&plugin.title, plugin_name) {
-                        println!("found plugin location");
-                        return Ok(vec![
-                            "AudioSuite".to_string(),
-                            category.title.clone(),
-                            plugin_name.to_string(),
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-    println!("did not find plugin location");
-    bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
-}
-
-async fn activate_plugin(plugin_name: &str) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin_name);
-
-    // Check if already open
-    if crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
-        println!("Plugin '{}' window already open", plugin_name);
-        return Ok(());
-    }
-
-    let menu_path = find_audiosuite_plugin(plugin_name).await?;
-    println!("menu path for {}:  {:?}", plugin_name, menu_path);
-    // Convert Vec<String> to Vec<&str> for call_menu
-    let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
-
-    // Open it
-    call_menu(&menu_path_refs).await?;
-
-    // Wait for window
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
-
-    Ok(())
-}
-
 pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let plugin = params.get_string("plugin", "");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
 
-    // Activate plugin if specified
-    if !plugin.is_empty() {
-        activate_plugin(&plugin).await?;
-    }
-    // Click button if specified
-    if !button.is_empty() {
-        let window = format!("AudioSuite: {}", plugin);
-        click_button(&window, &button).await?;
-    }
-
-    // Close window if requested
-    if close {
-        let window = format!("AudioSuite: {}", plugin);
-        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000)?;
-    }
+    call_plugin(&plugin, &button, close).await?;
 
     Ok(())
 }
@@ -487,51 +384,33 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
     let app = crate::macos::app_info::get_current_app()?;
     if app == "Pro Tools" {
         // Send to RX for analysis
-        plugin_analyze("Noise Reduction", &plugin).await?;
+        call_plugin(&plugin, "Analyze", false).await?;
     } else if crate::soft_match(&app, &rx_app) {
         // Send back to Pro Tools - Cmd+Enter returns to DAW
         keystroke(&["cmd", "enter"]).await?;
 
-        std::thread::sleep(std::time::Duration::from_millis(500)); // Wait 50ms
+        std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
         // Focus Pro Tools and wait for confirmation (switch but don't launch)
         // let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 2000);
 
         // Now render the changes back
-        plugin_render("Noise Reduction", &plugin, false).await?;
+        call_plugin(&plugin, "Render", false).await?;
     }
 
     Ok(())
 }
-lazy_static! {
-    static ref PLUGIN_COUNTER: Arc<Mutex<HotkeyCounter>> =
-        Arc::new(Mutex::new(HotkeyCounter::new()));
-}
 pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    let mut counter = PLUGIN_COUNTER.lock().unwrap();
     let plugins = params.get_string_vec("plugins");
+    let button = params.get_string("button", "");
+    let close = params.get_bool("close", false);
     let timeout_ms = params.get_timeout_ms("timeout", 500);
 
-    // Clone to move into the async closure
-    let plugins_clone = plugins.clone();
-
-    // Pass timeout, max, and async callback - cycle through all plugins (0-based indexing)
-    counter.press(timeout_ms, plugins.len() as u32, |count| async move {
-        if let Some(name) = plugins_clone.get(count as usize) {
-            let menu_path = find_audiosuite_plugin(name).await;
-            if let Ok(path) = menu_path {
-                let refs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
-                let slice: &[&str] = &refs;
-                if let Err(e) = call_menu(slice).await {
-                    log::error!("Failed to open plugin {}: {:#}", name, e);
-                }
-            }
-        }
-    });
+    plugin_selector(&plugins, button, close, timeout_ms).await?;
 
     Ok(())
 }
 
-pub async fn click_a_button(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn click_a_button(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let button = params.get_string("button", "");
     if button.is_empty() {
         return Ok(());

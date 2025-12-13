@@ -1,7 +1,7 @@
 //! macOS system command implementations
 
+use super::{app_info, keystroke, menu, show_notification};
 use crate::params::Params;
-use super::{show_notification, app_info, menu, keystroke};
 use anyhow::Result;
 
 // ============================================================================
@@ -88,12 +88,10 @@ pub fn reload_config(_params: &Params) -> Result<()> {
     log::info!("Reloading config from config.toml...");
 
     // Load and parse config
-    let config = load_config("config.toml")
-        .context("Failed to load config.toml")?;
+    let config = load_config("config.toml").context("Failed to load config.toml")?;
 
     // Convert to hotkeys
-    let hotkeys = config_to_hotkeys(config)
-        .context("Failed to parse config")?;
+    let hotkeys = config_to_hotkeys(config).context("Failed to parse config")?;
 
     // Log registered hotkeys
     log::info!("Reloaded {} hotkeys:", hotkeys.len());
@@ -119,8 +117,8 @@ pub fn dump_app_menus(_params: &Params) -> Result<()> {
     let app_name = "Pro Tools";
     log::info!("Getting menu structure for {}...", app_name);
 
-    let menu_bar = menu::get_app_menus(app_name)
-        .context(format!("Failed to get menus for {}", app_name))?;
+    let menu_bar =
+        menu::get_app_menus(app_name).context(format!("Failed to get menus for {}", app_name))?;
 
     let json = serde_json::to_string_pretty(&menu_bar)?;
     log::info!("Menu structure for {}:\n{}", app_name, json);
@@ -147,8 +145,8 @@ pub fn list_running_apps(_params: &Params) -> Result<()> {
 
     log::info!("Getting list of running applications...");
 
-    let apps = app_info::get_all_running_applications()
-        .context("Failed to get running applications")?;
+    let apps =
+        app_info::get_all_running_applications().context("Failed to get running applications")?;
 
     log::info!("Running applications ({}):", apps.len());
     println!("\n=== Running Applications ({}) ===", apps.len());
@@ -164,8 +162,7 @@ pub fn focus_protools(_params: &Params) -> Result<()> {
     use anyhow::Context;
 
     log::info!("Focusing Pro Tools...");
-    app_info::focus_application("Pro Tools")
-        .context("Failed to focus Pro Tools")?;
+    app_info::focus_application("Pro Tools").context("Failed to focus Pro Tools")?;
     log::info!("✅ Pro Tools focused successfully!");
 
     Ok(())
@@ -177,9 +174,15 @@ pub fn list_window_buttons(params: &Params) -> Result<()> {
     let app_name = params.get_string("app", "Pro Tools");
     let window_name = params.get_string("window", "");
 
-    log::info!("Listing buttons in window '{}' of app '{}'...",
-               if window_name.is_empty() { "<focused>" } else { &window_name },
-               app_name);
+    log::info!(
+        "Listing buttons in window '{}' of app '{}'...",
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            &window_name
+        },
+        app_name
+    );
 
     let buttons = super::ui_elements::get_window_buttons(&app_name, &window_name)
         .context("Failed to get window buttons")?;
@@ -205,10 +208,16 @@ pub fn click_window_button(params: &Params) -> Result<()> {
         anyhow::bail!("button parameter is required");
     }
 
-    log::info!("Clicking button '{}' in window '{}' of app '{}'...",
-               button_name,
-               if window_name.is_empty() { "<focused>" } else { &window_name },
-               app_name);
+    log::info!(
+        "Clicking button '{}' in window '{}' of app '{}'...",
+        button_name,
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            &window_name
+        },
+        app_name
+    );
 
     super::ui_elements::click_button(&app_name, &window_name, &button_name)
         .context("Failed to click button")?;
@@ -276,5 +285,12 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
     }
 
     log::info!("=== test_input_dialog: END ===");
+    Ok(())
+}
+
+pub fn fast_pw(_params: &Params) -> Result<()> {
+    use crate::macos::keystroke::send_keystroke;
+    send_keystroke(&["ramalamadingdong"])?;
+    send_keystroke(&["enter"])?;
     Ok(())
 }

@@ -168,12 +168,14 @@ unsafe fn find_window_by_name(
 
             // Use soft_match from main.rs
             if crate::soft_match(&title, window_name) {
-                // Found it! Return this window
+                // Found it! Release windows array and return this window
+                CFRelease(windows_value);
                 return Ok(window);
             }
         }
     }
 
+    CFRelease(windows_value);
     bail!("Window '{}' not found", window_name)
 }
 
@@ -319,7 +321,7 @@ pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
 /// * `app_name` - Name of the application
 /// * `window_name` - Name of window to wait for (soft matched)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
-pub fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
+pub fn wait_for_window_exists(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
     use std::time::{Duration, Instant};
 
     let start = Instant::now();
@@ -359,7 +361,7 @@ pub fn wait_for_window(app_name: &str, window_name: &str, timeout_ms: u64) -> Re
 /// * `app_name` - Name of the application
 /// * `window_name` - Name of window to wait for to disappear (soft matched)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
-pub fn wait_for_window_to_close(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
+pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
     use std::time::{Duration, Instant};
 
     let start = Instant::now();

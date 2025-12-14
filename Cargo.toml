@@ -26,6 +26,7 @@ objc2-foundation = "0.2"
 core-foundation = "0.10.1"
 core-graphics = "0.25.0"
 lazy_static = "1.5.0"
+paste = "1.0"
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"  

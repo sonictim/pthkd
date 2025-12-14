@@ -175,7 +175,7 @@ impl Hotkey {
                         // Check if any of the configured apps match the current app
                         config_apps
                             .iter()
-                            .any(|app| crate::soft_match(app, &current_app))
+                            .any(|app| crate::soft_match(&current_app, app))
                     }
                     _ => false,
                 })
@@ -183,7 +183,7 @@ impl Hotkey {
                 None => true,
                 Some(config_window) => match crate::macos::app_info::get_app_window().ok() {
                     None => false,
-                    Some(app_window) => crate::soft_match(config_window, &app_window),
+                    Some(app_window) => crate::soft_match(&app_window, config_window),
                 },
             }
     }

@@ -1,26 +1,63 @@
+use super::client::*;
+use super::*;
+use crate::actions_async;
 use crate::hotkey::HotkeyCounter;
+use crate::params::Params;
 use anyhow::Result;
-
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+actions_async!("pt", plugins, {
+    audiosuite,
+    multitap_plugin_selector,
+    send_receive_rx,
+});
 // ============================================================================
 // Command Implementations
 // ============================================================================
 
-async fn keystroke(keys: &[&str]) -> Result<()> {
-    crate::macos::keystroke::send_keystroke(keys)?;
-    std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
+pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let plugin = params.get_string("plugin", "");
+    let button = params.get_string("button", "");
+    let close = params.get_bool("close", false);
+
+    call_plugin(&plugin, &button, close).await?;
+
     Ok(())
 }
-async fn call_menu(menu: &[&str]) -> Result<()> {
-    crate::macos::menu::run_menu_item("Pro Tools", menu)?;
-    std::thread::sleep(std::time::Duration::from_millis(30)); // Wait 50ms
+pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let version = params.get_int("version", 11);
+    let plugin = format!("RX {} Connect", version);
+    let rx_app = format!("RX {}", version);
+
+    let app = crate::macos::app_info::get_current_app()?;
+    if app == "Pro Tools" {
+        // Send to RX for analysis
+        call_plugin(&plugin, "Analyze", false).await?;
+    } else if crate::soft_match(&app, &rx_app) {
+        // Send back to Pro Tools - Cmd+Enter returns to DAW
+        keystroke(&["cmd", "enter"]).await?;
+
+        std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
+        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 2000)?;
+        // Focus Pro Tools and wait for confirmation (switch but don't launch)
+        // let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 2000);
+
+        // Now render the changes back
+        call_plugin(&plugin, "Render", false).await?;
+    }
+
     Ok(())
 }
-async fn click_button(window: &str, button: &str) -> Result<()> {
-    crate::macos::ui_elements::click_button("Pro Tools", window, button)?;
-    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 50ms
+pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let plugins = params.get_string_vec("plugins");
+    let button = params.get_string("button", "");
+    let close = params.get_bool("close", false);
+    let timeout_ms = params.get_timeout_ms("timeout", 500);
+
+    plugin_selector(&plugins, button, close, timeout_ms).await?;
+
     Ok(())
 }
 
@@ -100,10 +137,10 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     }
 
     // Open it
-    call_menu(&["AudioSuite", &category, &plugin_name]).await?;
+    call_menu(&["AudioSuite", &category, plugin_name]).await?;
 
     // Wait for window
-    crate::macos::ui_elements::wait_for_window("Pro Tools", &window, 5000)?;
+    crate::macos::ui_elements::wait_for_window_exists("Pro Tools", &window, 5000)?;
 
     Ok(())
 }

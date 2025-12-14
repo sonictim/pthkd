@@ -1,0 +1,174 @@
+//! ProTools actions (namespace: "pt")
+
+use crate::actions_async;
+// Define all ProTools actions using the async macro
+// Actions are automatically registered with the "pt" namespace
+actions_async!("pt", edit, {
+    crossfade,
+    adjust_clip_to_match_selection,
+    conform_delete,
+    conform_insert,
+    toggle_edit_tool,
+    reset_clip,
+    click_a_button,
+});
+use super::client::*;
+use super::ptsl;
+use super::*;
+use crate::params::Params;
+use anyhow::Result;
+use ptsl::CommandId;
+
+// ============================================================================
+// Command Implementations
+// ============================================================================
+
+pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let preset = params.get_string("preset", "");
+    let crossfade = params.get_bool("crossfade_automation", false);
+    let fill = params.get_bool("fill_selection", false);
+    let sr = pt.get_samplerate().await? / 1000;
+    let adjust = params.get_int("adjust_selection_ms", 0) * sr;
+    println!("adjustment frames: {}", adjust);
+    let mut sel = PtSelectionSamples::new(pt).await?;
+    let io = sel.get_io();
+    sel.set_io(pt, io.0 - adjust, io.1 + adjust).await?;
+    if fill {
+        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
+        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    }
+    let result = pt
+        .cmd::<_, serde_json::Value>(
+            CommandId::CreateFadesBasedOnPreset,
+            ptsl::CreateFadesBasedOnPresetRequestBody {
+                fade_preset_name: preset,
+                auto_adjust_bounds: true,
+            },
+        )
+        .await;
+
+    if result.is_err() {
+        pt.cmd::<_, serde_json::Value>(
+            CommandId::CreateFadesBasedOnPreset,
+            ptsl::CreateFadesBasedOnPresetRequestBody {
+                fade_preset_name: String::new(), // Last used
+                auto_adjust_bounds: true,
+            },
+        )
+        .await?;
+    }
+    if crossfade {
+        let c = sel.get_io();
+        sel.set_io(pt, c.1, c.1).await?;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        sel.set_io(pt, c.0, c.0).await?;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
+
+        let _: serde_json::Value = pt
+            .cmd(
+                CommandId::ClearSpecial,
+                ptsl::ClearSpecialRequestBody {
+                    automation_data_option: ptsl::AutomationDataOptions::AllAutomation.into(),
+                },
+            )
+            .await?;
+
+        // sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
+        // call_menu(&["Edit", "Automation", "Thin All"]).await?;
+        // keystroke(&["cmd", "option", "control", "t"]).await?;
+        sel.set_io(pt, c.0, c.1).await?;
+    }
+    Ok(())
+}
+pub async fn adjust_clip_to_match_selection(
+    _pt: &mut ProtoolsSession,
+    _params: &Params,
+) -> Result<()> {
+    call_menu(&["Edit", "Trim Clip", "To Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "To Fill Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    Ok(())
+}
+pub async fn reset_clip(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    call_menu(&["Edit", "Fades", "Delete"]).await?;
+    call_menu(&["Edit", "Clear Special", "Clip Gain"]).await?;
+    call_menu(&["Edit", "Clear Special", "Clip Effects"]).await?;
+    let result: serde_json::Value = pt
+        .cmd(
+            CommandId::ClearSpecial,
+            ptsl::ClearSpecialRequestBody {
+                automation_data_option: ptsl::AutomationDataOptions::ClipGain.into(),
+            },
+        )
+        .await?;
+    println!("clip gain: {:?}", result);
+    let result: serde_json::Value = pt
+        .cmd(
+            CommandId::ClearSpecial,
+            ptsl::ClearSpecialRequestBody {
+                automation_data_option: ptsl::AutomationDataOptions::ClipEffects.into(),
+            },
+        )
+        .await?;
+    println!("clip effects: {:?}", result);
+    Ok(())
+}
+pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    println!("Running Conform Delete");
+    let mut flag = false;
+    let original_mode = pt.get_edit_mode().await?;
+    pt.set_edit_mode("EMO_Shuffle").await?;
+
+    if pt.get_edit_mode().await? != "EMO_Shuffle" {
+        keystroke(&["cmd", "f1"]).await?;
+        // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+        pt.set_edit_mode("EMO_Shuffle").await?;
+        flag = true;
+    }
+    let _: serde_json::Value = pt.cmd(CommandId::Clear, serde_json::json!({})).await?;
+    pt.set_edit_mode(&original_mode).await?;
+    if flag {
+        keystroke(&["cmd", "f1"]).await?;
+    }
+    Ok(())
+}
+pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    println!("Running Conform Insert");
+    let mut flag = false;
+    let original_mode = pt.get_edit_mode().await?;
+    pt.set_edit_mode("EMO_Shuffle").await?;
+
+    if pt.get_edit_mode().await? != "EMO_Shuffle" {
+        keystroke(&["cmd", "f1"]).await?;
+        // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+        pt.set_edit_mode("EMO_Shuffle").await?;
+        flag = true;
+    }
+    call_menu(&["Edit", "Insert Silence"]).await?;
+    // keystroke(&["cmd", "shift", "e"]).await?;
+    // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+    pt.set_edit_mode(&original_mode).await?;
+    if flag {
+        keystroke(&["cmd", "f1"]).await?;
+    }
+    Ok(())
+}
+pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    let tool = pt.get_edit_tool().await?;
+    if tool != "ET_Selector" {
+        pt.set_edit_tool("ET_Selector").await?;
+    } else {
+        pt.set_edit_tool("ET_GrabberTime").await?;
+    }
+    Ok(())
+}
+pub async fn click_a_button(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let button = params.get_string("button", "");
+    if button.is_empty() {
+        return Ok(());
+    };
+    click_button("Edit", &button).await?;
+    Ok(())
+}

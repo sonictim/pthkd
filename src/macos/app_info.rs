@@ -392,7 +392,7 @@ pub fn focus_application(app_name: &str) -> Result<()> {
             let name = cfstring_to_string(name_nsstring).unwrap_or_default();
 
             // Check for match using soft_match (handles exact and partial)
-            if crate::soft_match(app_name, &name) {
+            if crate::soft_match(&name, app_name) {
                 // Found match! Activate it
                 // NSApplicationActivateAllWindows = 1 << 0 = 1
                 // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
@@ -451,7 +451,7 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
 
             let name = cfstring_to_string(name_nsstring).unwrap_or_default();
 
-            if crate::soft_match(app_name, &name) {
+            if crate::soft_match(&name, app_name) {
                 let pid: i32 = msg_send![app, processIdentifier];
                 return Ok(pid);
             }

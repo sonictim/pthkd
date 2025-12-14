@@ -155,7 +155,7 @@ pub fn get_action(name: &str) -> Option<fn(&Params) -> anyhow::Result<()>> {
     // Check if action is namespaced (contains '.')
     if let Some((namespace, action_name)) = name.split_once('.') {
         match namespace {
-            "pt" => crate::protools::actions::get_action_registry()
+            "pt" => crate::protools::get_action_registry()
                 .get(action_name)
                 .copied(),
             "os" => crate::macos::actions::get_action_registry()
@@ -172,7 +172,7 @@ pub fn get_action(name: &str) -> Option<fn(&Params) -> anyhow::Result<()>> {
             .get(name)
             .copied()
             .or_else(|| {
-                crate::protools::actions::get_action_registry()
+                crate::protools::get_action_registry()
                     .get(name)
                     .copied()
             })

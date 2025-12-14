@@ -51,6 +51,13 @@ macro_rules! actions_sync {
 ///
 /// Usage:
 /// ```ignore
+/// // With explicit module path:
+/// actions_async!("namespace", module_path {
+///     function_name_1,
+///     function_name_2,
+/// });
+///
+/// // Defaults to self (current module):
 /// actions_async!("namespace", {
 ///     function_name_1,
 ///     function_name_2,
@@ -58,40 +65,53 @@ macro_rules! actions_sync {
 /// ```
 #[macro_export]
 macro_rules! actions_async {
-    ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
-        $(
-            pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
-                use std::sync::{Arc, Mutex};
-                let params = params.clone();
+    // Pattern: Module identifier (e.g., tracks, markers)
+    // Generates wrappers in __actions submodule with prefixed registry names
+    ($namespace:expr, $module_id:ident, { $($action_name:ident),* $(,)? }) => {
+        // Generate wrapper functions in __actions submodule to avoid name collisions
+        mod __actions {
+            use super::*;
 
-                // Create a shared error container (None = success, Some(msg) = error)
-                let error = Arc::new(Mutex::new(None::<String>));
-                let error_clone = error.clone();
-
-                $crate::protools::run_command(move || async move {
-                    let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
-                    if let Err(e) = $crate::protools::commands::$action_name(&mut pt, &params).await {
-                        *error_clone.lock().unwrap() = Some(format!("{:#}", e));
-                    }
-                });
-
-                // Wait a moment for the command to start and potentially fail quickly
-                std::thread::sleep(std::time::Duration::from_millis(100));
-
-                // Return the result
-                match error.lock().unwrap().as_ref() {
-                    Some(msg) => Err(anyhow::anyhow!("{}", msg)),
-                    None => Ok(()),
-                }
-            }
-        )*
-
-        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
-            let mut registry = std::collections::HashMap::new();
             $(
-                registry.insert(stringify!($action_name), $action_name as fn(&$crate::params::Params) -> anyhow::Result<()>);
+                pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                    use std::sync::{Arc, Mutex};
+                    let params = params.clone();
+
+                    // Create a shared error container (None = success, Some(msg) = error)
+                    let error = Arc::new(Mutex::new(None::<String>));
+                    let error_clone = error.clone();
+
+                    $crate::protools::run_command(move || async move {
+                        let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
+                        if let Err(e) = super::$action_name(&mut pt, &params).await {
+                            *error_clone.lock().unwrap() = Some(format!("{:#}", e));
+                        }
+                    });
+
+                    // Wait a moment for the command to start and potentially fail quickly
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+
+                    // Return the result
+                    match error.lock().unwrap().as_ref() {
+                        Some(msg) => Err(anyhow::anyhow!("{}", msg)),
+                        None => Ok(()),
+                    }
+                }
             )*
-            registry
+        }
+
+        // Generate uniquely-named registry function using paste crate
+        paste::paste! {
+            pub fn [<get_ $module_id _registry>]() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+                let mut registry = std::collections::HashMap::new();
+                $(
+                    registry.insert(
+                        concat!(stringify!($module_id), "_", stringify!($action_name)),
+                        __actions::$action_name as fn(&$crate::params::Params) -> anyhow::Result<()>
+                    );
+                )*
+                registry
+            }
         }
     };
 }
@@ -134,7 +154,9 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     if notify {
                         match result {
                             Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
-                            Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                            Err(e) => {
+                                macos::show_notification(&format!("❌ {}: {}", action_name, e))
+                            }
                         }
                     }
 
@@ -168,7 +190,12 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
             let action_data = if let Some(hotkeys_mutex) = HOTKEYS.get() {
                 let hotkeys = hotkeys_mutex.lock().unwrap();
                 hotkeys.get(pending.hotkey_index).map(|hotkey| {
-                    (hotkey.action, hotkey.params.clone(), hotkey.notify, hotkey.action_name.clone())
+                    (
+                        hotkey.action,
+                        hotkey.params.clone(),
+                        hotkey.notify,
+                        hotkey.action_name.clone(),
+                    )
                 })
             } else {
                 None
@@ -353,8 +380,8 @@ fn run() -> anyhow::Result<()> {
 /// Note: Log file is cleared on recompile (in build.rs), not on each run
 /// Returns the absolute path to the log file
 fn init_logging() -> anyhow::Result<String> {
-    use std::fs::OpenOptions;
     use std::env;
+    use std::fs::OpenOptions;
 
     let log_file_path = "macrod.log";
 
@@ -400,9 +427,12 @@ pub fn normalize(s: &str) -> String {
 }
 
 /// Soft string matching: case-insensitive, whitespace-insensitive, with partial matching
-pub fn soft_match(s1: &str, s2: &str) -> bool {
-    let s1 = normalize(s1);
-    let s2 = normalize(s2);
+///
+/// Checks if `haystack` contains `needle` (or exact match)
+/// Order matters: soft_match(window_title, search_term)
+pub fn soft_match(haystack: &str, needle: &str) -> bool {
+    let haystack = normalize(haystack);
+    let needle = normalize(needle);
 
-    s1 == s2 || s1.contains(&s2) || s2.contains(&s1)
+    haystack == needle || haystack.contains(&needle)
 }

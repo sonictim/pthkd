@@ -68,7 +68,7 @@ unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
         let name = cfstring_to_string(name_nsstring).unwrap_or_default();
 
         // Check for match using soft_match (handles exact and partial)
-        if crate::soft_match(app_name, &name) {
+        if crate::soft_match(&name, app_name) {
             // Found match! Get its PID
             let pid: i32 = msg_send![app, processIdentifier];
             log::info!(

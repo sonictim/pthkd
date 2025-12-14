@@ -353,67 +353,23 @@ pub fn get_all_running_applications() -> Result<Vec<String>> {
 /// focus_application("Pro")?;         // Falls back to contains()
 /// ```
 pub fn focus_application(app_name: &str) -> Result<()> {
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
 
     unsafe {
-        // Get NSWorkspace class
-        let workspace_class = class!(NSWorkspace);
+        super::helpers::with_running_app(app_name, |app| {
+            // NSApplicationActivateAllWindows = 1 << 0 = 1
+            // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+            // Combine both flags: 1 | 2 = 3
+            let options: usize = 3;
+            let success: bool = msg_send![app, activateWithOptions: options];
 
-        // Call [NSWorkspace sharedWorkspace]
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
-
-        // Call [workspace runningApplications] to get array of all running apps
-        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
-        if running_apps.is_null() {
-            bail!("Failed to get running applications");
-        }
-
-        // Get the count of running applications
-        let count: usize = msg_send![running_apps, count];
-
-        // Find matching app using soft_match (case + whitespace insensitive, with partial matching)
-        for i in 0..count {
-            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
-            if app.is_null() {
-                continue;
+            if success {
+                log::info!("Successfully activated application: {}", app_name);
+                Ok(())
+            } else {
+                bail!("Failed to activate application: {}", app_name);
             }
-
-            // Get the localized name of this app
-            let name_nsstring: *mut c_void = msg_send![app, localizedName];
-            if name_nsstring.is_null() {
-                continue;
-            }
-
-            // Convert to Rust string
-            let name = cfstring_to_string(name_nsstring).unwrap_or_default();
-
-            // Check for match using soft_match (handles exact and partial)
-            if crate::soft_match(&name, app_name) {
-                // Found match! Activate it
-                // NSApplicationActivateAllWindows = 1 << 0 = 1
-                // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
-                // Combine both flags: 1 | 2 = 3
-                let options: usize = 3;
-                let success: bool = msg_send![app, activateWithOptions: options];
-
-                if success {
-                    log::info!(
-                        "Successfully activated application: {} (matched '{}')",
-                        name,
-                        app_name
-                    );
-                    return Ok(());
-                } else {
-                    bail!("Failed to activate application: {}", name);
-                }
-            }
-        }
-
-        bail!("No running application found matching '{}'", app_name)
+        })
     }
 }
 
@@ -421,43 +377,13 @@ pub fn focus_application(app_name: &str) -> Result<()> {
 ///
 /// Uses soft_match for case-insensitive, whitespace-insensitive matching
 pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
 
     unsafe {
-        let workspace_class = class!(NSWorkspace);
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
-
-        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
-        if running_apps.is_null() {
-            bail!("Failed to get running applications");
-        }
-
-        let count: usize = msg_send![running_apps, count];
-
-        for i in 0..count {
-            let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
-            if app.is_null() {
-                continue;
-            }
-
-            let name_nsstring: *mut c_void = msg_send![app, localizedName];
-            if name_nsstring.is_null() {
-                continue;
-            }
-
-            let name = cfstring_to_string(name_nsstring).unwrap_or_default();
-
-            if crate::soft_match(&name, app_name) {
-                let pid: i32 = msg_send![app, processIdentifier];
-                return Ok(pid);
-            }
-        }
-
-        bail!("No running application found matching '{}'", app_name)
+        super::helpers::with_running_app(app_name, |app| {
+            let pid: i32 = msg_send![app, processIdentifier];
+            Ok(pid)
+        })
     }
 }
 

@@ -64,49 +64,38 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 /// ```
 pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
     unsafe {
-        let pid = get_pid_by_name(app_name).context(format!("Failed to find app: {}", app_name))?;
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            // Find the button
+            let button_element = find_button_in_window(window, button_name)?;
 
-        let app_element = AXUIElementCreateApplication(pid);
+            // Click it
+            let press_action = create_cfstring("AXPress");
+            let result = AXUIElementPerformAction(button_element, press_action);
+            CFRelease(press_action);
 
-        // Get the target window
-        let window = if window_name.is_empty() {
-            get_focused_window(app_element)?
-        } else {
-            find_window_by_name(app_element, window_name)?
-        };
-
-        // Find the button
-        let button_element = find_button_in_window(window, button_name)?;
-
-        // Click it
-        let press_action = create_cfstring("AXPress");
-        let result = AXUIElementPerformAction(button_element, press_action);
-        CFRelease(press_action);
-
-        if result != K_AX_ERROR_SUCCESS {
-            bail!(
-                "Failed to press button '{}' (error code: {})",
-                button_name,
-                result
-            );
-        }
-
-        // Clean up
-        CFRelease(button_element);
-        CFRelease(window);
-        CFRelease(app_element);
-
-        log::info!(
-            "✅ Clicked button '{}' in window '{}'",
-            button_name,
-            if window_name.is_empty() {
-                "<focused>"
-            } else {
-                window_name
+            if result != K_AX_ERROR_SUCCESS {
+                bail!(
+                    "Failed to press button '{}' (error code: {})",
+                    button_name,
+                    result
+                );
             }
-        );
 
-        Ok(())
+            // Clean up
+            CFRelease(button_element);
+
+            log::info!(
+                "✅ Clicked button '{}' in window '{}'",
+                button_name,
+                if window_name.is_empty() {
+                    "<focused>"
+                } else {
+                    window_name
+                }
+            );
+
+            Ok(())
+        })
     }
 }
 
@@ -115,7 +104,7 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
 // ============================================================================
 
 /// Get the currently focused window
-unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<AXUIElementRef> {
+pub(crate) unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<AXUIElementRef> {
     let attr = create_cfstring("AXFocusedWindow");
     let mut window: *mut c_void = ptr::null_mut();
 
@@ -134,7 +123,7 @@ unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<AXUIElementR
 }
 
 /// Find a window by name using soft matching
-unsafe fn find_window_by_name(
+pub(crate) unsafe fn find_window_by_name(
     app_element: AXUIElementRef,
     window_name: &str,
 ) -> Result<AXUIElementRef> {

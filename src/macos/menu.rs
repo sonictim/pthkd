@@ -30,58 +30,13 @@ pub struct MenuBar {
 ///
 /// Uses soft_match for flexible name matching (case-insensitive, partial matches)
 unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
 
-    // Get NSWorkspace class
-    let workspace_class = class!(NSWorkspace);
-
-    // Call [NSWorkspace sharedWorkspace]
-    let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-    if workspace.is_null() {
-        bail!("Failed to get NSWorkspace");
-    }
-
-    // Call [workspace runningApplications] to get array of all running apps
-    let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
-    if running_apps.is_null() {
-        bail!("Failed to get running applications");
-    }
-
-    // Get the count of running applications
-    let count: usize = msg_send![running_apps, count];
-
-    // Find matching app using soft_match (case + whitespace insensitive, with partial matching)
-    for i in 0..count {
-        let app: *mut AnyObject = msg_send![running_apps, objectAtIndex: i];
-        if app.is_null() {
-            continue;
-        }
-
-        // Get the localized name and PID of this app
-        let name_nsstring: *mut c_void = msg_send![app, localizedName];
-        if name_nsstring.is_null() {
-            continue;
-        }
-
-        // Convert to Rust string
-        let name = cfstring_to_string(name_nsstring).unwrap_or_default();
-
-        // Check for match using soft_match (handles exact and partial)
-        if crate::soft_match(&name, app_name) {
-            // Found match! Get its PID
-            let pid: i32 = msg_send![app, processIdentifier];
-            log::info!(
-                "Found app '{}' (matched '{}'), PID: {}",
-                name,
-                app_name,
-                pid
-            );
-            return Ok(pid);
-        }
-    }
-
-    bail!("Could not find PID for application: {}", app_name)
+    super::helpers::with_running_app(app_name, |app| {
+        let pid: i32 = msg_send![app, processIdentifier];
+        log::info!("Found app '{}', PID: {}", app_name, pid);
+        Ok(pid)
+    })
 }
 
 /// Get the menu structure for a specific application

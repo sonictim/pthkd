@@ -11,6 +11,7 @@
 
 // FFI declarations (shared across modules)
 pub mod ffi;
+pub mod helpers;
 
 // Stable modules
 pub mod events;

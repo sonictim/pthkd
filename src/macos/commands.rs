@@ -294,3 +294,39 @@ pub fn fast_pw(_params: &Params) -> Result<()> {
     send_keystroke(&["enter"])?;
     Ok(())
 }
+
+pub fn list_window_titles(params: &Params) -> Result<()> {
+    use anyhow::Context;
+
+    let app_name = params.get_string("app", "");
+
+    if app_name.is_empty() {
+        // If no app specified, use current app
+        let current_app = super::app_info::get_current_app()?;
+        log::info!("Getting window titles for current app: {}", current_app);
+
+        let titles = super::ui_elements::get_window_titles(&current_app)
+            .context("Failed to get window titles")?;
+
+        log::info!("Found {} windows:", titles.len());
+        println!("\n=== Window Titles for '{}' ({} windows) ===", current_app, titles.len());
+        for (i, title) in titles.iter().enumerate() {
+            log::info!("  {}. {}", i + 1, title);
+            println!("  {}. {}", i + 1, title);
+        }
+    } else {
+        log::info!("Getting window titles for app: {}", app_name);
+
+        let titles = super::ui_elements::get_window_titles(&app_name)
+            .context("Failed to get window titles")?;
+
+        log::info!("Found {} windows:", titles.len());
+        println!("\n=== Window Titles for '{}' ({} windows) ===", app_name, titles.len());
+        for (i, title) in titles.iter().enumerate() {
+            log::info!("  {}. {}", i + 1, title);
+            println!("  {}. {}", i + 1, title);
+        }
+    }
+
+    Ok(())
+}

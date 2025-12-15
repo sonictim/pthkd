@@ -38,11 +38,27 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
     } else if crate::soft_match(&app, &rx_app) {
         // Send back to Pro Tools - Cmd+Enter returns to DAW
         keystroke(&["cmd", "enter"]).await?;
-
-        std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
-        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 2000)?;
+        let mut windows = 2;
+        // while windows == 1 {
+        //     let app_windows = crate::macos::ui_elements::get_window_titles(&app)?;
+        //     windows = app_windows
+        //         .into_iter()
+        //         .filter(|w| w == "Pro Tools 1")
+        //         .count();
+        // }
+        // println!("Multiple windows detected");
+        while windows > 1 {
+            std::thread::sleep(std::time::Duration::from_millis(100)); // Wait 50ms
+            let app_windows = crate::macos::ui_elements::get_window_titles(&app)?;
+            windows = app_windows
+                .into_iter()
+                .filter(|w| w == "Pro Tools 1")
+                .count();
+        }
+        println!("one window detected");
+        let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 50);
+        let _ = crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 50);
         // Focus Pro Tools and wait for confirmation (switch but don't launch)
-        // let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 2000);
 
         // Now render the changes back
         call_plugin(&plugin, "Render", false).await?;

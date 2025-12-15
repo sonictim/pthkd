@@ -18,6 +18,9 @@ unsafe extern "C" {
     /// Release a Core Foundation object
     pub fn CFRelease(cf: *mut c_void);
 
+    /// Retain a Core Foundation object
+    pub fn CFRetain(cf: *mut c_void) -> *mut c_void;
+
     /// Create a CFString from a C string
     pub fn CFStringCreateWithCString(
         alloc: *mut c_void,

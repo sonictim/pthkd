@@ -190,7 +190,11 @@ where
         super::ui_elements::find_window_by_name(app_element.as_ptr(), window_name)?
     };
 
-    let window = AXElement::new(window);
+    // Note: window is a retained reference (from AXUIElementCopyAttributeValue),
+    // so we need to release it after use
+    let result = f(app_element.as_ptr(), window);
 
-    f(app_element.as_ptr(), window.as_ptr())
+    CFRelease(window);
+
+    result
 }

@@ -41,7 +41,9 @@ action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.test_input_dialog"
+action = "os.list_window_titles"
+app = "iZotope RX 11"
+notify = true
 
 [[hotkey]]
 keys = ["cmd", "shift", "t"]
@@ -154,6 +156,7 @@ close = true
 
 [[hotkey]]
 keys = ["control", "pad_multiply"]
+# keys = ["control", "period"]
 action = "pt.plugins_send_receive_rx"
 [hotkey.params]
 version = 11

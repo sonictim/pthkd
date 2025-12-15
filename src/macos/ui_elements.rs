@@ -122,6 +122,62 @@ pub(crate) unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<A
     Ok(window)
 }
 
+/// Get all window titles for an application
+///
+/// Returns a vector of window titles in the order they appear in the window list
+///
+/// # Arguments
+/// * `app_name` - Name of the application
+///
+/// # Example
+/// ```ignore
+/// let titles = get_window_titles("iZotope RX")?;
+/// // Returns: ["iZotope RX 11 Audio Editor", "iZotope RX 11 Audio Editor"]
+/// // (2 windows with same title means render dialog is open)
+/// ```
+pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        let pid = get_pid_by_name(app_name)?;
+        let app_element = AXUIElementCreateApplication(pid);
+
+        // Get all windows
+        let windows_attr = create_cfstring("AXWindows");
+        let mut windows_value: *mut c_void = ptr::null_mut();
+
+        let result = AXUIElementCopyAttributeValue(app_element, windows_attr, &mut windows_value);
+        CFRelease(windows_attr);
+        CFRelease(app_element);
+
+        if result != K_AX_ERROR_SUCCESS || windows_value.is_null() {
+            bail!("Failed to get windows list");
+        }
+
+        let windows_count = CFArrayGetCount(windows_value);
+        let mut titles = Vec::new();
+
+        // Collect all window titles
+        for i in 0..windows_count {
+            let window = CFArrayGetValueAtIndex(windows_value, i) as AXUIElementRef;
+
+            let title_attr = create_cfstring("AXTitle");
+            let mut title_value: *mut c_void = ptr::null_mut();
+
+            AXUIElementCopyAttributeValue(window, title_attr, &mut title_value);
+            CFRelease(title_attr);
+
+            if let Some(title) = cfstring_to_string(title_value) {
+                if !title_value.is_null() {
+                    CFRelease(title_value);
+                }
+                titles.push(title);
+            }
+        }
+
+        CFRelease(windows_value);
+        Ok(titles)
+    }
+}
+
 /// Find a window by name using soft matching
 pub(crate) unsafe fn find_window_by_name(
     app_element: AXUIElementRef,
@@ -157,7 +213,8 @@ pub(crate) unsafe fn find_window_by_name(
 
             // Use soft_match from main.rs
             if crate::soft_match(&title, window_name) {
-                // Found it! Release windows array and return this window
+                // Found it! Retain the window before returning (CFArrayGetValueAtIndex returns non-retained)
+                CFRetain(window);
                 CFRelease(windows_value);
                 return Ok(window);
             }

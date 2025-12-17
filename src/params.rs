@@ -32,12 +32,12 @@ impl Params {
     /// let direction = params.get_str("direction", "next");
     /// ```
     pub fn get_str<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
-        self.0
-            .get(key)
-            .and_then(|v| v.as_str())
-            .unwrap_or(default)
+        self.0.get(key).and_then(|v| v.as_str()).unwrap_or(default)
     }
 
+    pub fn get_ostr<'a>(&'a self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|v| v.as_str())
+    }
     /// Get a string parameter with a default value
     ///
     /// Returns an owned String. Use get_str() if you don't need ownership.
@@ -70,10 +70,10 @@ impl Params {
     /// let reverse = params.get_bool("reverse", false);
     /// ```
     pub fn get_bool(&self, key: &str, default: bool) -> bool {
-        self.0
-            .get(key)
-            .and_then(|v| v.as_bool())
-            .unwrap_or(default)
+        self.0.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+    }
+    pub fn get_obool(&self, key: &str) -> Option<bool> {
+        self.0.get(key).and_then(|v| v.as_bool())
     }
 
     /// Get a float parameter with a default value

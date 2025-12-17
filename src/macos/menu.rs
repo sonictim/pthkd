@@ -30,13 +30,15 @@ pub struct MenuBar {
 ///
 /// Uses soft_match for flexible name matching (case-insensitive, partial matches)
 unsafe fn get_pid_for_app(app_name: &str) -> Result<i32> {
-    use objc2::msg_send;
+    unsafe {
+        use objc2::msg_send;
 
-    super::helpers::with_running_app(app_name, |app| {
-        let pid: i32 = msg_send![app, processIdentifier];
-        log::info!("Found app '{}', PID: {}", app_name, pid);
-        Ok(pid)
-    })
+        super::helpers::with_running_app(app_name, |app| {
+            let pid: i32 = msg_send![app, processIdentifier];
+            log::info!("Found app '{}', PID: {}", app_name, pid);
+            Ok(pid)
+        })
+    }
 }
 
 /// Get the menu structure for a specific application
@@ -128,10 +130,10 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
 
         let mut menus = Vec::new();
         for i in 0..children_array.len() {
-            if let Some(menu_ref) = children_array.get(i) {
-                if let Ok(menu_item) = get_menu_item_details(*menu_ref as AXUIElementRef) {
-                    menus.push(menu_item);
-                }
+            if let Some(menu_ref) = children_array.get(i)
+                && let Ok(menu_item) = get_menu_item_details(*menu_ref as AXUIElementRef)
+            {
+                menus.push(menu_item);
             }
         }
 
@@ -144,73 +146,75 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
 
 /// Helper function to recursively get menu item details
 unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
-    use core_foundation::base::TCFType;
-    use core_foundation::string::{CFString, CFStringRef};
-    use std::ffi::c_void;
+    unsafe {
+        use core_foundation::base::TCFType;
+        use core_foundation::string::{CFString, CFStringRef};
+        use std::ffi::c_void;
 
-    // Get title
-    let title_key = CFString::from_static_string("AXTitle");
-    let mut title_value: *mut c_void = std::ptr::null_mut();
-    AXUIElementCopyAttributeValue(
-        element,
-        title_key.as_concrete_TypeRef() as *mut c_void,
-        &mut title_value,
-    );
+        // Get title
+        let title_key = CFString::from_static_string("AXTitle");
+        let mut title_value: *mut c_void = std::ptr::null_mut();
+        AXUIElementCopyAttributeValue(
+            element,
+            title_key.as_concrete_TypeRef() as *mut c_void,
+            &mut title_value,
+        );
 
-    let title = if !title_value.is_null() {
-        let cf_string = CFString::wrap_under_create_rule(title_value as CFStringRef);
-        cf_string.to_string()
-    } else {
-        String::from("(no title)")
-    };
+        let title = if !title_value.is_null() {
+            let cf_string = CFString::wrap_under_create_rule(title_value as CFStringRef);
+            cf_string.to_string()
+        } else {
+            String::from("(no title)")
+        };
 
-    // Get enabled state
-    let enabled_key = CFString::from_static_string("AXEnabled");
-    let mut enabled_value: *mut c_void = std::ptr::null_mut();
-    AXUIElementCopyAttributeValue(
-        element,
-        enabled_key.as_concrete_TypeRef() as *mut c_void,
-        &mut enabled_value,
-    );
+        // Get enabled state
+        let enabled_key = CFString::from_static_string("AXEnabled");
+        let mut enabled_value: *mut c_void = std::ptr::null_mut();
+        AXUIElementCopyAttributeValue(
+            element,
+            enabled_key.as_concrete_TypeRef() as *mut c_void,
+            &mut enabled_value,
+        );
 
-    let enabled = if !enabled_value.is_null() {
-        let cf_bool =
-            core_foundation::boolean::CFBoolean::wrap_under_get_rule(enabled_value as *const _);
-        cf_bool.into()
-    } else {
-        true
-    };
+        let enabled = if !enabled_value.is_null() {
+            let cf_bool =
+                core_foundation::boolean::CFBoolean::wrap_under_get_rule(enabled_value as *const _);
+            cf_bool.into()
+        } else {
+            true
+        };
 
-    // Get children (submenu items)
-    let children_key = CFString::from_static_string("AXChildren");
-    let mut children_value: *mut c_void = std::ptr::null_mut();
-    AXUIElementCopyAttributeValue(
-        element,
-        children_key.as_concrete_TypeRef() as *mut c_void,
-        &mut children_value,
-    );
+        // Get children (submenu items)
+        let children_key = CFString::from_static_string("AXChildren");
+        let mut children_value: *mut c_void = std::ptr::null_mut();
+        AXUIElementCopyAttributeValue(
+            element,
+            children_key.as_concrete_TypeRef() as *mut c_void,
+            &mut children_value,
+        );
 
-    let mut children = Vec::new();
-    if !children_value.is_null() {
-        let children_array =
-            core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
-                children_value as *const _,
-            );
+        let mut children = Vec::new();
+        if !children_value.is_null() {
+            let children_array =
+                core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
+                    children_value as *const _,
+                );
 
-        for i in 0..children_array.len() {
-            if let Some(child_ref) = children_array.get(i) {
-                if let Ok(child_item) = get_menu_item_details(*child_ref as AXUIElementRef) {
+            for i in 0..children_array.len() {
+                if let Some(child_ref) = children_array.get(i)
+                    && let Ok(child_item) = get_menu_item_details(*child_ref as AXUIElementRef)
+                {
                     children.push(child_item);
                 }
             }
         }
-    }
 
-    Ok(MenuItem {
-        title,
-        enabled,
-        children,
-    })
+        Ok(MenuItem {
+            title,
+            enabled,
+            children,
+        })
+    }
 }
 
 // ============================================================================
@@ -228,104 +232,110 @@ unsafe fn navigate_to_menu_item(
     app_name: &str,
     menu_path: &[&str],
 ) -> Result<(AXUIElementRef, AXUIElementRef, AXUIElementRef)> {
-    use core_foundation::base::TCFType;
-    use core_foundation::string::CFString;
-    use std::ffi::c_void;
+    unsafe {
+        use core_foundation::base::TCFType;
+        use core_foundation::string::CFString;
+        use std::ffi::c_void;
 
-    if menu_path.is_empty() {
-        bail!("Menu path cannot be empty");
-    }
-
-    if !crate::macos::app_info::has_accessibility_permission() {
-        bail!("Accessibility permissions not granted");
-    }
-
-    let pid = get_pid_for_app(app_name)?;
-    let app_ref = AXUIElementCreateApplication(pid);
-    if app_ref.is_null() {
-        bail!("Failed to create AXUIElement for application");
-    }
-
-    // Get the menu bar
-    let menu_bar_key = CFString::from_static_string("AXMenuBar");
-    let mut menu_bar_value: *mut c_void = std::ptr::null_mut();
-
-    let result = AXUIElementCopyAttributeValue(
-        app_ref,
-        menu_bar_key.as_concrete_TypeRef() as *mut c_void,
-        &mut menu_bar_value,
-    );
-
-    if result != 0 || menu_bar_value.is_null() {
-        CFRelease(app_ref);
-        bail!("Failed to get menu bar (error: {})", result);
-    }
-
-    let menu_bar_ref = menu_bar_value;
-    let mut current_element = menu_bar_ref;
-
-    // Navigate through the menu path
-    for (i, &menu_title) in menu_path.iter().enumerate() {
-        let children_key = CFString::from_static_string("AXChildren");
-        let mut children_value: *mut c_void = std::ptr::null_mut();
-
-        let result = AXUIElementCopyAttributeValue(
-            current_element,
-            children_key.as_concrete_TypeRef() as *mut c_void,
-            &mut children_value,
-        );
-
-        if result != 0 || children_value.is_null() {
-            CFRelease(menu_bar_ref);
-            CFRelease(app_ref);
-            bail!("Failed to get children for menu level {} ({})", i, menu_title);
+        if menu_path.is_empty() {
+            bail!("Menu path cannot be empty");
         }
 
-        let children_array =
-            core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
-                children_value as *const _,
+        if !crate::macos::app_info::has_accessibility_permission() {
+            bail!("Accessibility permissions not granted");
+        }
+
+        let pid = get_pid_for_app(app_name)?;
+        let app_ref = AXUIElementCreateApplication(pid);
+        if app_ref.is_null() {
+            bail!("Failed to create AXUIElement for application");
+        }
+
+        // Get the menu bar
+        let menu_bar_key = CFString::from_static_string("AXMenuBar");
+        let mut menu_bar_value: *mut c_void = std::ptr::null_mut();
+
+        let result = AXUIElementCopyAttributeValue(
+            app_ref,
+            menu_bar_key.as_concrete_TypeRef() as *mut c_void,
+            &mut menu_bar_value,
+        );
+
+        if result != 0 || menu_bar_value.is_null() {
+            CFRelease(app_ref);
+            bail!("Failed to get menu bar (error: {})", result);
+        }
+
+        let menu_bar_ref = menu_bar_value;
+        let mut current_element = menu_bar_ref;
+
+        // Navigate through the menu path
+        for (i, &menu_title) in menu_path.iter().enumerate() {
+            let children_key = CFString::from_static_string("AXChildren");
+            let mut children_value: *mut c_void = std::ptr::null_mut();
+
+            let result = AXUIElementCopyAttributeValue(
+                current_element,
+                children_key.as_concrete_TypeRef() as *mut c_void,
+                &mut children_value,
             );
 
-        // Find the menu item with matching title
-        let mut found_element: Option<AXUIElementRef> = None;
-        for j in 0..children_array.len() {
-            if let Some(child) = children_array.get(j) {
-                let child = *child as AXUIElementRef;
-                let title_key = CFString::from_static_string("AXTitle");
-                let mut title_value: *mut c_void = std::ptr::null_mut();
+            if result != 0 || children_value.is_null() {
+                CFRelease(menu_bar_ref);
+                CFRelease(app_ref);
+                bail!(
+                    "Failed to get children for menu level {} ({})",
+                    i,
+                    menu_title
+                );
+            }
 
-                AXUIElementCopyAttributeValue(
-                    child,
-                    title_key.as_concrete_TypeRef() as *mut c_void,
-                    &mut title_value,
+            let children_array =
+                core_foundation::array::CFArray::<CFAXUIElementRef>::wrap_under_get_rule(
+                    children_value as *const _,
                 );
 
-                if !title_value.is_null() {
-                    let cf_string = CFString::wrap_under_create_rule(title_value as *const _);
-                    let title = cf_string.to_string();
+            // Find the menu item with matching title
+            let mut found_element: Option<AXUIElementRef> = None;
+            for j in 0..children_array.len() {
+                if let Some(child) = children_array.get(j) {
+                    let child = *child as AXUIElementRef;
+                    let title_key = CFString::from_static_string("AXTitle");
+                    let mut title_value: *mut c_void = std::ptr::null_mut();
 
-                    if crate::normalize(&title) == crate::normalize(menu_title) {
-                        // Found the item!
-                        if i == menu_path.len() - 1 {
-                            // This is the final item - return it
-                            return Ok((child, menu_bar_ref, app_ref));
-                        } else {
-                            // Navigate deeper into submenu
-                            let mut submenu_value: *mut c_void = std::ptr::null_mut();
-                            AXUIElementCopyAttributeValue(
-                                child,
-                                children_key.as_concrete_TypeRef() as *mut c_void,
-                                &mut submenu_value,
-                            );
+                    AXUIElementCopyAttributeValue(
+                        child,
+                        title_key.as_concrete_TypeRef() as *mut c_void,
+                        &mut title_value,
+                    );
 
-                            if !submenu_value.is_null() {
-                                let submenu_array = core_foundation::array::CFArray::<
-                                    CFAXUIElementRef,
-                                >::wrap_under_get_rule(
-                                    submenu_value as *const _
+                    if !title_value.is_null() {
+                        let cf_string = CFString::wrap_under_create_rule(title_value as *const _);
+                        let title = cf_string.to_string();
+
+                        if crate::normalize(&title) == crate::normalize(menu_title) {
+                            // Found the item!
+                            if i == menu_path.len() - 1 {
+                                // This is the final item - return it
+                                return Ok((child, menu_bar_ref, app_ref));
+                            } else {
+                                // Navigate deeper into submenu
+                                let mut submenu_value: *mut c_void = std::ptr::null_mut();
+                                AXUIElementCopyAttributeValue(
+                                    child,
+                                    children_key.as_concrete_TypeRef() as *mut c_void,
+                                    &mut submenu_value,
                                 );
-                                if submenu_array.len() > 0 {
-                                    if let Some(submenu) = submenu_array.get(0) {
+
+                                if !submenu_value.is_null() {
+                                    let submenu_array = core_foundation::array::CFArray::<
+                                        CFAXUIElementRef,
+                                    >::wrap_under_get_rule(
+                                        submenu_value as *const _
+                                    );
+                                    if !submenu_array.is_empty()
+                                        && let Some(submenu) = submenu_array.get(0)
+                                    {
                                         current_element = *submenu as AXUIElementRef;
                                         found_element = Some(current_element);
                                         break;
@@ -336,18 +346,18 @@ unsafe fn navigate_to_menu_item(
                     }
                 }
             }
+
+            if found_element.is_none() {
+                CFRelease(menu_bar_ref);
+                CFRelease(app_ref);
+                bail!("Could not find menu item: {} at level {}", menu_title, i);
+            }
         }
 
-        if found_element.is_none() {
-            CFRelease(menu_bar_ref);
-            CFRelease(app_ref);
-            bail!("Could not find menu item: {} at level {}", menu_title, i);
-        }
+        CFRelease(menu_bar_ref);
+        CFRelease(app_ref);
+        bail!("Menu navigation completed but target not found")
     }
-
-    CFRelease(menu_bar_ref);
-    CFRelease(app_ref);
-    bail!("Menu navigation completed but target not found")
 }
 
 /// Check if a menu item exists
@@ -386,8 +396,8 @@ pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> bool {
 /// ```
 pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> bool {
     use core_foundation::base::TCFType;
-    use core_foundation::string::CFString;
     use core_foundation::boolean::CFBoolean;
+    use core_foundation::string::CFString;
     use std::ffi::c_void;
 
     unsafe {
@@ -441,11 +451,11 @@ pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
 
         // Click the item
         let press_key = CFString::from_static_string("AXPress");
-        let press_result = AXUIElementPerformAction(
-            item_ref,
-            press_key.as_concrete_TypeRef() as *mut c_void,
-        );
+        let press_result =
+            AXUIElementPerformAction(item_ref, press_key.as_concrete_TypeRef() as *mut c_void);
 
+        // Note: item_ref is a borrowed reference from CFArray::get() in navigate_to_menu_item,
+        // so we should NOT CFRelease it. Only release the refs we created.
         CFRelease(menu_bar_ref);
         CFRelease(app_ref);
 
@@ -463,5 +473,3 @@ pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
 pub fn run_menu_item(app_name: &str, menu_path: &[&str]) -> Result<()> {
     menu_item_run(app_name, menu_path)
 }
-
-use std::ffi::c_void;

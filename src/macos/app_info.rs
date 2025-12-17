@@ -53,7 +53,8 @@ pub fn get_current_app() -> Result<String> {
         }
 
         // Convert NSString to Rust String using CFString functions
-        let name = cfstring_to_string(name_nsstring as *mut c_void).unwrap_or_else(|| String::from("Unknown"));
+        let name = cfstring_to_string(name_nsstring as *mut c_void)
+            .unwrap_or_else(|| String::from("Unknown"));
 
         Ok(name)
     }
@@ -324,10 +325,10 @@ pub fn get_all_running_applications() -> Result<Vec<String>> {
             }
 
             // Convert to Rust string
-            if let Some(name) = cfstring_to_string(name_nsstring) {
-                if !name.is_empty() {
-                    app_names.push(name);
-                }
+            if let Some(name) = cfstring_to_string(name_nsstring)
+                && !name.is_empty()
+            {
+                app_names.push(name);
             }
         }
 
@@ -398,12 +399,18 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
 /// ```ignore
 /// launch_application("Pro Tools")?;
 /// ```
-fn launch_application(app_name: &str) -> Result<()> {
+pub fn launch_application(app_name: &str) -> Result<()> {
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
 
-    log::warn!("⚠️  launch_application called with app_name: '{}'", app_name);
-    log::warn!("⚠️  Stack trace: {:?}", std::backtrace::Backtrace::capture());
+    log::warn!(
+        "⚠️  launch_application called with app_name: '{}'",
+        app_name
+    );
+    log::warn!(
+        "⚠️  Stack trace: {:?}",
+        std::backtrace::Backtrace::capture()
+    );
 
     unsafe {
         let workspace_class = class!(NSWorkspace);

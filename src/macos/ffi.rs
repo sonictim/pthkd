@@ -108,21 +108,21 @@ unsafe extern "C" {
 // ============================================================================
 
 /// Helper to create a CFString from a Rust &str
-pub unsafe fn create_cfstring(s: &str) -> *mut c_void {
+pub unsafe fn create_cfstring(s: &str) -> *mut c_void { unsafe {
     let c_str = std::ffi::CString::new(s).unwrap();
     CFStringCreateWithCString(std::ptr::null_mut(), c_str.as_ptr(), K_CF_STRING_ENCODING_UTF8)
-}
+}}
 
 /// Check if a Core Foundation object is a CFString
-pub unsafe fn is_cfstring(value: *mut c_void) -> bool {
+pub unsafe fn is_cfstring(value: *mut c_void) -> bool { unsafe {
     if value.is_null() {
         return false;
     }
     CFGetTypeID(value) == CFStringGetTypeID()
-}
+}}
 
 /// Helper to convert CFString to Rust String
-pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
+pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> { unsafe {
     if cfstring.is_null() {
         return None;
     }
@@ -155,4 +155,4 @@ pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
     } else {
         None
     }
-}
+}}

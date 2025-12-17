@@ -74,6 +74,7 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
             CFRelease(press_action);
 
             if result != K_AX_ERROR_SUCCESS {
+                CFRelease(button_element);
                 bail!(
                     "Failed to press button '{}' (error code: {})",
                     button_name,
@@ -81,7 +82,6 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
                 );
             }
 
-            // Clean up
             CFRelease(button_element);
 
             log::info!(
@@ -140,7 +140,7 @@ pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Resu
             let cf_number = CFNumberCreate(
                 std::ptr::null(),
                 9, // kCFNumberSInt32Type
-                &num_value as *const i32 as *const c_void
+                &num_value as *const i32 as *const c_void,
             );
 
             // Set the value
@@ -151,7 +151,11 @@ pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Resu
 
             if result != K_AX_ERROR_SUCCESS {
                 CFRelease(checkbox_element);
-                bail!("Failed to check checkbox '{}' (error code: {})", checkbox_name, result);
+                bail!(
+                    "Failed to check checkbox '{}' (error code: {})",
+                    checkbox_name,
+                    result
+                );
             }
 
             CFRelease(checkbox_element);
@@ -162,7 +166,11 @@ pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Resu
 }
 
 /// Get menu items from a popup button
-pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str) -> Result<Vec<String>> {
+pub fn get_popup_menu_items(
+    app_name: &str,
+    window_name: &str,
+    popup_name: &str,
+) -> Result<Vec<String>> {
     unsafe {
         super::helpers::with_app_window(app_name, window_name, |_app, window| {
             // Find the popup button
@@ -178,7 +186,10 @@ pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str)
             // Note: Some apps (like Pro Tools) return error codes even though the popup opens
             // For example, Pro Tools returns -25204 (K_AX_ERROR_INVALID_UI_ELEMENT) but the popup still opens
             if result != K_AX_ERROR_SUCCESS {
-                println!("  ⚠️  AXPress returned error code {} (but popup may still open)", result);
+                println!(
+                    "  ⚠️  AXPress returned error code {} (but popup may still open)",
+                    result
+                );
             } else {
                 println!("  ✅ AXPress succeeded");
             }
@@ -209,7 +220,11 @@ pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str)
                 // Try method 2: Look in children
                 let children_attr = create_cfstring("AXChildren");
                 let mut children_value: *mut c_void = ptr::null_mut();
-                let result = AXUIElementCopyAttributeValue(popup_element, children_attr, &mut children_value);
+                let result = AXUIElementCopyAttributeValue(
+                    popup_element,
+                    children_attr,
+                    &mut children_value,
+                );
                 CFRelease(children_attr);
 
                 if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
@@ -261,48 +276,49 @@ pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str)
 
 /// Get menu item titles from a menu element
 unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> {
-    let mut items = Vec::new();
+    unsafe {
+        let mut items = Vec::new();
 
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(menu, children_attr, &mut children_value);
-    CFRelease(children_attr);
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(menu, children_attr, &mut children_value);
+        CFRelease(children_attr);
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
 
-            // Get the title of this menu item
-            let title_attr = create_cfstring("AXTitle");
-            let mut title_value: *mut c_void = ptr::null_mut();
-            AXUIElementCopyAttributeValue(child, title_attr, &mut title_value);
-            CFRelease(title_attr);
+                // Get the title of this menu item
+                let title_attr = create_cfstring("AXTitle");
+                let mut title_value: *mut c_void = ptr::null_mut();
+                AXUIElementCopyAttributeValue(child, title_attr, &mut title_value);
+                CFRelease(title_attr);
 
-            if let Some(title) = cfstring_to_string(title_value) {
-                if !title_value.is_null() {
-                    CFRelease(title_value);
-                }
-                if !title.is_empty() {
-                    items.push(title);
+                if let Some(title) = cfstring_to_string(title_value) {
+                    if !title_value.is_null() {
+                        CFRelease(title_value);
+                    }
+                    if !title.is_empty() {
+                        items.push(title);
+                    }
                 }
             }
+
+            CFRelease(children_value);
         }
 
-        CFRelease(children_value);
+        Ok(items)
     }
-
-    Ok(items)
 }
 
 /// Find a popup button in a window
-unsafe fn find_popup_in_window(
-    window: AXUIElementRef,
-    popup_name: &str,
-) -> Result<AXUIElementRef> {
-    find_popup_in_element(window, popup_name)
-        .with_context(|| format!("Popup '{}' not found in window", popup_name))
+unsafe fn find_popup_in_window(window: AXUIElementRef, popup_name: &str) -> Result<AXUIElementRef> {
+    unsafe {
+        find_popup_in_element(window, popup_name)
+            .with_context(|| format!("Popup '{}' not found in window", popup_name))
+    }
 }
 
 /// Recursively find a popup button by name
@@ -310,53 +326,61 @@ unsafe fn find_popup_in_element(
     element: AXUIElementRef,
     popup_name: &str,
 ) -> Result<AXUIElementRef> {
-    // Check if this element is a popup button with matching name
-    let role_attr = create_cfstring("AXRole");
-    let mut role_value: *mut c_void = ptr::null_mut();
-    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
-    CFRelease(role_attr);
+    unsafe {
+        // Check if this element is a popup button with matching name
+        let role_attr = create_cfstring("AXRole");
+        let mut role_value: *mut c_void = ptr::null_mut();
+        AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+        CFRelease(role_attr);
 
-    if let Some(role) = cfstring_to_string(role_value) {
-        if !role_value.is_null() {
-            CFRelease(role_value);
-        }
+        if let Some(role) = cfstring_to_string(role_value) {
+            if !role_value.is_null() {
+                CFRelease(role_value);
+            }
 
-        if role == "AXPopUpButton" {
-            let title_attr = create_cfstring("AXTitle");
-            let mut title_value: *mut c_void = ptr::null_mut();
-            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
-            CFRelease(title_attr);
+            if role == "AXPopUpButton" {
+                let title_attr = create_cfstring("AXTitle");
+                let mut title_value: *mut c_void = ptr::null_mut();
+                AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+                CFRelease(title_attr);
 
-            if let Some(title) = cfstring_to_string(title_value) {
-                if !title_value.is_null() {
-                    CFRelease(title_value);
-                }
+                if let Some(title) = cfstring_to_string(title_value) {
+                    if !title_value.is_null() {
+                        CFRelease(title_value);
+                    }
 
-                if crate::soft_match(&title, popup_name) {
-                    return Ok(element);
+                    if crate::soft_match(&title, popup_name) {
+                        // Found it! Retain before returning so caller owns it
+                        CFRetain(element);
+                        return Ok(element);
+                    }
                 }
             }
         }
-    }
 
-    // Search children recursively
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
-    CFRelease(children_attr);
+        // Search children recursively
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+        CFRelease(children_attr);
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
-            if let Ok(popup) = find_popup_in_element(child, popup_name) {
-                return Ok(popup);
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                if let Ok(popup) = find_popup_in_element(child, popup_name) {
+                    CFRelease(children_value);
+                    // popup is already retained by the recursive call
+                    return Ok(popup);
+                }
             }
-        }
-    }
 
-    bail!("Popup not found")
+            CFRelease(children_value); // ✅ Release after loop
+        }
+
+        bail!("Popup not found")
+    }
 }
 
 /// Uncheck a checkbox (set to unchecked state)
@@ -365,14 +389,17 @@ pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Re
         super::helpers::with_app_window(app_name, window_name, |_app, window| {
             let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
 
-            println!("Found checkbox '{}', setting to UNCHECKED...", checkbox_name);
+            println!(
+                "Found checkbox '{}', setting to UNCHECKED...",
+                checkbox_name
+            );
 
             // Create a CFNumber for value 0 (unchecked)
             let num_value: i32 = 0;
             let cf_number = CFNumberCreate(
                 std::ptr::null(),
                 9, // kCFNumberSInt32Type
-                &num_value as *const i32 as *const c_void
+                &num_value as *const i32 as *const c_void,
             );
 
             // Set the value
@@ -383,7 +410,11 @@ pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Re
 
             if result != K_AX_ERROR_SUCCESS {
                 CFRelease(checkbox_element);
-                bail!("Failed to uncheck checkbox '{}' (error code: {})", checkbox_name, result);
+                bail!(
+                    "Failed to uncheck checkbox '{}' (error code: {})",
+                    checkbox_name,
+                    result
+                );
             }
 
             CFRelease(checkbox_element);
@@ -398,21 +429,23 @@ pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Re
 
 /// Get the currently focused window
 pub(crate) unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<AXUIElementRef> {
-    let attr = create_cfstring("AXFocusedWindow");
-    let mut window: *mut c_void = ptr::null_mut();
+    unsafe {
+        let attr = create_cfstring("AXFocusedWindow");
+        let mut window: *mut c_void = ptr::null_mut();
 
-    let result = AXUIElementCopyAttributeValue(app_element, attr, &mut window);
-    CFRelease(attr);
+        let result = AXUIElementCopyAttributeValue(app_element, attr, &mut window);
+        CFRelease(attr);
 
-    if result != K_AX_ERROR_SUCCESS {
-        bail!("Failed to get focused window (error: {})", result);
+        if result != K_AX_ERROR_SUCCESS {
+            bail!("Failed to get focused window (error: {})", result);
+        }
+
+        if window.is_null() {
+            bail!("No focused window");
+        }
+
+        Ok(window)
     }
-
-    if window.is_null() {
-        bail!("No focused window");
-    }
-
-    Ok(window)
 }
 
 /// Get all window titles for an application
@@ -476,99 +509,105 @@ pub(crate) unsafe fn find_window_by_name(
     app_element: AXUIElementRef,
     window_name: &str,
 ) -> Result<AXUIElementRef> {
-    // Get all windows
-    let windows_attr = create_cfstring("AXWindows");
-    let mut windows_value: *mut c_void = ptr::null_mut();
+    unsafe {
+        // Get all windows
+        let windows_attr = create_cfstring("AXWindows");
+        let mut windows_value: *mut c_void = ptr::null_mut();
 
-    let result = AXUIElementCopyAttributeValue(app_element, windows_attr, &mut windows_value);
-    CFRelease(windows_attr);
+        let result = AXUIElementCopyAttributeValue(app_element, windows_attr, &mut windows_value);
+        CFRelease(windows_attr);
 
-    if result != K_AX_ERROR_SUCCESS || windows_value.is_null() {
-        bail!("Failed to get windows list");
-    }
-
-    let windows_count = CFArrayGetCount(windows_value);
-
-    // Search for window with matching title
-    for i in 0..windows_count {
-        let window = CFArrayGetValueAtIndex(windows_value, i) as AXUIElementRef;
-
-        let title_attr = create_cfstring("AXTitle");
-        let mut title_value: *mut c_void = ptr::null_mut();
-
-        AXUIElementCopyAttributeValue(window, title_attr, &mut title_value);
-        CFRelease(title_attr);
-
-        if let Some(title) = cfstring_to_string(title_value) {
-            if !title_value.is_null() {
-                CFRelease(title_value);
-            }
-
-            // Use soft_match from main.rs
-            if crate::soft_match(&title, window_name) {
-                // Found it! Retain the window before returning (CFArrayGetValueAtIndex returns non-retained)
-                CFRetain(window);
-                CFRelease(windows_value);
-                return Ok(window);
-            }
-        }
-    }
-
-    CFRelease(windows_value);
-    bail!("Window '{}' not found", window_name)
-}
-
-/// Find all buttons in a UI element (recursive)
-unsafe fn find_buttons_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
-    let mut buttons = Vec::new();
-
-    // Get role
-    let role_attr = create_cfstring("AXRole");
-    let mut role_value: *mut c_void = ptr::null_mut();
-    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
-    CFRelease(role_attr);
-
-    if let Some(role) = cfstring_to_string(role_value) {
-        if !role_value.is_null() {
-            CFRelease(role_value);
+        if result != K_AX_ERROR_SUCCESS || windows_value.is_null() {
+            bail!("Failed to get windows list");
         }
 
-        // If this is a button, get its title
-        if role == "AXButton" {
+        let windows_count = CFArrayGetCount(windows_value);
+
+        // Search for window with matching title
+        for i in 0..windows_count {
+            let window = CFArrayGetValueAtIndex(windows_value, i) as AXUIElementRef;
+
             let title_attr = create_cfstring("AXTitle");
             let mut title_value: *mut c_void = ptr::null_mut();
-            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+
+            AXUIElementCopyAttributeValue(window, title_attr, &mut title_value);
             CFRelease(title_attr);
 
             if let Some(title) = cfstring_to_string(title_value) {
                 if !title_value.is_null() {
                     CFRelease(title_value);
                 }
-                if !title.is_empty() {
-                    buttons.push(title);
+
+                // Use soft_match from main.rs
+                if crate::soft_match(&title, window_name) {
+                    // Found it! Retain the window before returning (CFArrayGetValueAtIndex returns non-retained)
+                    CFRetain(window);
+                    CFRelease(windows_value);
+                    return Ok(window);
                 }
             }
         }
+
+        CFRelease(windows_value);
+        bail!("Window '{}' not found", window_name)
     }
+}
 
-    // Recursively search children
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
-    CFRelease(children_attr);
+/// Find all buttons in a UI element (recursive)
+unsafe fn find_buttons_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
+    unsafe {
+        let mut buttons = Vec::new();
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        // Get role
+        let role_attr = create_cfstring("AXRole");
+        let mut role_value: *mut c_void = ptr::null_mut();
+        AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+        CFRelease(role_attr);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
-            if let Ok(mut child_buttons) = find_buttons_in_element(child) {
-                buttons.append(&mut child_buttons);
+        if let Some(role) = cfstring_to_string(role_value) {
+            if !role_value.is_null() {
+                CFRelease(role_value);
+            }
+
+            // If this is a button, get its title
+            if role == "AXButton" {
+                let title_attr = create_cfstring("AXTitle");
+                let mut title_value: *mut c_void = ptr::null_mut();
+                AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+                CFRelease(title_attr);
+
+                if let Some(title) = cfstring_to_string(title_value) {
+                    if !title_value.is_null() {
+                        CFRelease(title_value);
+                    }
+                    if !title.is_empty() {
+                        buttons.push(title);
+                    }
+                }
             }
         }
-    }
 
-    Ok(buttons)
+        // Recursively search children
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+        CFRelease(children_attr);
+
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
+
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                if let Ok(mut child_buttons) = find_buttons_in_element(child) {
+                    buttons.append(&mut child_buttons);
+                }
+            }
+
+            CFRelease(children_value); // ✅ Release after loop
+        }
+
+        Ok(buttons)
+    }
 }
 
 /// Find a button in a window by name (soft matched)
@@ -576,8 +615,10 @@ unsafe fn find_button_in_window(
     window: AXUIElementRef,
     button_name: &str,
 ) -> Result<AXUIElementRef> {
-    find_button_in_element(window, button_name)
-        .with_context(|| format!("Button '{}' not found in window", button_name))
+    unsafe {
+        find_button_in_element(window, button_name)
+            .with_context(|| format!("Button '{}' not found in window", button_name))
+    }
 }
 
 /// Recursively find a button by name
@@ -585,54 +626,61 @@ unsafe fn find_button_in_element(
     element: AXUIElementRef,
     button_name: &str,
 ) -> Result<AXUIElementRef> {
-    // Check if this element is a button with matching name
-    let role_attr = create_cfstring("AXRole");
-    let mut role_value: *mut c_void = ptr::null_mut();
-    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
-    CFRelease(role_attr);
+    unsafe {
+        // Check if this element is a button with matching name
+        let role_attr = create_cfstring("AXRole");
+        let mut role_value: *mut c_void = ptr::null_mut();
+        AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+        CFRelease(role_attr);
 
-    if let Some(role) = cfstring_to_string(role_value) {
-        if !role_value.is_null() {
-            CFRelease(role_value);
-        }
+        if let Some(role) = cfstring_to_string(role_value) {
+            if !role_value.is_null() {
+                CFRelease(role_value);
+            }
 
-        if role == "AXButton" {
-            let title_attr = create_cfstring("AXTitle");
-            let mut title_value: *mut c_void = ptr::null_mut();
-            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
-            CFRelease(title_attr);
+            if role == "AXButton" {
+                let title_attr = create_cfstring("AXTitle");
+                let mut title_value: *mut c_void = ptr::null_mut();
+                AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+                CFRelease(title_attr);
 
-            if let Some(title) = cfstring_to_string(title_value) {
-                if !title_value.is_null() {
-                    CFRelease(title_value);
-                }
+                if let Some(title) = cfstring_to_string(title_value) {
+                    if !title_value.is_null() {
+                        CFRelease(title_value);
+                    }
 
-                if crate::soft_match(&title, button_name) {
-                    // Found it! Return a copy
-                    return Ok(element);
+                    if crate::soft_match(&title, button_name) {
+                        // Found it! Retain before returning so caller owns it
+                        CFRetain(element);
+                        return Ok(element);
+                    }
                 }
             }
         }
-    }
 
-    // Search children recursively
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
-    CFRelease(children_attr);
+        // Search children recursively
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+        CFRelease(children_attr);
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
-            if let Ok(button) = find_button_in_element(child, button_name) {
-                return Ok(button);
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                if let Ok(button) = find_button_in_element(child, button_name) {
+                    CFRelease(children_value);
+                    // button is already retained by the recursive call
+                    return Ok(button);
+                }
             }
-        }
-    }
 
-    bail!("Button not found")
+            CFRelease(children_value); // ✅ Release after loop
+        }
+
+        bail!("Button not found")
+    }
 }
 
 /// Find a checkbox in a window by name (soft matched)
@@ -640,8 +688,10 @@ unsafe fn find_checkbox_in_window(
     window: AXUIElementRef,
     checkbox_name: &str,
 ) -> Result<AXUIElementRef> {
-    find_checkbox_in_element(window, checkbox_name)
-        .with_context(|| format!("Checkbox '{}' not found in window", checkbox_name))
+    unsafe {
+        find_checkbox_in_element(window, checkbox_name)
+            .with_context(|| format!("Checkbox '{}' not found in window", checkbox_name))
+    }
 }
 
 /// Recursively find a checkbox by name
@@ -649,54 +699,61 @@ unsafe fn find_checkbox_in_element(
     element: AXUIElementRef,
     checkbox_name: &str,
 ) -> Result<AXUIElementRef> {
-    // Check if this element is a checkbox with matching name
-    let role_attr = create_cfstring("AXRole");
-    let mut role_value: *mut c_void = ptr::null_mut();
-    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
-    CFRelease(role_attr);
+    unsafe {
+        // Check if this element is a checkbox with matching name
+        let role_attr = create_cfstring("AXRole");
+        let mut role_value: *mut c_void = ptr::null_mut();
+        AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+        CFRelease(role_attr);
 
-    if let Some(role) = cfstring_to_string(role_value) {
-        if !role_value.is_null() {
-            CFRelease(role_value);
-        }
+        if let Some(role) = cfstring_to_string(role_value) {
+            if !role_value.is_null() {
+                CFRelease(role_value);
+            }
 
-        if role == "AXCheckBox" {
-            let title_attr = create_cfstring("AXTitle");
-            let mut title_value: *mut c_void = ptr::null_mut();
-            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
-            CFRelease(title_attr);
+            if role == "AXCheckBox" {
+                let title_attr = create_cfstring("AXTitle");
+                let mut title_value: *mut c_void = ptr::null_mut();
+                AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+                CFRelease(title_attr);
 
-            if let Some(title) = cfstring_to_string(title_value) {
-                if !title_value.is_null() {
-                    CFRelease(title_value);
-                }
+                if let Some(title) = cfstring_to_string(title_value) {
+                    if !title_value.is_null() {
+                        CFRelease(title_value);
+                    }
 
-                if crate::soft_match(&title, checkbox_name) {
-                    // Found it! Return a copy
-                    return Ok(element);
+                    if crate::soft_match(&title, checkbox_name) {
+                        // Found it! Retain before returning so caller owns it
+                        CFRetain(element);
+                        return Ok(element);
+                    }
                 }
             }
         }
-    }
 
-    // Search children recursively
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
-    CFRelease(children_attr);
+        // Search children recursively
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+        CFRelease(children_attr);
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
-            if let Ok(checkbox) = find_checkbox_in_element(child, checkbox_name) {
-                return Ok(checkbox);
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                if let Ok(checkbox) = find_checkbox_in_element(child, checkbox_name) {
+                    CFRelease(children_value);
+                    // checkbox is already retained by the recursive call
+                    return Ok(checkbox);
+                }
             }
-        }
-    }
 
-    bail!("Checkbox not found")
+            CFRelease(children_value); // ✅ Release after loop
+        }
+
+        bail!("Checkbox not found")
+    }
 }
 
 ///
@@ -709,7 +766,14 @@ pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
         let pid = get_pid_by_name(app_name)?;
         let app_element = AXUIElementCreateApplication(pid);
 
-        let exists = find_window_by_name(app_element, window_name).is_ok();
+        // find_window_by_name returns a retained window that needs CFRelease
+        let exists = match find_window_by_name(app_element, window_name) {
+            Ok(window) => {
+                CFRelease(window); // ✅ Release the window element
+                true
+            }
+            Err(_) => false,
+        };
 
         CFRelease(app_element);
 
@@ -822,7 +886,7 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
 /// # Arguments
 /// * `app_name` - Name of the application
 /// * `window_name` - Name of window to wait for to be focused (soft matched).
-///                   If empty string, just waits for the app to be focused (any window)
+///   If empty string, just waits for the app to be focused (any window)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
 pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
     use std::time::{Duration, Instant};
@@ -1054,87 +1118,91 @@ pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>>
 /// Find all text-containing elements recursively
 /// Returns strings in format "Role: Text" so user can see what element type contains the text
 unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
-    let mut text_strings = Vec::new();
+    unsafe {
+        let mut text_strings = Vec::new();
 
-    // Get role
-    let role_attr = create_cfstring("AXRole");
-    let mut role_value: *mut c_void = ptr::null_mut();
-    let role_result = AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
-    CFRelease(role_attr);
+        // Get role
+        let role_attr = create_cfstring("AXRole");
+        let mut role_value: *mut c_void = ptr::null_mut();
+        let role_result = AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+        CFRelease(role_attr);
 
-    let role = if role_result == K_AX_ERROR_SUCCESS && !role_value.is_null() {
-        let r = cfstring_to_string(role_value).unwrap_or_else(|| "Unknown".to_string());
-        CFRelease(role_value);
-        r
-    } else {
-        "Unknown".to_string()
-    };
+        let role = if role_result == K_AX_ERROR_SUCCESS && !role_value.is_null() {
+            let r = cfstring_to_string(role_value).unwrap_or_else(|| "Unknown".to_string());
+            CFRelease(role_value);
+            r
+        } else {
+            "Unknown".to_string()
+        };
 
-    // Try to get AXValue from ANY element (not just specific roles)
-    let value_attr = create_cfstring("AXValue");
-    let mut value: *mut c_void = ptr::null_mut();
-    let value_result = AXUIElementCopyAttributeValue(element, value_attr, &mut value);
-    CFRelease(value_attr);
+        // Try to get AXValue from ANY element (not just specific roles)
+        let value_attr = create_cfstring("AXValue");
+        let mut value: *mut c_void = ptr::null_mut();
+        let value_result = AXUIElementCopyAttributeValue(element, value_attr, &mut value);
+        CFRelease(value_attr);
 
-    if value_result == K_AX_ERROR_SUCCESS && !value.is_null() {
-        // cfstring_to_string now safely checks if value is a CFString
-        if let Some(text) = cfstring_to_string(value) {
-            if !text.is_empty() {
+        if value_result == K_AX_ERROR_SUCCESS && !value.is_null() {
+            // cfstring_to_string now safely checks if value is a CFString
+            if let Some(text) = cfstring_to_string(value)
+                && !text.is_empty()
+            {
                 // Include the role type so user can see what contains the text
                 text_strings.push(format!("[{}] {}", role, text));
             }
+            CFRelease(value);
         }
-        CFRelease(value);
-    }
 
-    // Also try AXTitle attribute (some elements use this for text)
-    let title_attr = create_cfstring("AXTitle");
-    let mut title_value: *mut c_void = ptr::null_mut();
-    let title_result = AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
-    CFRelease(title_attr);
+        // Also try AXTitle attribute (some elements use this for text)
+        let title_attr = create_cfstring("AXTitle");
+        let mut title_value: *mut c_void = ptr::null_mut();
+        let title_result = AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+        CFRelease(title_attr);
 
-    if title_result == K_AX_ERROR_SUCCESS && !title_value.is_null() {
-        if let Some(text) = cfstring_to_string(title_value) {
-            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
+        if title_result == K_AX_ERROR_SUCCESS && !title_value.is_null() {
+            if let Some(text) = cfstring_to_string(title_value)
+                && !text.is_empty()
+                && !text_strings.iter().any(|s| s.contains(&text))
+            {
                 text_strings.push(format!("[{} Title] {}", role, text));
             }
+            CFRelease(title_value);
         }
-        CFRelease(title_value);
-    }
 
-    // Also try AXDescription attribute
-    let desc_attr = create_cfstring("AXDescription");
-    let mut desc_value: *mut c_void = ptr::null_mut();
-    let desc_result = AXUIElementCopyAttributeValue(element, desc_attr, &mut desc_value);
-    CFRelease(desc_attr);
+        // Also try AXDescription attribute
+        let desc_attr = create_cfstring("AXDescription");
+        let mut desc_value: *mut c_void = ptr::null_mut();
+        let desc_result = AXUIElementCopyAttributeValue(element, desc_attr, &mut desc_value);
+        CFRelease(desc_attr);
 
-    if desc_result == K_AX_ERROR_SUCCESS && !desc_value.is_null() {
-        if let Some(text) = cfstring_to_string(desc_value) {
-            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
+        if desc_result == K_AX_ERROR_SUCCESS && !desc_value.is_null() {
+            if let Some(text) = cfstring_to_string(desc_value)
+                && !text.is_empty()
+                && !text_strings.iter().any(|s| s.contains(&text))
+            {
                 text_strings.push(format!("[{} Description] {}", role, text));
             }
+            CFRelease(desc_value);
         }
-        CFRelease(desc_value);
-    }
 
-    // Recursively search children
-    let children_attr = create_cfstring("AXChildren");
-    let mut children_value: *mut c_void = ptr::null_mut();
-    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
-    CFRelease(children_attr);
+        // Recursively search children
+        let children_attr = create_cfstring("AXChildren");
+        let mut children_value: *mut c_void = ptr::null_mut();
+        let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+        CFRelease(children_attr);
 
-    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
-        let children_count = CFArrayGetCount(children_value);
+        if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+            let children_count = CFArrayGetCount(children_value);
 
-        for i in 0..children_count {
-            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
-            if let Ok(mut child_text) = find_text_in_element(child) {
-                text_strings.append(&mut child_text);
+            for i in 0..children_count {
+                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                if let Ok(mut child_text) = find_text_in_element(child) {
+                    text_strings.append(&mut child_text);
+                }
             }
+
+            CFRelease(children_value);
         }
 
-        CFRelease(children_value);
+        Ok(text_strings)
     }
-
-    Ok(text_strings)
 }

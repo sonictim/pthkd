@@ -35,7 +35,7 @@ impl Params {
         self.0.get(key).and_then(|v| v.as_str()).unwrap_or(default)
     }
 
-    pub fn get_ostr<'a>(&'a self, key: &str) -> Option<&str> {
+    pub fn get_ostr<'a>(&'a self, key: &str) -> Option<&'a str> {
         self.0.get(key).and_then(|v| v.as_str())
     }
     /// Get a string parameter with a default value
@@ -50,6 +50,12 @@ impl Params {
         self.get_str(key, default).to_string()
     }
 
+    pub fn get_ostring(&self, key: &str) -> Option<String> {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
     /// Get an integer parameter with a default value
     ///
     /// # Example

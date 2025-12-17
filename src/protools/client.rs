@@ -176,15 +176,14 @@ impl ProtoolsSession {
 
         for marker in markers {
             // Check if marker is on a named ruler
-            if marker["location"].as_str() == Some("MarkerLocation_NamedRuler") {
-                if let Some(ruler_name) = marker["track_name"].as_str() {
-                    if !ruler_name.is_empty() {
-                        let ruler_name = ruler_name.to_string();
-                        // Only add if not already in the list (preserve order)
-                        if !ruler_names.contains(&ruler_name) {
-                            ruler_names.push(ruler_name);
-                        }
-                    }
+            if marker["location"].as_str() == Some("MarkerLocation_NamedRuler")
+                && let Some(ruler_name) = marker["track_name"].as_str()
+                && !ruler_name.is_empty()
+            {
+                let ruler_name = ruler_name.to_string();
+                // Only add if not already in the list (preserve order)
+                if !ruler_names.contains(&ruler_name) {
+                    ruler_names.push(ruler_name);
                 }
             }
         }
@@ -282,6 +281,7 @@ impl ProtoolsSession {
             .await?;
         Ok(())
     }
+    #[allow(clippy::too_many_arguments)]
     pub async fn edit_marker(
         &mut self,
         number: u32,

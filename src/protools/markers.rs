@@ -1,5 +1,5 @@
 use super::client::*;
-use super::{keystroke, ptsl};
+use super::keystroke;
 use crate::params::Params;
 use anyhow::Result;
 

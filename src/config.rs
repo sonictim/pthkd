@@ -41,7 +41,7 @@ pub struct HotkeyConfig {
     pub trigger_on_release: bool,
     #[serde(default)]
     pub notify: bool,
-    pub target_application: Option<StringOrVec>,
+    target_application: Option<StringOrVec>,
     pub app_window: Option<String>,
 }
 
@@ -57,8 +57,7 @@ pub fn load_config(path: &str) -> Result<Config> {
         Err(_) => {
             log::warn!("Config file '{}' not found, creating from default", path);
             // Write the default config to disk
-            fs::write(path, DEFAULT_CONFIG)
-                .context("Failed to write default config file")?;
+            fs::write(path, DEFAULT_CONFIG).context("Failed to write default config file")?;
             log::info!("Created default config at {}", path);
             DEFAULT_CONFIG.to_string()
         }
@@ -171,11 +170,7 @@ pub fn get_action(name: &str) -> Option<fn(&Params) -> anyhow::Result<()>> {
         crate::macos::actions::get_action_registry()
             .get(name)
             .copied()
-            .or_else(|| {
-                crate::protools::get_action_registry()
-                    .get(name)
-                    .copied()
-            })
+            .or_else(|| crate::protools::get_action_registry().get(name).copied())
             .or_else(|| {
                 crate::soundminer::actions::get_action_registry()
                     .get(name)

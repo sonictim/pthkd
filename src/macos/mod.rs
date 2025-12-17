@@ -32,7 +32,6 @@ pub mod actions;
 // Re-export commonly used items
 pub use events::*;
 pub use notifications::*;
-pub use menubar::MenuBar;
 
 // Experimental items are not re-exported - must be explicitly imported
 // This makes it clear when experimental code is being used

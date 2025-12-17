@@ -1,5 +1,6 @@
 use super::*;
 use crate::protools::ptsl::CommandId;
+use std::fmt;
 
 #[derive(Debug, Default)]
 pub struct Timecode {
@@ -9,7 +10,15 @@ pub struct Timecode {
     fr: i64,
     fps: i64,
 }
-
+impl fmt::Display for Timecode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{:02}:{:02}:{:02}:{:02}",
+            self.hr, self.min, self.sec, self.fr
+        )
+    }
+}
 impl Timecode {
     pub async fn from_hmsf(
         hr: i64,
@@ -45,12 +54,6 @@ impl Timecode {
         };
         s.normalize();
         Ok(s)
-    }
-    pub fn to_string(&self) -> String {
-        format!(
-            "{:02}:{:02}:{:02}:{:02}",
-            self.hr, self.min, self.sec, self.fr
-        )
     }
     fn normalize(&mut self) {
         while self.fr >= self.fps {

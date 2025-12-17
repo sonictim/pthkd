@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use objc2::msg_send;
-use objc2::runtime::{AnyObject, Class};
+use objc2::runtime::{AnyClass, AnyObject};
 use std::ptr;
 use std::sync::OnceLock;
 
@@ -14,7 +14,11 @@ static RELOAD_CALLBACK: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
 /// C callback function that can be called from Objective-C
 #[unsafe(no_mangle)]
-extern "C" fn menu_reload_config(_this: *mut AnyObject, _cmd: objc2::runtime::Sel, _sender: *mut AnyObject) {
+extern "C" fn menu_reload_config(
+    _this: *mut AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) {
     log::info!("Reload Config menu item clicked");
     if let Some(callback) = RELOAD_CALLBACK.get() {
         callback();
@@ -44,8 +48,9 @@ impl Drop for MenuBar {
         unsafe {
             if !self.status_item.is_null() {
                 // Remove status item from status bar
-                let status_bar_class = Class::get("NSStatusBar").expect("NSStatusBar class");
-                let system_status_bar: *mut AnyObject = msg_send![status_bar_class, systemStatusBar];
+                let status_bar_class = AnyClass::get("NSStatusBar").expect("NSStatusBar class");
+                let system_status_bar: *mut AnyObject =
+                    msg_send![status_bar_class, systemStatusBar];
 
                 let _: () = msg_send![system_status_bar, removeStatusItem: self.status_item];
 
@@ -89,8 +94,8 @@ where
     log::info!("Creating menu bar status item...");
 
     // Get the system status bar
-    let status_bar_class = Class::get("NSStatusBar")
-        .context("Failed to get NSStatusBar class")?;
+    let status_bar_class =
+        AnyClass::get("NSStatusBar").context("Failed to get NSStatusBar class")?;
     let system_status_bar: *mut AnyObject = msg_send![status_bar_class, systemStatusBar];
 
     if system_status_bar.is_null() {
@@ -123,22 +128,21 @@ where
     // Load icon with fallback strategy
     let image = if let Some(png_data) = icon_data {
         log::debug!("Attempting to load custom PNG icon");
-        create_image_from_png(png_data)
+        unsafe { create_image_from_png(png_data) }
             .or_else(|| {
                 log::warn!("Failed to load custom PNG, trying SF Symbol");
-                load_sf_symbol("bolt.fill")
+                unsafe { load_sf_symbol("bolt.fill") }
             })
             .or_else(|| {
                 log::warn!("SF Symbol not available, using text fallback");
-                create_text_image("⚡")
+                unsafe { create_text_image("⚡") }
             })
     } else {
         log::debug!("No custom icon provided, using SF Symbol");
-        load_sf_symbol("bolt.fill")
-            .or_else(|| {
-                log::warn!("SF Symbol not available, using text fallback");
-                create_text_image("⚡")
-            })
+        unsafe { load_sf_symbol("bolt.fill") }.or_else(|| {
+            log::warn!("SF Symbol not available, using text fallback");
+            unsafe { create_text_image("⚡") }
+        })
     };
 
     if let Some(img) = image {
@@ -155,11 +159,11 @@ where
     }
 
     // Create delegate object for menu callbacks
-    let delegate = create_menu_delegate()?;
+    let delegate = unsafe { create_menu_delegate()? };
 
     // Create and attach menu
     log::info!("Creating status bar menu...");
-    let menu = create_status_menu(delegate)?;
+    let menu = unsafe { create_status_menu(delegate)? };
 
     if menu.is_null() {
         log::error!("Menu is null!");
@@ -182,27 +186,28 @@ where
 
 /// Creates a delegate object to handle menu callbacks
 unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
-    use objc2::runtime::Class;
     use objc2::declare::ClassBuilder;
     use objc2::sel;
-    use std::ffi::c_void;
 
     // Try to get existing class first
-    if let Some(class) = Class::get("MenuBarDelegate") {
+    if let Some(class) = AnyClass::get("MenuBarDelegate") {
         let delegate: *mut AnyObject = msg_send![class, new];
         return Ok(delegate);
     }
 
     // Create new class if it doesn't exist
-    let superclass = Class::get("NSObject").context("Failed to get NSObject class")?;
+    let superclass = AnyClass::get("NSObject").context("Failed to get NSObject class")?;
     let mut builder = ClassBuilder::new("MenuBarDelegate", superclass)
         .context("Failed to create class builder")?;
 
     // Add the reloadConfig: method
-    builder.add_method(
-        sel!(reloadConfig:),
-        menu_reload_config as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
-    );
+    unsafe {
+        builder.add_method(
+            sel!(reloadConfig:),
+            menu_reload_config
+                as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
+        );
+    }
 
     let class = builder.register();
     let delegate: *mut AnyObject = msg_send![class, new];
@@ -217,7 +222,7 @@ unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
 /// - "Quit" - Terminates the application
 unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject> {
     log::debug!("Getting NSMenu class...");
-    let menu_class = Class::get("NSMenu").context("Failed to get NSMenu class")?;
+    let menu_class = AnyClass::get("NSMenu").context("Failed to get NSMenu class")?;
 
     log::debug!("Allocating NSMenu...");
     let menu: *mut AnyObject = msg_send![menu_class, alloc];
@@ -231,20 +236,21 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
 
     // Create "Reload Config" menu item
     log::debug!("Creating 'Reload Config' menu item...");
-    let reload_item = create_menu_item("Reload Config", "reloadConfig:", Some(delegate))?;
+    let reload_item =
+        unsafe { create_menu_item("Reload Config", "reloadConfig:", Some(delegate))? };
     let _: () = msg_send![menu, addItem: reload_item];
     log::debug!("Added 'Reload Config' item");
 
     // Create separator
     log::debug!("Creating separator...");
-    let separator_class = Class::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
+    let separator_class = AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
     let separator: *mut AnyObject = msg_send![separator_class, separatorItem];
     let _: () = msg_send![menu, addItem: separator];
     log::debug!("Added separator");
 
     // Create "Quit" menu item
     log::debug!("Creating 'Quit' menu item...");
-    let quit_item = create_menu_item("Quit", "terminate:", None)?;
+    let quit_item = unsafe { create_menu_item("Quit", "terminate:", None)? };
     let _: () = msg_send![menu, addItem: quit_item];
     log::debug!("Added 'Quit' item");
 
@@ -253,11 +259,15 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
 }
 
 /// Creates a menu item with title and action selector
-unsafe fn create_menu_item(title: &str, action: &str, target: Option<*mut AnyObject>) -> Result<*mut AnyObject> {
-    let menu_item_class = Class::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
+unsafe fn create_menu_item(
+    title: &str,
+    action: &str,
+    target: Option<*mut AnyObject>,
+) -> Result<*mut AnyObject> {
+    let menu_item_class = AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
 
     // Create NSString for title
-    let ns_string_class = Class::get("NSString").context("Failed to get NSString class")?;
+    let ns_string_class = AnyClass::get("NSString").context("Failed to get NSString class")?;
     let title_string: *mut AnyObject = msg_send![ns_string_class, alloc];
     let title_string: *mut AnyObject = msg_send![
         title_string,
@@ -301,7 +311,8 @@ unsafe fn create_menu_item(title: &str, action: &str, target: Option<*mut AnyObj
         log::debug!("Set menu item target to custom delegate");
     } else if action == "terminate:" {
         // For Quit, set target to NSApp
-        let ns_app_class = Class::get("NSApplication").context("Failed to get NSApplication class")?;
+        let ns_app_class =
+            AnyClass::get("NSApplication").context("Failed to get NSApplication class")?;
         let ns_app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
         let _: () = msg_send![menu_item, setTarget: ns_app];
         log::debug!("Set menu item target to NSApp for terminate:");
@@ -319,7 +330,7 @@ unsafe fn create_menu_item(title: &str, action: &str, target: Option<*mut AnyObj
 /// NSImage pointer or None if creation failed
 unsafe fn create_image_from_png(data: &[u8]) -> Option<*mut AnyObject> {
     // Create NSData from bytes
-    let ns_data_class = Class::get("NSData")?;
+    let ns_data_class = AnyClass::get("NSData")?;
     let ns_data: *mut AnyObject = msg_send![ns_data_class, alloc];
     let ns_data: *mut AnyObject = msg_send![
         ns_data,
@@ -333,7 +344,7 @@ unsafe fn create_image_from_png(data: &[u8]) -> Option<*mut AnyObject> {
     }
 
     // Create NSImage from NSData
-    let ns_image_class = Class::get("NSImage")?;
+    let ns_image_class = AnyClass::get("NSImage")?;
     let image: *mut AnyObject = msg_send![ns_image_class, alloc];
     let image: *mut AnyObject = msg_send![image, initWithData: ns_data];
 
@@ -354,10 +365,10 @@ unsafe fn create_image_from_png(data: &[u8]) -> Option<*mut AnyObject> {
 /// # Returns
 /// NSImage pointer or None if not available or failed
 unsafe fn load_sf_symbol(name: &str) -> Option<*mut AnyObject> {
-    let ns_image_class = Class::get("NSImage")?;
+    let ns_image_class = AnyClass::get("NSImage")?;
 
     // Create NSString for symbol name
-    let ns_string_class = Class::get("NSString")?;
+    let ns_string_class = AnyClass::get("NSString")?;
     let symbol_name: *mut AnyObject = msg_send![ns_string_class, alloc];
     let symbol_name: *mut AnyObject = msg_send![
         symbol_name,

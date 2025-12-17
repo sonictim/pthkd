@@ -165,11 +165,11 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
 
 pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> {
     if !plugin.is_empty() {
-        activate_plugin(&plugin).await?;
+        activate_plugin(plugin).await?;
     }
     if !button.is_empty() {
         let window = format!("AudioSuite: {}", plugin);
-        click_button(&window, &button).await?;
+        click_button(&window, button).await?;
     }
     if close {
         let window = format!("AudioSuite: {}", plugin);

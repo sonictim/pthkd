@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod config;
 mod hotkey;
 mod keycodes;
@@ -70,7 +71,7 @@ macro_rules! actions_async {
     ($namespace:expr, $module_id:ident, { $($action_name:ident),* $(,)? }) => {
         // Generate wrapper functions in __actions submodule to avoid name collisions
         mod __actions {
-            use super::*;
+
 
             $(
                 pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
@@ -141,7 +142,7 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
         let hotkeys = hotkeys_mutex.lock().unwrap();
 
         for (index, hotkey) in hotkeys.iter().enumerate() {
-            if hotkey.matches(&**pressed_keys) {
+            if hotkey.matches(pressed_keys) {
                 if hotkey.trigger_on_release {
                     // Mark as pending, trigger on key release
                     let pending = PENDING_HOTKEY
@@ -149,7 +150,7 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                         .expect("PENDING_HOTKEY not initialized");
                     *pending.lock().unwrap() = Some(PendingHotkey {
                         hotkey_index: index,
-                        chord_keys: Arc::clone(&pressed_keys),
+                        chord_keys: Arc::clone(pressed_keys),
                     });
                     return true; // Consume event
                 } else {
@@ -161,15 +162,29 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     drop(hotkeys); // Explicitly drop the lock before calling action
 
                     // Trigger immediately (lock is now released)
-                    let result = action(&params);
+                    // Catch panics to prevent crashing the event loop thread
+                    let result =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(&params)));
 
                     // Show notification if requested
                     if notify {
                         match result {
-                            Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
-                            Err(e) => {
+                            Ok(Ok(_)) => macos::show_notification(&format!("✅ {}", action_name)),
+                            Ok(Err(e)) => {
                                 macos::show_notification(&format!("❌ {}: {}", action_name, e))
                             }
+                            Err(_) => {
+                                log::error!("Action '{}' panicked!", action_name);
+                                macos::show_notification(&format!(
+                                    "💥 {}: action panicked",
+                                    action_name
+                                ))
+                            }
+                        }
+                    } else {
+                        // Log panics even if notify is false
+                        if result.is_err() {
+                            log::error!("Action '{}' panicked!", action_name);
                         }
                     }
 
@@ -219,13 +234,29 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
 
             // Now call the action with all locks released
             if let Some((action, params, notify, action_name)) = action_data {
-                let result = action(&params);
+                // Catch panics to prevent crashing the event loop thread
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(&params)));
 
                 // Show notification if requested
                 if notify {
                     match result {
-                        Ok(_) => macos::show_notification(&format!("✅ {}", action_name)),
-                        Err(e) => macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                        Ok(Ok(_)) => macos::show_notification(&format!("✅ {}", action_name)),
+                        Ok(Err(e)) => {
+                            macos::show_notification(&format!("❌ {}: {}", action_name, e))
+                        }
+                        Err(_) => {
+                            log::error!("Action '{}' panicked!", action_name);
+                            macos::show_notification(&format!(
+                                "💥 {}: action panicked",
+                                action_name
+                            ))
+                        }
+                    }
+                } else {
+                    // Log panics even if notify is false
+                    if result.is_err() {
+                        log::error!("Action '{}' panicked!", action_name);
                     }
                 }
             }
@@ -338,7 +369,7 @@ fn run() -> anyhow::Result<()> {
     let log_path = init_logging()?;
 
     log::info!("===========================================");
-    log::info!("Starting macrod hotkey daemon...");
+    log::info!("Starting pthkd hotkey daemon...");
     log::info!("Log file: {}", log_path);
     log::info!("===========================================");
 
@@ -378,8 +409,8 @@ fn run() -> anyhow::Result<()> {
     // Initialize NSApplication for menu bar (must be done before event loop)
     // Create and install event tap for keyboard events
     unsafe {
-        use objc2::{class, msg_send};
         use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
 
         log::info!("Initializing NSApplication for menu bar...");
 
@@ -406,7 +437,9 @@ fn run() -> anyhow::Result<()> {
         let _menu_bar = macos::menubar::create_menu_bar(None, || {
             log::info!("Reload Config triggered from menu");
             // Call the reload_config command
-            if let Err(e) = macos::commands::reload_config(&crate::params::Params::new(std::collections::HashMap::new())) {
+            if let Err(e) = macos::commands::reload_config(&crate::params::Params::new(
+                std::collections::HashMap::new(),
+            )) {
                 log::error!("Failed to reload config: {}", e);
                 macos::show_notification(&format!("❌ Failed to reload config: {}", e));
             } else {
@@ -444,7 +477,7 @@ fn init_logging() -> anyhow::Result<String> {
     use std::env;
     use std::fs::OpenOptions;
 
-    let log_file_path = "macrod.log";
+    let log_file_path = "pthkd.log";
 
     // Get absolute path for logging
     let absolute_path = env::current_dir()
@@ -456,7 +489,6 @@ fn init_logging() -> anyhow::Result<String> {
     // Configure env_logger to write to the file (append mode)
     let target = Box::new(
         OpenOptions::new()
-            .write(true)
             .create(true)
             .append(true) // Append across multiple runs
             .open(log_file_path)

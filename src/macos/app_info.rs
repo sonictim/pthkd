@@ -47,13 +47,13 @@ pub fn get_current_app() -> Result<String> {
         }
 
         // Call [app localizedName] - returns NSString*
-        let name_nsstring: *mut c_void = msg_send![app, localizedName];
+        let name_nsstring: *mut AnyObject = msg_send![app, localizedName];
         if name_nsstring.is_null() {
             bail!("Could not get application name");
         }
 
         // Convert NSString to Rust String using CFString functions
-        let name = cfstring_to_string(name_nsstring).unwrap_or_else(|| String::from("Unknown"));
+        let name = cfstring_to_string(name_nsstring as *mut c_void).unwrap_or_else(|| String::from("Unknown"));
 
         Ok(name)
     }
@@ -401,6 +401,9 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
 fn launch_application(app_name: &str) -> Result<()> {
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
+
+    log::warn!("⚠️  launch_application called with app_name: '{}'", app_name);
+    log::warn!("⚠️  Stack trace: {:?}", std::backtrace::Backtrace::capture());
 
     unsafe {
         let workspace_class = class!(NSWorkspace);

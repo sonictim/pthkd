@@ -85,13 +85,18 @@ pub fn reload_config(_params: &Params) -> Result<()> {
     use crate::hotkey::HOTKEYS;
     use anyhow::{Context, bail};
 
+    log::info!("⚠️  reload_config STARTED");
     log::info!("Reloading config from config.toml...");
 
     // Load and parse config
+    log::info!("⚠️  About to call load_config");
     let config = load_config("config.toml").context("Failed to load config.toml")?;
+    log::info!("⚠️  load_config completed");
 
     // Convert to hotkeys
+    log::info!("⚠️  About to call config_to_hotkeys");
     let hotkeys = config_to_hotkeys(config).context("Failed to parse config")?;
+    log::info!("⚠️  config_to_hotkeys completed");
 
     // Log registered hotkeys
     log::info!("Reloaded {} hotkeys:", hotkeys.len());
@@ -131,10 +136,10 @@ pub fn test_menu_click(_params: &Params) -> Result<()> {
     log::info!("Testing menu click...");
 
     // Test with a simple menu item - adjust this to whatever you want to test
-    menu::run_menu_item("Soundminer_Intel", &["DAW", "Pro Tools"])?;
+    menu::menu_item_run("Soundminer_Intel", &["DAW", "Pro Tools"])?;
     log::info!("✅ Menu click 1 succeeded!");
 
-    menu::run_menu_item("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
+    menu::menu_item_run("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
     log::info!("✅ Menu click 2 succeeded!");
 
     Ok(())

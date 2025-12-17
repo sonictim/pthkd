@@ -76,6 +76,9 @@ macro_rules! actions_async {
                 pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
                     use std::sync::{Arc, Mutex};
                     let params = params.clone();
+                    let action_name = concat!(stringify!($module_id), "_", stringify!($action_name));
+                    let notify = params.get_bool("notify", false);
+                    let timeout_ms = params.get_int("timeout_ms", 500).max(100) as u64;
 
                     // Create a shared error container (None = success, Some(msg) = error)
                     let error = Arc::new(Mutex::new(None::<String>));
@@ -88,14 +91,24 @@ macro_rules! actions_async {
                         }
                     });
 
-                    // Wait a moment for the command to start and potentially fail quickly
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // Wait for timeout to keep event consumed (default 500ms + buffer)
+                    std::thread::sleep(std::time::Duration::from_millis(timeout_ms + 150));
 
-                    // Return the result
-                    match error.lock().unwrap().as_ref() {
+                    // Check result
+                    let result = match error.lock().unwrap().as_ref() {
                         Some(msg) => Err(anyhow::anyhow!("{}", msg)),
                         None => Ok(()),
+                    };
+
+                    // Show notification if requested
+                    if notify {
+                        match &result {
+                            Ok(_) => $crate::macos::show_notification(&format!("✅ {}", action_name)),
+                            Err(e) => $crate::macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                        }
                     }
+
+                    result
                 }
             )*
         }
@@ -362,15 +375,63 @@ fn run() -> anyhow::Result<()> {
         .set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
 
+    // Initialize NSApplication for menu bar (must be done before event loop)
     // Create and install event tap for keyboard events
     unsafe {
+        use objc2::{class, msg_send};
+        use objc2::runtime::AnyObject;
+
+        log::info!("Initializing NSApplication for menu bar...");
+
+        let ns_app_class = class!(NSApplication);
+        let ns_app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
+
+        if ns_app.is_null() {
+            anyhow::bail!("Failed to get NSApplication");
+        }
+
+        // Set activation policy to Accessory (menu bar only, no dock icon)
+        // NSApplicationActivationPolicyAccessory = 1
+        let policy: isize = 1;
+        let success: bool = msg_send![ns_app, setActivationPolicy: policy];
+
+        if !success {
+            log::warn!("Failed to set activation policy - menu bar may not work correctly");
+        }
+
+        log::info!("NSApplication initialized as menu bar app (no dock icon)");
+
+        // Create menu bar status item with reload callback
+        // Keep it alive for the duration of the program by not dropping it
+        let _menu_bar = macos::menubar::create_menu_bar(None, || {
+            log::info!("Reload Config triggered from menu");
+            // Call the reload_config command
+            if let Err(e) = macos::commands::reload_config(&crate::params::Params::new(std::collections::HashMap::new())) {
+                log::error!("Failed to reload config: {}", e);
+                macos::show_notification(&format!("❌ Failed to reload config: {}", e));
+            } else {
+                macos::show_notification("✅ Config reloaded successfully!");
+            }
+        })
+        .context("Failed to create menu bar")?;
+
+        log::info!("Menu bar icon created successfully");
+
+        // Create event tap
         let event_tap = macos::create_keyboard_event_tap(key_event_callback)
             .context("Failed to create event tap")?;
 
         macos::install_event_tap_on_run_loop(event_tap);
 
         log::info!("Hotkey daemon is running. Listening for hotkeys...");
-        macos::run_event_loop();
+
+        // Activate the application so it can receive events
+        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+
+        // Run NSApplication's event loop (blocks forever)
+        // This is required for menu bar items to work properly
+        // The _menu_bar variable stays in scope and won't be dropped
+        let _: () = msg_send![ns_app, run];
     }
 
     Ok(())

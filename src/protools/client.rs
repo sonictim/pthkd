@@ -79,6 +79,53 @@ impl ProtoolsSession {
         }
     }
 
+    pub async fn save_session(&mut self) -> Result<()> {
+        let _response: serde_json::Value = self
+            .cmd(CommandId::SaveSession, serde_json::json!({}))
+            .await?;
+
+        println!("Session Saved");
+        Ok(())
+    }
+    pub async fn clear(&mut self) -> Result<()> {
+        let _response: serde_json::Value =
+            self.cmd(CommandId::Clear, serde_json::json!({})).await?;
+
+        println!("Clear");
+        Ok(())
+    }
+    pub async fn cut(&mut self) -> Result<()> {
+        let _response: serde_json::Value = self.cmd(CommandId::Cut, serde_json::json!({})).await?;
+
+        println!("Cut");
+        Ok(())
+    }
+    pub async fn copy(&mut self) -> Result<()> {
+        let _response: serde_json::Value = self.cmd(CommandId::Copy, serde_json::json!({})).await?;
+
+        println!("Copy");
+        Ok(())
+    }
+    pub async fn paste(&mut self) -> Result<()> {
+        let _response: serde_json::Value =
+            self.cmd(CommandId::Paste, serde_json::json!({})).await?;
+
+        println!("Paste");
+        Ok(())
+    }
+    pub async fn paste_to_fill_selection(&mut self) -> Result<()> {
+        let _response: serde_json::Value = self
+            .cmd(
+                CommandId::PasteSpecial,
+                serde_json::json!({
+                    "paste_special_option": "Repeat_To_Fill_Selection"
+                }),
+            )
+            .await?;
+
+        println!("Paste to Fill");
+        Ok(())
+    }
     pub async fn get_all_tracks(&mut self) -> Option<Vec<serde_json::Value>> {
         println!("\nFetching track list...");
         let response: serde_json::Value = self
@@ -170,6 +217,26 @@ impl ProtoolsSession {
             .parse::<i64>()
             .unwrap_or(48000);
         println!("Samplerate is: {}", rate);
+        Ok(rate)
+    }
+    pub async fn get_frames_per_second(&mut self) -> Result<i64> {
+        let response: serde_json::Value = self
+            .cmd(CommandId::GetSessionTimeCodeRate, serde_json::json!({}))
+            .await?;
+
+        let rate = response["current_setting"]
+            .as_str()
+            .unwrap()
+            .replace("STCR_Fps", "")
+            .replace("Drop", "")
+            .replace("2997", "30")
+            .replace("23976", "24")
+            .replace("47952", "48")
+            .replace("5994", "60")
+            .replace("11988", "120")
+            .parse::<i64>()
+            .unwrap_or(24);
+        println!("Timecode FPS is: {}", rate);
         Ok(rate)
     }
 

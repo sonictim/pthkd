@@ -1,14 +1,17 @@
 use super::client::*;
-use super::ptsl;
 use crate::actions_async;
+use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
 use anyhow::Result;
-
+use lazy_static::lazy_static;
+use std::sync::{Arc, Mutex};
 actions_async!("pt", tracks, {
     solo_selected,
     solo_clear,
     add_selected_to_solos,
     remove_selected_from_solos,
+    view_selector,
+    lane_selector,
 });
 
 pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
@@ -140,6 +143,49 @@ pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Para
         }
     }
     pt.solo_tracks(solos, false).await?;
+
+    Ok(())
+}
+lazy_static! {
+    static ref KEY_COUNTER: Arc<Mutex<HotkeyCounter>> = Arc::new(Mutex::new(HotkeyCounter::new()));
+}
+pub async fn view_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    println!("Running view selector");
+    let timeout_ms = params.get_int("timeout_ms", 500);
+    let mut counter = KEY_COUNTER.lock().unwrap();
+    counter.press(timeout_ms as u64, 2, |idx| async move {
+        println!("Inside closure, idx={}", idx);
+        let result = match idx {
+            2 => super::keystroke(&["command", "grave"]).await,
+            1 => super::keystroke(&["command", "option", "grave"]).await,
+            _ => super::keystroke(&["command", "grave"]).await,
+        };
+        if let Err(e) = result {
+            log::error!("Keystroke failed: {}", e);
+            println!("❌ Keystroke error: {}", e);
+        } else {
+            println!("✅ Keystroke sent for index {}", idx);
+        }
+    });
+
+    Ok(())
+}
+pub async fn lane_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let timeout_ms = params.get_int("timeout_ms", 500);
+    let mut counter = KEY_COUNTER.lock().unwrap();
+    counter.press(timeout_ms as u64, 2, |idx| async move {
+        println!("Lane selector closure, idx={}", idx);
+        let result = match idx {
+            1 => super::keystroke(&["option", "grave"]).await,
+            _ => super::keystroke(&["control", "grave"]).await,
+        };
+        if let Err(e) = result {
+            log::error!("Lane keystroke failed: {}", e);
+            println!("❌ Lane keystroke error: {}", e);
+        } else {
+            println!("✅ Lane keystroke sent for index {}", idx);
+        }
+    });
 
     Ok(())
 }

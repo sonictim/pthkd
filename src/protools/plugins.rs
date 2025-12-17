@@ -10,20 +10,22 @@ use std::sync::{Arc, Mutex};
 
 actions_async!("pt", plugins, {
     audiosuite,
-    multitap_plugin_selector,
+    multitap_selector,
     send_receive_rx,
 });
 // ============================================================================
 // Command Implementations
 // ============================================================================
 
-pub async fn audiosuite(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn audiosuite(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let plugin = params.get_string("plugin", "");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
-
+    let save = params.get_bool("save", true);
     call_plugin(&plugin, &button, close).await?;
-
+    if save {
+        pt.save_session().await?;
+    }
     Ok(())
 }
 pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
@@ -66,7 +68,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
 
     Ok(())
 }
-pub async fn multitap_plugin_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let plugins = params.get_string_vec("plugins");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);

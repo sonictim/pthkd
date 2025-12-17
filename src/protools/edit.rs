@@ -1,5 +1,6 @@
-//! ProTools actions (namespace: "pt")
+//! ProTools edit actions (namespace: "pt")
 
+use super::*;
 use crate::actions_async;
 // Define all ProTools actions using the async macro
 // Actions are automatically registered with the "pt" namespace
@@ -8,12 +9,16 @@ actions_async!("pt", edit, {
     adjust_clip_to_match_selection,
     conform_delete,
     conform_insert,
-    toggle_edit_tool,
+    toggle_mode,
+    toggle_tool,
     reset_clip,
     click_a_button,
+    bg_paste_selection,
+    bg_clear_selection,
 });
 use super::client::*;
 use super::ptsl;
+use super::timecode::*;
 use super::*;
 use crate::params::Params;
 use anyhow::Result;
@@ -27,12 +32,13 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
     let preset = params.get_string("preset", "");
     let crossfade = params.get_bool("crossfade_automation", false);
     let fill = params.get_bool("fill_selection", false);
-    let sr = pt.get_samplerate().await? / 1000;
-    let adjust = params.get_int("adjust_selection_ms", 0) * sr;
+    let adjust = params.get_int("adjust_selection_frames", 0);
     println!("adjustment frames: {}", adjust);
-    let mut sel = PtSelectionSamples::new(pt).await?;
-    let io = sel.get_io();
-    sel.set_io(pt, io.0 - adjust, io.1 + adjust).await?;
+    let mut sel = PtSelectionTimecode::new(pt).await?;
+    let mut io = sel.get_io(pt).await?;
+    io.0.sub_hmsf(0, 0, 0, adjust);
+    io.1.add_hmsf(0, 0, 0, adjust);
+    sel.set_io(pt, &io.0, &io.1).await?;
     if fill {
         call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
         call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
@@ -58,6 +64,7 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         .await?;
     }
     if crossfade {
+        let mut sel = PtSelectionSamples::new(pt).await?;
         let c = sel.get_io();
         sel.set_io(pt, c.1, c.1).await?;
         call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
@@ -79,6 +86,42 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         // keystroke(&["cmd", "option", "control", "t"]).await?;
         sel.set_io(pt, c.0, c.1).await?;
     }
+    Ok(())
+}
+pub async fn bg_paste_selection(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let preset = params.get_string("fade_preset", "");
+    let adjust = params.get_int("adjust_selection_frames", 1);
+    println!("adjustment frames: {}", adjust);
+    let mut sel = PtSelectionTimecode::new(pt).await?;
+    let mut io = sel.get_io(pt).await?;
+    io.0.sub_hmsf(0, 0, 0, adjust);
+    io.1.add_hmsf(0, 0, 0, adjust);
+    sel.set_io(pt, &io.0, &io.1).await?;
+    pt.paste_to_fill_selection().await?;
+    if !preset.is_empty() {
+        let _ = pt
+            .cmd::<_, serde_json::Value>(
+                CommandId::CreateFadesBasedOnPreset,
+                ptsl::CreateFadesBasedOnPresetRequestBody {
+                    fade_preset_name: preset,
+                    auto_adjust_bounds: true,
+                },
+            )
+            .await;
+    }
+    // sel.set_io(pt, &io.0, &io.1).await?;
+    // adjust_clip_to_match_selection(pt, params).await?;
+    Ok(())
+}
+pub async fn bg_clear_selection(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+    let adjust = params.get_int("adjust_selection_frames", 1);
+    println!("adjustment frames: {}", adjust);
+    let mut sel = PtSelectionTimecode::new(pt).await?;
+    let mut io = sel.get_io(pt).await?;
+    io.0.add_hmsf(0, 0, 0, adjust);
+    io.1.sub_hmsf(0, 0, 0, adjust);
+    sel.set_io(pt, &io.0, &io.1).await?;
+    pt.clear().await?;
     Ok(())
 }
 pub async fn adjust_clip_to_match_selection(
@@ -155,7 +198,16 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Resul
     }
     Ok(())
 }
-pub async fn toggle_edit_tool(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn toggle_mode(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+    let mode = pt.get_edit_mode().await?;
+    if mode != "EMO_GridAbsolute" {
+        pt.set_edit_mode("EMO_GridAbsolute").await?;
+    } else {
+        pt.set_edit_mode("EMO_Slip").await?;
+    }
+    Ok(())
+}
+pub async fn toggle_tool(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
     let tool = pt.get_edit_tool().await?;
     if tool != "ET_Selector" {
         pt.set_edit_tool("ET_Selector").await?;

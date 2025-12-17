@@ -98,7 +98,30 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
         })
     }
 }
+pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    unsafe {
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            // Find the checkbox (change role check to "AXCheckBox")
+            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
 
+            // Toggle it (same AXPress action as buttons)
+            let press_action = create_cfstring("AXPress");
+            let result = AXUIElementPerformAction(checkbox_element, press_action);
+            CFRelease(press_action);
+
+            if result != K_AX_ERROR_SUCCESS {
+                bail!(
+                    "Failed to toggle checkbox '{}' (error code: {})",
+                    checkbox_name,
+                    result
+                );
+            }
+
+            CFRelease(checkbox_element);
+            Ok(())
+        })
+    }
+}
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -341,6 +364,71 @@ unsafe fn find_button_in_element(
 
     bail!("Button not found")
 }
+
+/// Find a checkbox in a window by name (soft matched)
+unsafe fn find_checkbox_in_window(
+    window: AXUIElementRef,
+    checkbox_name: &str,
+) -> Result<AXUIElementRef> {
+    find_checkbox_in_element(window, checkbox_name)
+        .with_context(|| format!("Checkbox '{}' not found in window", checkbox_name))
+}
+
+/// Recursively find a checkbox by name
+unsafe fn find_checkbox_in_element(
+    element: AXUIElementRef,
+    checkbox_name: &str,
+) -> Result<AXUIElementRef> {
+    // Check if this element is a checkbox with matching name
+    let role_attr = create_cfstring("AXRole");
+    let mut role_value: *mut c_void = ptr::null_mut();
+    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+    CFRelease(role_attr);
+
+    if let Some(role) = cfstring_to_string(role_value) {
+        if !role_value.is_null() {
+            CFRelease(role_value);
+        }
+
+        if role == "AXCheckBox" {
+            let title_attr = create_cfstring("AXTitle");
+            let mut title_value: *mut c_void = ptr::null_mut();
+            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+            CFRelease(title_attr);
+
+            if let Some(title) = cfstring_to_string(title_value) {
+                if !title_value.is_null() {
+                    CFRelease(title_value);
+                }
+
+                if crate::soft_match(&title, checkbox_name) {
+                    // Found it! Return a copy
+                    return Ok(element);
+                }
+            }
+        }
+    }
+
+    // Search children recursively
+    let children_attr = create_cfstring("AXChildren");
+    let mut children_value: *mut c_void = ptr::null_mut();
+    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+    CFRelease(children_attr);
+
+    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+        let children_count = CFArrayGetCount(children_value);
+
+        for i in 0..children_count {
+            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            if let Ok(checkbox) = find_checkbox_in_element(child, checkbox_name) {
+                return Ok(checkbox);
+            }
+        }
+    }
+
+    bail!("Checkbox not found")
+}
+
 ///
 /// Check if a window exists right now
 ///
@@ -416,9 +504,7 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
 
     println!(
         "⏳ Waiting for window '{}' in '{}' to close (timeout: {}ms)",
-        window_name,
-        app_name,
-        timeout_ms
+        window_name, app_name, timeout_ms
     );
     log::info!(
         "Waiting for window '{}' in '{}' to close (timeout: {}ms)",
@@ -430,7 +516,10 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
     loop {
         // Check if window still exists
         let exists = window_exists(app_name, window_name)?;
-        println!("🔍 Checking if window '{}' in '{}' still exists: {}", window_name, app_name, exists);
+        println!(
+            "🔍 Checking if window '{}' in '{}' still exists: {}",
+            window_name, app_name, exists
+        );
 
         if !exists {
             println!("✅ Window '{}' has closed", window_name);
@@ -441,7 +530,10 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
         }
 
         if start.elapsed() >= timeout {
-            println!("❌ Timeout waiting for window '{}' to close ({}ms)", window_name, timeout_ms);
+            println!(
+                "❌ Timeout waiting for window '{}' to close ({}ms)",
+                window_name, timeout_ms
+            );
             bail!(
                 "Timeout waiting for window '{}' to close ({}ms)",
                 window_name,
@@ -497,23 +589,40 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
 
         // Check if the specified app is the current app
         if let Ok(current_app) = crate::macos::app_info::get_current_app() {
-            println!("🔍 Current app: '{}', looking for: '{}'", current_app, app_name);
-            log::debug!("Current app: '{}', looking for: '{}'", current_app, app_name);
+            println!(
+                "🔍 Current app: '{}', looking for: '{}'",
+                current_app, app_name
+            );
+            log::debug!(
+                "Current app: '{}', looking for: '{}'",
+                current_app,
+                app_name
+            );
 
             if crate::soft_match(&current_app, app_name) {
                 println!("✅ App matches!");
                 // App is focused
                 if window_name.is_empty() {
                     // If no specific window requested, just app focus is enough
-                    println!("✅ '{}' is now focused (no specific window required)", app_name);
+                    println!(
+                        "✅ '{}' is now focused (no specific window required)",
+                        app_name
+                    );
                     log::info!("✅ '{}' is now focused", app_name);
                     return Ok(());
                 }
 
                 // Check if the right window is focused
                 if let Ok(current_window) = crate::macos::app_info::get_app_window() {
-                    println!("🔍 Current window: '{}', looking for: '{}'", current_window, window_name);
-                    log::debug!("Current window: '{}', looking for: '{}'", current_window, window_name);
+                    println!(
+                        "🔍 Current window: '{}', looking for: '{}'",
+                        current_window, window_name
+                    );
+                    log::debug!(
+                        "Current window: '{}', looking for: '{}'",
+                        current_window,
+                        window_name
+                    );
                     if crate::soft_match(&current_window, window_name) {
                         println!("✅ Window '{}' is now focused", window_name);
                         log::info!("✅ Window '{}' is now focused", window_name);

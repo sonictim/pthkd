@@ -61,6 +61,18 @@ pub(crate) async fn click_checkbox(window: &str, checkbox: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) async fn check_box(window: &str, checkbox: &str) -> Result<()> {
+    crate::macos::ui_elements::check_box("Pro Tools", window, checkbox)?;
+    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 20ms
+    Ok(())
+}
+
+pub(crate) async fn uncheck_box(window: &str, checkbox: &str) -> Result<()> {
+    crate::macos::ui_elements::uncheck_box("Pro Tools", window, checkbox)?;
+    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 20ms
+    Ok(())
+}
+
 /// Combine all module registries into one
 pub fn get_action_registry()
 -> std::collections::HashMap<&'static str, fn(&crate::params::Params) -> anyhow::Result<()>> {
@@ -68,6 +80,7 @@ pub fn get_action_registry()
     registry.extend(tracks::get_tracks_registry());
     registry.extend(markers::get_markers_registry());
     registry.extend(edit::get_edit_registry());
+    registry.extend(session::get_session_registry());
     registry.extend(plugins::get_plugins_registry());
     registry
 }

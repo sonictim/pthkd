@@ -64,14 +64,25 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
 keys = ["control", "option", "command", "return"]
 action = "os.fast_pw"
 
+[[hotkey]]
+keys = ["shift", "cmd", "o", "p"]
+action = "pt.session_popups"
+
 # ============================================================================
 # ProTools actions (pt.* namespace)
 # ============================================================================
 [[hotkey]]
-keys = ["cmd", "option", "control", "l"]
+keys = ["cmd", "option", "control", "s"]
 action = "pt.session_export_selection"
 target_application = "Pro Tools"
-notify = true
+
+[[hotkey]]
+keys = ["cmd", "option", "control", "shift", "s"]
+action = "pt.session_export_selection"
+target_application = "Pro Tools"
+[hotkey.params]
+copy_audio_files = true
+close = false
 
 [[hotkey]]
 keys = ["cmd", "shift", "s"]
@@ -533,6 +544,18 @@ app_window = "Edit"
 [hotkey.params]
 number = 3
 color = "magenta"
+
+
+# ============================================================================
+# Soundminer Hotkeys
+# ============================================================================
+
+[[hotkey]]
+keys = ["ctrl", "s"]
+action = "sm.spot_to_protools"
+target_application = ["Pro Tools", "Soundminer"]
+
+
 
 
 # ============================================================================

@@ -101,8 +101,10 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
 pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
     unsafe {
         super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            // Find the checkbox (change role check to "AXCheckBox")
+            // Find the checkbox
             let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+
+            println!("Found checkbox '{}', attempting to click...", checkbox_name);
 
             // Toggle it (same AXPress action as buttons)
             let press_action = create_cfstring("AXPress");
@@ -110,6 +112,7 @@ pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) ->
             CFRelease(press_action);
 
             if result != K_AX_ERROR_SUCCESS {
+                CFRelease(checkbox_element);
                 bail!(
                     "Failed to toggle checkbox '{}' (error code: {})",
                     checkbox_name,
@@ -118,6 +121,273 @@ pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) ->
             }
 
             CFRelease(checkbox_element);
+            println!("✅ Clicked checkbox '{}'", checkbox_name);
+            Ok(())
+        })
+    }
+}
+
+/// Check a checkbox (set to checked state)
+pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    unsafe {
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+
+            println!("Found checkbox '{}', setting to CHECKED...", checkbox_name);
+
+            // Create a CFNumber for value 1 (checked)
+            let num_value: i32 = 1;
+            let cf_number = CFNumberCreate(
+                std::ptr::null(),
+                9, // kCFNumberSInt32Type
+                &num_value as *const i32 as *const c_void
+            );
+
+            // Set the value
+            let value_attr = create_cfstring("AXValue");
+            let result = AXUIElementSetAttributeValue(checkbox_element, value_attr, cf_number);
+            CFRelease(value_attr);
+            CFRelease(cf_number);
+
+            if result != K_AX_ERROR_SUCCESS {
+                CFRelease(checkbox_element);
+                bail!("Failed to check checkbox '{}' (error code: {})", checkbox_name, result);
+            }
+
+            CFRelease(checkbox_element);
+            println!("✅ Set checkbox '{}' to CHECKED", checkbox_name);
+            Ok(())
+        })
+    }
+}
+
+/// Get menu items from a popup button
+pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            // Find the popup button
+            let popup_element = find_popup_in_window(window, popup_name)?;
+
+            println!("Found popup '{}', opening menu...", popup_name);
+
+            // Click it to open the menu
+            let press_action = create_cfstring("AXPress");
+            let result = AXUIElementPerformAction(popup_element, press_action);
+            CFRelease(press_action);
+
+            // Note: Some apps (like Pro Tools) return error codes even though the popup opens
+            // For example, Pro Tools returns -25204 (K_AX_ERROR_INVALID_UI_ELEMENT) but the popup still opens
+            if result != K_AX_ERROR_SUCCESS {
+                println!("  ⚠️  AXPress returned error code {} (but popup may still open)", result);
+            } else {
+                println!("  ✅ AXPress succeeded");
+            }
+
+            println!("  Waiting for menu to appear...");
+
+            // Wait for menu to appear
+            std::thread::sleep(std::time::Duration::from_millis(200));
+
+            println!("  Wait complete, enumerating menu...");
+
+            let mut menu_items = Vec::new();
+
+            // Try method 1: Check for AXMenu attribute on the popup itself
+            println!("  Checking for AXMenu attribute...");
+            let menu_attr = create_cfstring("AXMenu");
+            let mut menu_value: *mut c_void = ptr::null_mut();
+            let result = AXUIElementCopyAttributeValue(popup_element, menu_attr, &mut menu_value);
+            CFRelease(menu_attr);
+
+            if result == K_AX_ERROR_SUCCESS && !menu_value.is_null() {
+                println!("  Found menu via AXMenu attribute!");
+                menu_items = get_menu_items_from_menu(menu_value)?;
+                CFRelease(menu_value);
+            } else {
+                println!("  No AXMenu attribute, checking children...");
+
+                // Try method 2: Look in children
+                let children_attr = create_cfstring("AXChildren");
+                let mut children_value: *mut c_void = ptr::null_mut();
+                let result = AXUIElementCopyAttributeValue(popup_element, children_attr, &mut children_value);
+                CFRelease(children_attr);
+
+                if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+                    let children_count = CFArrayGetCount(children_value);
+                    println!("  Found {} children", children_count);
+
+                    for i in 0..children_count {
+                        let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+
+                        // Get the role of this child
+                        let role_attr = create_cfstring("AXRole");
+                        let mut role_value: *mut c_void = ptr::null_mut();
+                        AXUIElementCopyAttributeValue(child, role_attr, &mut role_value);
+                        CFRelease(role_attr);
+
+                        if let Some(role) = cfstring_to_string(role_value) {
+                            if !role_value.is_null() {
+                                CFRelease(role_value);
+                            }
+
+                            println!("    Child {}: role = {}", i, role);
+
+                            // Look for menu items
+                            if role == "AXMenu" {
+                                println!("  Found AXMenu child!");
+                                menu_items = get_menu_items_from_menu(child)?;
+                                break;
+                            }
+                        }
+                    }
+
+                    CFRelease(children_value);
+                } else {
+                    println!("  No children found");
+                }
+            }
+
+            CFRelease(popup_element);
+
+            println!("Found {} menu items", menu_items.len());
+            for (i, item) in menu_items.iter().enumerate() {
+                println!("  {}. {}", i + 1, item);
+            }
+
+            Ok(menu_items)
+        })
+    }
+}
+
+/// Get menu item titles from a menu element
+unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> {
+    let mut items = Vec::new();
+
+    let children_attr = create_cfstring("AXChildren");
+    let mut children_value: *mut c_void = ptr::null_mut();
+    let result = AXUIElementCopyAttributeValue(menu, children_attr, &mut children_value);
+    CFRelease(children_attr);
+
+    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+        let children_count = CFArrayGetCount(children_value);
+
+        for i in 0..children_count {
+            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+
+            // Get the title of this menu item
+            let title_attr = create_cfstring("AXTitle");
+            let mut title_value: *mut c_void = ptr::null_mut();
+            AXUIElementCopyAttributeValue(child, title_attr, &mut title_value);
+            CFRelease(title_attr);
+
+            if let Some(title) = cfstring_to_string(title_value) {
+                if !title_value.is_null() {
+                    CFRelease(title_value);
+                }
+                if !title.is_empty() {
+                    items.push(title);
+                }
+            }
+        }
+
+        CFRelease(children_value);
+    }
+
+    Ok(items)
+}
+
+/// Find a popup button in a window
+unsafe fn find_popup_in_window(
+    window: AXUIElementRef,
+    popup_name: &str,
+) -> Result<AXUIElementRef> {
+    find_popup_in_element(window, popup_name)
+        .with_context(|| format!("Popup '{}' not found in window", popup_name))
+}
+
+/// Recursively find a popup button by name
+unsafe fn find_popup_in_element(
+    element: AXUIElementRef,
+    popup_name: &str,
+) -> Result<AXUIElementRef> {
+    // Check if this element is a popup button with matching name
+    let role_attr = create_cfstring("AXRole");
+    let mut role_value: *mut c_void = ptr::null_mut();
+    AXUIElementCopyAttributeValue(element, role_attr, &mut role_value);
+    CFRelease(role_attr);
+
+    if let Some(role) = cfstring_to_string(role_value) {
+        if !role_value.is_null() {
+            CFRelease(role_value);
+        }
+
+        if role == "AXPopUpButton" {
+            let title_attr = create_cfstring("AXTitle");
+            let mut title_value: *mut c_void = ptr::null_mut();
+            AXUIElementCopyAttributeValue(element, title_attr, &mut title_value);
+            CFRelease(title_attr);
+
+            if let Some(title) = cfstring_to_string(title_value) {
+                if !title_value.is_null() {
+                    CFRelease(title_value);
+                }
+
+                if crate::soft_match(&title, popup_name) {
+                    return Ok(element);
+                }
+            }
+        }
+    }
+
+    // Search children recursively
+    let children_attr = create_cfstring("AXChildren");
+    let mut children_value: *mut c_void = ptr::null_mut();
+    let result = AXUIElementCopyAttributeValue(element, children_attr, &mut children_value);
+    CFRelease(children_attr);
+
+    if result == K_AX_ERROR_SUCCESS && !children_value.is_null() {
+        let children_count = CFArrayGetCount(children_value);
+
+        for i in 0..children_count {
+            let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            if let Ok(popup) = find_popup_in_element(child, popup_name) {
+                return Ok(popup);
+            }
+        }
+    }
+
+    bail!("Popup not found")
+}
+
+/// Uncheck a checkbox (set to unchecked state)
+pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    unsafe {
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+
+            println!("Found checkbox '{}', setting to UNCHECKED...", checkbox_name);
+
+            // Create a CFNumber for value 0 (unchecked)
+            let num_value: i32 = 0;
+            let cf_number = CFNumberCreate(
+                std::ptr::null(),
+                9, // kCFNumberSInt32Type
+                &num_value as *const i32 as *const c_void
+            );
+
+            // Set the value
+            let value_attr = create_cfstring("AXValue");
+            let result = AXUIElementSetAttributeValue(checkbox_element, value_attr, cf_number);
+            CFRelease(value_attr);
+            CFRelease(cf_number);
+
+            if result != K_AX_ERROR_SUCCESS {
+                CFRelease(checkbox_element);
+                bail!("Failed to uncheck checkbox '{}' (error code: {})", checkbox_name, result);
+            }
+
+            CFRelease(checkbox_element);
+            println!("✅ Set checkbox '{}' to UNCHECKED", checkbox_name);
             Ok(())
         })
     }

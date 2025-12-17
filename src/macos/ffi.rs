@@ -45,6 +45,13 @@ unsafe extern "C" {
     /// Get an element at an index in a CFArray
     pub fn CFArrayGetValueAtIndex(the_array: *mut c_void, idx: isize) -> *mut c_void;
 
+    /// Create a CFNumber from a numeric value
+    pub fn CFNumberCreate(
+        allocator: *const c_void,
+        the_type: i32,
+        value_ptr: *const c_void,
+    ) -> *mut c_void;
+
     /// Get the type ID of a Core Foundation object
     pub fn CFGetTypeID(cf: *mut c_void) -> usize;
 
@@ -83,6 +90,13 @@ unsafe extern "C" {
     pub fn AXUIElementPerformAction(
         element: AXUIElementRef,
         action: CFStringRef,
+    ) -> i32;
+
+    /// Set an attribute value on an element
+    pub fn AXUIElementSetAttributeValue(
+        element: AXUIElementRef,
+        attribute: CFStringRef,
+        value: *const c_void,
     ) -> i32;
 
     /// Check if the current process is trusted for accessibility

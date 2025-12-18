@@ -373,6 +373,13 @@ fn run() -> anyhow::Result<()> {
     log::info!("Log file: {}", log_path);
     log::info!("===========================================");
 
+    // BLOCKING permission check - will not return until all permissions granted or user quits
+    log::info!("Checking required permissions...");
+    macos::permissions::ensure_permissions_granted()
+        .context("Failed to verify permissions")?;
+
+    log::info!("✅ All permissions granted, starting daemon...");
+
     // Initialize ProTools tokio runtime
     protools::init_runtime();
 
@@ -475,23 +482,27 @@ fn run() -> anyhow::Result<()> {
 /// Returns the absolute path to the log file
 fn init_logging() -> anyhow::Result<String> {
     use std::env;
-    use std::fs::OpenOptions;
+    use std::fs::{self, OpenOptions};
+    use std::path::PathBuf;
 
-    let log_file_path = "pthkd.log";
+    // Use proper macOS log location: ~/Library/Logs/pthkd.log
+    let home = env::var("HOME").context("HOME environment variable not set")?;
+    let log_dir = PathBuf::from(home).join("Library").join("Logs");
 
-    // Get absolute path for logging
-    let absolute_path = env::current_dir()
-        .context("Failed to get current directory")?
-        .join(log_file_path)
-        .to_string_lossy()
-        .to_string();
+    // Create Logs directory if it doesn't exist
+    if !log_dir.exists() {
+        fs::create_dir_all(&log_dir).context("Failed to create Logs directory")?;
+    }
+
+    let log_file_path = log_dir.join("pthkd.log");
+    let absolute_path = log_file_path.to_string_lossy().to_string();
 
     // Configure env_logger to write to the file (append mode)
     let target = Box::new(
         OpenOptions::new()
             .create(true)
             .append(true) // Append across multiple runs
-            .open(log_file_path)
+            .open(&log_file_path)
             .context("Failed to open log file for writing")?,
     );
 

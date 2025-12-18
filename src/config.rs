@@ -5,9 +5,53 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
+use std::path::PathBuf;
 
 /// Embedded default configuration
 const DEFAULT_CONFIG: &str = include_str!("../config.toml");
+
+/// Get the Application Support directory path for config storage
+fn get_app_support_config_path() -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME environment variable not set")?;
+    let app_support = PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("pthkd");
+
+    // Create directory if it doesn't exist
+    if !app_support.exists() {
+        fs::create_dir_all(&app_support)
+            .context("Failed to create Application Support directory")?;
+        log::info!("Created config directory at {}", app_support.display());
+    }
+
+    Ok(app_support.join("config.toml"))
+}
+
+/// Determine if we're running from a bundled .app
+fn is_bundled() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(|s| s.contains(".app/Contents/")))
+        .unwrap_or(false)
+}
+
+/// Get the config file paths to try, in order of preference
+fn get_config_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if !is_bundled() {
+        // Development: Try current directory first
+        paths.push(PathBuf::from("config.toml"));
+    }
+
+    // Always try Application Support (production location)
+    if let Ok(app_support_path) = get_app_support_config_path() {
+        paths.push(app_support_path);
+    }
+
+    paths
+}
 
 /// Helper type to deserialize either a single string or array of strings
 #[derive(Debug, Deserialize)]
@@ -46,20 +90,47 @@ pub struct HotkeyConfig {
 }
 
 /// Load and parse the config file
-/// If the config file doesn't exist, creates one from the embedded default
+///
+/// Search order:
+/// - Development mode: ./config.toml first, then ~/Library/Application Support/pthkd/config.toml
+/// - Production (.app): ~/Library/Application Support/pthkd/config.toml only
+///
+/// If the config file doesn't exist, creates one from the embedded default in Application Support
 /// If the config file has TOML errors, falls back to the embedded default
 pub fn load_config(path: &str) -> Result<Config> {
-    let contents = match fs::read_to_string(path) {
-        Ok(contents) => {
-            log::info!("Loaded config from {}", path);
-            contents
+    // Ignore the path parameter - kept for API compatibility
+    // Use our smart path resolution instead
+    let _ = path;
+
+    let paths = get_config_paths();
+
+    // Try to load from each path in order
+    let (contents, loaded_from) = {
+        let mut found = None;
+        for path in &paths {
+            if let Ok(contents) = fs::read_to_string(path) {
+                found = Some((contents, path.clone()));
+                break;
+            }
         }
-        Err(_) => {
-            log::warn!("Config file '{}' not found, creating from default", path);
-            // Write the default config to disk
-            fs::write(path, DEFAULT_CONFIG).context("Failed to write default config file")?;
-            log::info!("Created default config at {}", path);
-            DEFAULT_CONFIG.to_string()
+
+        match found {
+            Some((contents, path)) => {
+                log::info!("Loaded config from {}", path.display());
+                (contents, Some(path))
+            }
+            None => {
+                // No config found - create default in Application Support
+                let default_path = get_app_support_config_path()
+                    .context("Failed to get Application Support path")?;
+
+                log::warn!("Config file not found, creating from default at {}", default_path.display());
+                fs::write(&default_path, DEFAULT_CONFIG)
+                    .context("Failed to write default config file")?;
+                log::info!("Created default config at {}", default_path.display());
+
+                (DEFAULT_CONFIG.to_string(), Some(default_path))
+            }
         }
     };
 
@@ -67,7 +138,11 @@ pub fn load_config(path: &str) -> Result<Config> {
     let config = match toml::from_str::<Config>(&contents) {
         Ok(config) => config,
         Err(e) => {
-            log::error!("Failed to parse config file: {:#}", e);
+            if let Some(path) = loaded_from {
+                log::error!("Failed to parse config file at {}: {:#}", path.display(), e);
+            } else {
+                log::error!("Failed to parse config file: {:#}", e);
+            }
             log::warn!("Falling back to embedded default configuration");
             toml::from_str(DEFAULT_CONFIG)
                 .context("Failed to parse embedded default config (this should never happen)")?

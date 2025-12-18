@@ -16,6 +16,7 @@ pub mod helpers;
 // Stable modules
 pub mod events;
 pub mod notifications;
+pub mod permissions;
 
 // Experimental modules (work in progress)
 pub mod keystroke;

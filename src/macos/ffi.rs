@@ -103,6 +103,13 @@ unsafe extern "C" {
     pub fn AXIsProcessTrusted() -> bool;
 }
 
+/// CoreGraphics framework for input monitoring permissions
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    /// Check if the current process has permission to post events (Input Monitoring)
+    pub fn CGRequestPostEventAccess() -> bool;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================

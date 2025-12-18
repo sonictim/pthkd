@@ -126,7 +126,11 @@ pub unsafe fn create_keyboard_event_tap(
         );
 
         if event_tap.is_null() {
-            anyhow::bail!("Failed to create event tap - check accessibility permissions");
+            anyhow::bail!(
+                "Failed to create event tap despite permissions check. \
+                 This may indicate a system-level issue. \
+                 Try restarting the app or your Mac."
+            );
         }
 
         Ok(event_tap)

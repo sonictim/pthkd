@@ -86,14 +86,22 @@ macro_rules! actions_async {
                     let error_clone = error.clone();
 
                     $crate::protools::run_command(move || async move {
-                        let mut pt = $crate::protools::ProtoolsSession::new().await.unwrap();
-                        if let Err(e) = super::$action_name(&mut pt, &params).await {
-                            *error_clone.lock().unwrap() = Some(format!("{:#}", e));
+                        // Catch connection failures to prevent silent panics
+                        match $crate::protools::ProtoolsSession::new().await {
+                            Ok(mut pt) => {
+                                if let Err(e) = super::$action_name(&mut pt, &params).await {
+                                    *error_clone.lock().unwrap() = Some(format!("{:#}", e));
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to connect to ProTools: {:#}", e);
+                                *error_clone.lock().unwrap() = Some(format!("ProTools connection failed: {:#}", e));
+                            }
                         }
                     });
 
-                    // Wait for timeout to keep event consumed (default 500ms + buffer)
-                    std::thread::sleep(std::time::Duration::from_millis(timeout_ms + 150));
+                    // Small delay to keep event consumed (50ms)
+                    std::thread::sleep(std::time::Duration::from_millis(50));
 
                     // Check result
                     let result = match error.lock().unwrap().as_ref() {

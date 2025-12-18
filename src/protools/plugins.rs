@@ -191,9 +191,14 @@ pub async fn plugin_selector(
     let plugins = plugins.to_vec(); // Clone for closure
     let mut counter = PLUGIN_COUNTER.lock().unwrap();
     let close = Box::new(close);
+    log::info!("plugin_selector called with {} plugins", plugins.len());
     counter.press(timeout_ms, plugins.len() as u32, |idx| async move {
+        log::info!("Callback executing with idx={}, plugins.len()={}", idx, plugins.len());
         if let Some(plugin) = plugins.get(idx as usize) {
+            log::info!("Opening plugin: {}", plugin);
             let _ = call_plugin(plugin, &button, *close).await;
+        } else {
+            log::error!("No plugin found at index {}", idx);
         }
     });
 

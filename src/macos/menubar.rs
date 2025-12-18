@@ -27,6 +27,17 @@ extern "C" fn menu_reload_config(
     }
 }
 
+extern "C" fn menu_show_about(
+    _this: *mut AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) {
+    log::info!("About menu item clicked");
+    unsafe {
+        show_about_dialog();
+    }
+}
+
 /// Represents a macOS menu bar status item
 ///
 /// Holds a reference to the NSStatusItem which displays the icon in the menu bar.
@@ -207,6 +218,13 @@ unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
             menu_reload_config
                 as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
         );
+
+        // Add the showAbout: method
+        builder.add_method(
+            sel!(showAbout:),
+            menu_show_about
+                as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
+        );
     }
 
     let class = builder.register();
@@ -233,6 +251,17 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
         anyhow::bail!("Failed to create NSMenu");
     }
     log::debug!("NSMenu created successfully");
+
+    // Create "About" menu item
+    log::debug!("Creating 'About' menu item...");
+    let about_item = unsafe { create_menu_item("About pthkd", "showAbout:", Some(delegate))? };
+    let _: () = msg_send![menu, addItem: about_item];
+    log::debug!("Added 'About' item");
+
+    // Create separator
+    let separator_class_1 = AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
+    let separator_1: *mut AnyObject = msg_send![separator_class_1, separatorItem];
+    let _: () = msg_send![menu, addItem: separator_1];
 
     // Create "Reload Config" menu item
     log::debug!("Creating 'Reload Config' menu item...");
@@ -285,6 +314,7 @@ unsafe fn create_menu_item(
     let selector = match action {
         "terminate:" => sel!(terminate:),
         "reloadConfig:" => sel!(reloadConfig:),
+        "showAbout:" => sel!(showAbout:),
         _ => anyhow::bail!("Unknown action: {}", action),
     };
 
@@ -306,7 +336,7 @@ unsafe fn create_menu_item(
 
     // Set target based on action
     if let Some(target_obj) = target {
-        // Custom target (for Reload Config)
+        // Custom target (for Reload Config and About)
         let _: () = msg_send![menu_item, setTarget: target_obj];
         log::debug!("Set menu item target to custom delegate");
     } else if action == "terminate:" {
@@ -419,4 +449,60 @@ unsafe fn create_text_image(_text: &str) -> Option<*mut AnyObject> {
     // Return None to indicate failure
     // The status item will still be created but without an image
     None
+}
+
+/// Show an About dialog with version information
+unsafe fn show_about_dialog() {
+    use objc2::{msg_send, runtime::AnyClass, sel};
+
+    let version = env!("CARGO_PKG_VERSION");
+    let message = format!("pthkd v{}\n\nProTools Hotkey Daemon\nA fast, scriptable hotkey system for Pro Tools", version);
+
+    // Get NSAlert class
+    let alert_class = match AnyClass::get("NSAlert") {
+        Some(c) => c,
+        None => {
+            log::error!("Failed to get NSAlert class");
+            return;
+        }
+    };
+
+    // Create alert
+    let alert: *mut AnyObject = msg_send![alert_class, alloc];
+    let alert: *mut AnyObject = msg_send![alert, init];
+
+    // Set message text
+    let ns_string_class = match AnyClass::get("NSString") {
+        Some(c) => c,
+        None => {
+            log::error!("Failed to get NSString class");
+            return;
+        }
+    };
+
+    let message_string: *mut AnyObject = msg_send![ns_string_class, alloc];
+    let message_string: *mut AnyObject = msg_send![
+        message_string,
+        initWithBytes: message.as_ptr() as *const std::ffi::c_void
+        length: message.len()
+        encoding: 4_usize  // NSUTF8StringEncoding
+    ];
+
+    let _: () = msg_send![alert, setMessageText: message_string];
+
+    // Add OK button
+    let ok_string: *mut AnyObject = msg_send![ns_string_class, alloc];
+    let ok_string: *mut AnyObject = msg_send![
+        ok_string,
+        initWithBytes: "OK".as_ptr() as *const std::ffi::c_void
+        length: 2_usize
+        encoding: 4_usize
+    ];
+    let _: () = msg_send![alert, addButtonWithTitle: ok_string];
+
+    // Set alert style to informational
+    let _: () = msg_send![alert, setAlertStyle: 1_isize]; // NSAlertStyleInformational = 1
+
+    // Show the alert
+    let _: () = msg_send![alert, runModal];
 }

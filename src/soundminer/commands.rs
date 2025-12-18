@@ -21,8 +21,20 @@ pub fn send_to_daw(params: &Params) -> R<()> {
     let mut orig = params.get_obool("original_sample_rate");
     let mut sprn = params.get_obool("spot_as_region");
 
+    // Check if Soundminer is running - if not, just launch it and return
+    let apps = crate::macos::app_info::get_all_running_applications()?;
+    let soundminer_running = apps.iter().any(|app| crate::soft_match(app, "Soundminer"));
+
+    if !soundminer_running {
+        log::info!("Soundminer not running, launching...");
+        crate::macos::app_info::launch_application("Soundminer")?;
+        log::info!("✅ Soundminer launched (no files to send)");
+        return Ok(());
+    }
+
+    // Soundminer is running, focus it and execute the command
     let _ = crate::macos::app_info::focus_app("Soundminer", "", true, false, 50);
-    // let _ = crate::macos::ui_elements::wait_for_window_focused("Soundminer", "Soundminer", 50);
+
     match daw.as_deref() {
         Some("Pro Tools") => {
             log::info!("Spotting to Protools Timeline via Soundminer");
@@ -86,17 +98,32 @@ pub fn send_sm_event(id: &str, param: Option<bool>) -> R<()> {
 }
 
 pub fn send_apple_event(app: &str, event_class: &str, event_id: &str, param: i32) -> R<()> {
+    use std::time::Duration;
+
     let script = format!(
         "tell application \"{}\" to «event {}{}» {}",
         app, event_class, event_id, param
     );
 
-    std::process::Command::new("osascript")
+    // Use a timeout to prevent hanging if the app isn't responding
+    let output = std::process::Command::new("osascript")
         .arg("-e")
         .arg(&script)
-        .output()?;
+        .output();
 
-    Ok(())
+    match output {
+        Ok(result) => {
+            if !result.status.success() {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                log::warn!("AppleEvent returned non-zero status: {}", stderr);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("Failed to execute AppleEvent: {}", e);
+            anyhow::bail!("AppleEvent execution failed: {}", e)
+        }
+    }
 }
 
 pub fn select_spotting_folder(_params: &Params) -> R<()> {

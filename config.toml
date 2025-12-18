@@ -311,7 +311,7 @@ keys = ["ctrl", "pad_6"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 300
-plugins = ["TRAVELER", "Doppler Effect", "GRM Doppler", "Doppler Stereo" ]
+plugins = ["TRAVELER (Stereo)", "Doppler Effect", "GRM Doppler", "Doppler Stereo" ]
 button = "Analyze"
 
 

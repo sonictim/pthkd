@@ -1,0 +1,89 @@
+[2025-12-17 20:35:04 INFO ] ===========================================
+[2025-12-17 20:35:04 INFO ] Starting pthkd hotkey daemon...
+[2025-12-17 20:35:04 INFO ] Log file: /Users/tfarrell/dev/pthkd/build/pthkd.log
+[2025-12-17 20:35:04 INFO ] ===========================================
+[2025-12-17 20:35:04 INFO ] ✅ Accessibility permissions granted
+[2025-12-17 20:35:04 INFO ] Loaded config from /Users/tfarrell/Library/Application Support/pthkd/config.toml
+[2025-12-17 20:35:04 INFO ] Registered 72 hotkeys:
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+r+l => os.reload_config
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+a+m => os.dump_app_menus
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+b => pt.edit_click_a_button
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+a+i => os.test_app_info
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+p+t => os.focus_protools
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+a+l => os.list_running_apps
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+k => os.list_window_titles
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+t => os.test_keystroke
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+l+b => os.list_window_buttons
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+w+t => os.display_window_text
+[2025-12-17 20:35:04 INFO ]   - ctrl+option+cmd+return => os.fast_pw
+[2025-12-17 20:35:04 INFO ]   - shift+cmd+o+p => pt.session_popups
+[2025-12-17 20:35:04 INFO ]   - cmd+option+ctrl+s => pt.session_export_selection
+[2025-12-17 20:35:04 INFO ]   - cmd+option+ctrl+shift+s => pt.session_export_selection
+[2025-12-17 20:35:04 INFO ]   - cmd+shift+s => pt.tracks_solo_selected
+[2025-12-17 20:35:04 INFO ]   - shift+option+s => pt.tracks_solo_clear
+[2025-12-17 20:35:04 INFO ]   - cmd+option+ctrl => pt.edit_conform_delete
+[2025-12-17 20:35:04 INFO ]   - cmd+option+ctrl => pt.edit_conform_insert
+[2025-12-17 20:35:04 INFO ]   - cmd+ctrl+f => pt.edit_crossfade
+[2025-12-17 20:35:04 INFO ]   - f => pt.edit_crossfade
+[2025-12-17 20:35:04 INFO ]   - cmd+t => pt.edit_adjust_clip_to_match_selection
+[2025-12-17 20:35:04 INFO ]   - ctrl+option+cmd+b => pt.edit_bg_paste_selection
+[2025-12-17 20:35:04 INFO ]   - ctrl+option+cmd+g => pt.edit_bg_clear_selection
+[2025-12-17 20:35:04 INFO ]   - cmd => pt.edit_reset_clip
+[2025-12-17 20:35:04 INFO ]   - ` => pt.edit_toggle_mode
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_audiosuite
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_send_receive_rx
+[2025-12-17 20:35:04 INFO ]   - ctrl+space => pt.plugins_audiosuite
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_audiosuite
+[2025-12-17 20:35:04 INFO ]   - ctrl+option => pt.plugins_audiosuite
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   - ctrl => pt.plugins_multitap_selector
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   -  => pt.markers_go_to_next_marker
+[2025-12-17 20:35:04 INFO ]   - shift => pt.markers_go_to_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift+ctrl => pt.markers_update_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift => pt.markers_go_to_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift+ctrl => pt.markers_update_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift => pt.markers_go_to_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift+ctrl => pt.markers_update_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift => pt.markers_go_to_quick_marker
+[2025-12-17 20:35:04 INFO ]   - shift+ctrl => pt.markers_update_quick_marker
+[2025-12-17 20:35:04 INFO ]   - ctrl+s => sm.send_to_daw
+[2025-12-17 20:35:04 INFO ]   - f1 => sm.send_to_daw
+[2025-12-17 20:35:04 INFO ]   - cmd+f1 => sm.send_to_daw
+[2025-12-17 20:35:04 INFO ]   - f2 => sm.send_to_daw
+[2025-12-17 20:35:04 INFO ]   - f3 => sm.send_to_daw
+[2025-12-17 20:35:04 INFO ]   - f4 => sm.select_spotting_folder
+[2025-12-17 20:35:04 INFO ] Initializing NSApplication for menu bar...
+[2025-12-17 20:35:05 WARN ] Failed to set activation policy - menu bar may not work correctly
+[2025-12-17 20:35:05 INFO ] NSApplication initialized as menu bar app (no dock icon)
+[2025-12-17 20:35:05 INFO ] Creating menu bar status item...
+[2025-12-17 20:35:05 INFO ] ✅ Menu bar icon set successfully
+[2025-12-17 20:35:05 INFO ] Creating status bar menu...
+[2025-12-17 20:35:05 INFO ] Menu created, attaching to status item...
+[2025-12-17 20:35:05 INFO ] ✅ Menu bar menu created and attached successfully
+[2025-12-17 20:35:05 INFO ] Menu bar icon created successfully
+[2025-12-17 20:35:05 INFO ] Hotkey daemon is running. Listening for hotkeys...

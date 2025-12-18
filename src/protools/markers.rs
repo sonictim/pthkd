@@ -17,8 +17,7 @@ pub async fn update_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> R
     let text = params.get_string("name", &default_text);
     let color = params.get_string("color", "magenta");
     number += 31000;
-    let mut selection = PtSelectionSamples::new(pt).await?;
-    selection.slide(pt, 48000).await?;
+    let selection = PtSelectionSamples::new(pt).await?;
     let (st, et) = selection.get_io();
     pt.edit_marker(
         number as u32,

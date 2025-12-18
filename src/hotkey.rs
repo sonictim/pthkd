@@ -247,6 +247,7 @@ impl HotkeyCounter {
         // Cancel any pending execution
         if let Some(handle) = self.pending_task.take() {
             handle.abort();
+            log::info!("Aborted previous pending task");
         }
 
         let now = Instant::now();
@@ -254,6 +255,7 @@ impl HotkeyCounter {
 
         // Reset count if timeout has passed since last press
         if now.duration_since(self.last_call) > self.last_timeout {
+            log::info!("Timeout passed, resetting count from {} to 0", self.count);
             self.count = 0;
         }
 
@@ -263,6 +265,9 @@ impl HotkeyCounter {
 
         // Return 0-based index for array indexing
         let final_count = (self.count - 1) % max;
+
+        log::info!("HotkeyCounter: count={}, max={}, final_count={}, will execute in {}ms",
+                   self.count, max, final_count, timeout_ms);
 
         // Spawn delayed execution task
         let handle = tokio::spawn(async move {

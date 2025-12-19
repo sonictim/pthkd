@@ -19,16 +19,17 @@ pub mod notifications;
 pub mod permissions;
 
 // Experimental modules (work in progress)
+pub mod app_info;
+pub mod input_dialog;
+pub mod keyring;
 pub mod keystroke;
 pub mod menu;
-pub mod app_info;
-pub mod ui_elements;
-pub mod input_dialog;
 pub mod menubar;
+pub mod ui_elements;
 
 // Commands and Actions
-pub mod commands;
 pub mod actions;
+pub mod commands;
 
 // Re-export commonly used items
 pub use events::*;

@@ -98,8 +98,6 @@ pub fn send_sm_event(id: &str, param: Option<bool>) -> R<()> {
 }
 
 pub fn send_apple_event(app: &str, event_class: &str, event_id: &str, param: i32) -> R<()> {
-    use std::time::Duration;
-
     let script = format!(
         "tell application \"{}\" to «event {}{}» {}",
         app, event_class, event_id, param

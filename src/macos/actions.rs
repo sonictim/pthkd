@@ -17,6 +17,7 @@ actions_sync!("os", {
     click_window_button,
     display_window_text,
     test_input_dialog,
-    fast_pw,
+    rapid_pw,
+    test_pw,
     list_window_titles,
 });

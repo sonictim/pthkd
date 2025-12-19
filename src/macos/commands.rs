@@ -293,11 +293,30 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn fast_pw(_params: &Params) -> Result<()> {
-    use crate::macos::keystroke::send_keystroke;
-    send_keystroke(&["ramalamadingdong"])?;
-    send_keystroke(&["enter"])?;
-    Ok(())
+pub fn rapid_pw(params: &Params) -> Result<()> {
+    let account = params.get_str("account", "rapid_pw");
+    let set = params.get_bool("set", false);
+    if set {
+        super::keyring::password_prompt(account)
+    } else if let Ok(pw) = super::keyring::password_get(account) {
+        use crate::macos::keystroke::send_keystroke;
+        send_keystroke(&[&pw, "enter"])
+    } else {
+        super::keyring::password_prompt(account)
+    }
+}
+
+pub fn test_pw(params: &Params) -> Result<()> {
+    let account = params.get_str("account", "test_pw");
+    let set = params.get_bool("set", false);
+    if set {
+        super::keyring::password_set(account, "test")
+    } else if let Ok(pw) = super::keyring::password_get(account) {
+        use crate::macos::keystroke::send_keystroke;
+        send_keystroke(&[&pw, "enter"])
+    } else {
+        super::keyring::password_set(account, "test")
+    }
 }
 
 pub fn list_window_titles(params: &Params) -> Result<()> {
@@ -314,7 +333,11 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
             .context("Failed to get window titles")?;
 
         log::info!("Found {} windows:", titles.len());
-        println!("\n=== Window Titles for '{}' ({} windows) ===", current_app, titles.len());
+        println!(
+            "\n=== Window Titles for '{}' ({} windows) ===",
+            current_app,
+            titles.len()
+        );
         for (i, title) in titles.iter().enumerate() {
             log::info!("  {}. {}", i + 1, title);
             println!("  {}. {}", i + 1, title);
@@ -326,7 +349,11 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
             .context("Failed to get window titles")?;
 
         log::info!("Found {} windows:", titles.len());
-        println!("\n=== Window Titles for '{}' ({} windows) ===", app_name, titles.len());
+        println!(
+            "\n=== Window Titles for '{}' ({} windows) ===",
+            app_name,
+            titles.len()
+        );
         for (i, title) in titles.iter().enumerate() {
             log::info!("  {}. {}", i + 1, title);
             println!("  {}. {}", i + 1, title);

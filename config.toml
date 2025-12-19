@@ -97,8 +97,15 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
   action = "os.display_window_text"
 
 [[hotkey]]
-keys = ["control", "option", "command", "return"]
-action = "os.fast_pw"
+keys = ["control", "option", "command", "p"]
+action = "os.test_pw"
+
+[[hotkey]]
+keys = ["shift", "command", "p", "s"]
+action = "os.test_pw"
+[hotkey.params]
+set = true
+
 
 [[hotkey]]
 keys = ["shift", "cmd", "o", "p"]

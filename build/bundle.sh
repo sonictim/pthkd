@@ -88,11 +88,6 @@ else
     echo "   ⚠ No icon found at build/icon.icns (optional)"
 fi
 
-# Copy config.toml to bundle
-if [ -f "config.toml" ]; then
-    cp "config.toml" "$APP_PATH/Contents/MacOS/config.toml"
-    echo "   ✓ Copied config.toml"
-fi
 
 # Generate Info.plist
 cat > "$APP_PATH/Contents/Info.plist" << EOF

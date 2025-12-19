@@ -77,8 +77,8 @@ action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.list_window_titles"
-app = "iZotope RX 11"
+action = "os.test_keystroke2"
+trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
 notify = true
 
 [[hotkey]]
@@ -98,11 +98,14 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
 
 [[hotkey]]
 keys = ["control", "option", "command", "p"]
-action = "os.test_pw"
+action = "os.rapid_pw"
+trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+notify = true
 
 [[hotkey]]
 keys = ["shift", "command", "p", "s"]
-action = "os.test_pw"
+action = "os.rapid_pw"
+notify = true
 [hotkey.params]
 set = true
 

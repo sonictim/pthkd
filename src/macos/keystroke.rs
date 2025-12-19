@@ -6,9 +6,9 @@
 //! - ✅ Global keystroke sending (send_keystroke) - Using pure C API
 //! - 🚧 App-specific keystrokes (send_keystroke_to_app) - Needs main thread dispatch
 
+use super::ffi::CFRelease;
 use anyhow::{Result, bail};
 use libc::c_void;
-use super::ffi::CFRelease;
 
 // ============================================================================
 // Core Graphics Event FFI
@@ -33,6 +33,7 @@ unsafe extern "C" {
     fn CGEventSetFlags(event: *mut c_void, flags: u64);
     fn CGEventPost(tap: u32, event: *mut c_void);
     fn CGEventSourceCreate(source_state_id: i32) -> *mut c_void;
+    fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
 }
 
 // ============================================================================
@@ -94,6 +95,8 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
         bail!("No keys specified");
     }
 
+    log::debug!("send_keystroke called with keys: {:?}", keys);
+
     // Separate modifiers from regular keys
     let mut modifier_flags = 0u64;
     let mut regular_keys = Vec::new();
@@ -103,6 +106,7 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
             // It's a modifier - add to flags
             if let Some(flag) = modifier_to_flag(key_name) {
                 modifier_flags |= flag;
+                log::debug!("  Added modifier: {} (flag: 0x{:x})", key_name, flag);
             }
         } else {
             // It's a regular key - add to list
@@ -122,7 +126,9 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("Unknown key name: {}", key_name))?;
 
         // For keys with multiple options, use the first one
-        key_codes.push(codes[0]);
+        let keycode = codes[0];
+        key_codes.push(keycode);
+        log::debug!("  Key '{}' -> keycode {}", key_name, keycode);
     }
 
     unsafe {
@@ -168,6 +174,206 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
 
         // Clean up
         CFRelease(event_source);
+    }
+
+    Ok(())
+}
+
+/// Map a character to its key name and whether it needs shift
+fn char_to_key(ch: char) -> Option<(&'static str, bool)> {
+    match ch {
+        // Lowercase letters - no shift
+        'a'..='z' => Some((
+            match ch {
+                'a' => "a",
+                'b' => "b",
+                'c' => "c",
+                'd' => "d",
+                'e' => "e",
+                'f' => "f",
+                'g' => "g",
+                'h' => "h",
+                'i' => "i",
+                'j' => "j",
+                'k' => "k",
+                'l' => "l",
+                'm' => "m",
+                'n' => "n",
+                'o' => "o",
+                'p' => "p",
+                'q' => "q",
+                'r' => "r",
+                's' => "s",
+                't' => "t",
+                'u' => "u",
+                'v' => "v",
+                'w' => "w",
+                'x' => "x",
+                'y' => "y",
+                'z' => "z",
+                _ => unreachable!(),
+            },
+            false,
+        )),
+
+        // Uppercase letters - with shift
+        'A'..='Z' => Some((
+            match ch {
+                'A' => "a",
+                'B' => "b",
+                'C' => "c",
+                'D' => "d",
+                'E' => "e",
+                'F' => "f",
+                'G' => "g",
+                'H' => "h",
+                'I' => "i",
+                'J' => "j",
+                'K' => "k",
+                'L' => "l",
+                'M' => "m",
+                'N' => "n",
+                'O' => "o",
+                'P' => "p",
+                'Q' => "q",
+                'R' => "r",
+                'S' => "s",
+                'T' => "t",
+                'U' => "u",
+                'V' => "v",
+                'W' => "w",
+                'X' => "x",
+                'Y' => "y",
+                'Z' => "z",
+                _ => unreachable!(),
+            },
+            true,
+        )),
+
+        // Numbers - no shift
+        '0' => Some(("0", false)),
+        '1' => Some(("1", false)),
+        '2' => Some(("2", false)),
+        '3' => Some(("3", false)),
+        '4' => Some(("4", false)),
+        '5' => Some(("5", false)),
+        '6' => Some(("6", false)),
+        '7' => Some(("7", false)),
+        '8' => Some(("8", false)),
+        '9' => Some(("9", false)),
+
+        // Shifted number row
+        '!' => Some(("1", true)),
+        '@' => Some(("2", true)),
+        '#' => Some(("3", true)),
+        '$' => Some(("4", true)),
+        '%' => Some(("5", true)),
+        '^' => Some(("6", true)),
+        '&' => Some(("7", true)),
+        '*' => Some(("8", true)),
+        '(' => Some(("9", true)),
+        ')' => Some(("0", true)),
+
+        // Punctuation - no shift
+        ' ' => Some(("space", false)),
+        '-' => Some(("-", false)),
+        '=' => Some(("=", false)),
+        '[' => Some(("[", false)),
+        ']' => Some(("]", false)),
+        '\\' => Some(("\\", false)),
+        ';' => Some((";", false)),
+        '\'' => Some(("'", false)),
+        ',' => Some((",", false)),
+        '.' => Some((".", false)),
+        '/' => Some(("/", false)),
+        '`' => Some(("`", false)),
+
+        // Shifted punctuation
+        '_' => Some(("-", true)),
+        '+' => Some(("=", true)),
+        '{' => Some(("[", true)),
+        '}' => Some(("]", true)),
+        '|' => Some(("\\", true)),
+        ':' => Some((";", true)),
+        '"' => Some(("'", true)),
+        '<' => Some((",", true)),
+        '>' => Some((".", true)),
+        '?' => Some(("/", true)),
+        '~' => Some(("`", true)),
+
+        _ => None,
+    }
+}
+
+/// Type text by sending individual keystrokes for each character
+///
+/// This converts a string into individual keystroke events.
+/// Handles uppercase and special characters by adding shift modifier automatically.
+///
+/// # Arguments
+/// * `text` - The text string to type
+///
+/// # Example
+/// ```ignore
+/// type_text("Hello123!@#")?;
+/// ```
+pub fn type_text(text: &str) -> Result<()> {
+    use crate::keycodes::key_name_to_codes;
+
+    for ch in text.chars() {
+        // Map character to key name and shift status
+        let (key_name, needs_shift) =
+            char_to_key(ch).ok_or_else(|| anyhow::anyhow!("Unsupported character: '{}'", ch))?;
+
+        let key_code = key_name_to_codes(key_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown key: {}", key_name))?[0];
+
+        unsafe {
+            let event_source = CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
+            if event_source.is_null() {
+                bail!("Failed to create event source");
+            }
+
+            const APP_MARKER: i64 = 0x5054484B44;
+            const EVENT_USER_DATA_FIELD: u32 = 127;
+
+            if needs_shift {
+                // Send shift down (keycode 56 = left shift)
+                let shift_down = CGEventCreateKeyboardEvent(event_source, 56, true);
+                CGEventSetIntegerValueField(shift_down, EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_HID_EVENT_TAP, shift_down);
+                super::ffi::CFRelease(shift_down);
+            }
+
+            // Send key down
+            let key_down = CGEventCreateKeyboardEvent(event_source, key_code, true);
+            CGEventSetIntegerValueField(key_down, EVENT_USER_DATA_FIELD, APP_MARKER);
+            // Set shift flag on the key event (or explicitly clear it)
+            CGEventSetFlags(key_down, if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_HID_EVENT_TAP, key_down);
+            super::ffi::CFRelease(key_down);
+
+            // Send key up
+            let key_up = CGEventCreateKeyboardEvent(event_source, key_code, false);
+            CGEventSetIntegerValueField(key_up, EVENT_USER_DATA_FIELD, APP_MARKER);
+            // Set shift flag on key up (or explicitly clear it)
+            CGEventSetFlags(key_up, if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_HID_EVENT_TAP, key_up);
+            super::ffi::CFRelease(key_up);
+
+            if needs_shift {
+                // Send shift up
+                let shift_up = CGEventCreateKeyboardEvent(event_source, 56, false);
+                CGEventSetIntegerValueField(shift_up, EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_HID_EVENT_TAP, shift_up);
+                super::ffi::CFRelease(shift_up);
+            }
+
+            super::ffi::CFRelease(event_source);
+        }
+
+        // Small delay between characters
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
     Ok(())

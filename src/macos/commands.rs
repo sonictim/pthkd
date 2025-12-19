@@ -299,22 +299,27 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
     if set {
         super::keyring::password_prompt(account)
     } else if let Ok(pw) = super::keyring::password_get(account) {
-        use crate::macos::keystroke::send_keystroke;
-        send_keystroke(&[&pw, "enter"])
+        println!("typing password: {}", pw);
+        super::keystroke::type_text(&pw)?;
+        super::keystroke::send_keystroke(&["enter"])
     } else {
         super::keyring::password_prompt(account)
     }
 }
 
 pub fn test_pw(params: &Params) -> Result<()> {
-    let account = params.get_str("account", "test_pw");
+    let account = "test_pw";
     let set = params.get_bool("set", false);
+    println!("Running Test PW");
     if set {
+        println!("setting");
         super::keyring::password_set(account, "test")
     } else if let Ok(pw) = super::keyring::password_get(account) {
-        use crate::macos::keystroke::send_keystroke;
-        send_keystroke(&[&pw, "enter"])
+        println!("typing password: {}", pw);
+        super::keystroke::type_text(&pw)?;
+        super::keystroke::send_keystroke(&["enter"])
     } else {
+        println!("Password not found.  Setting");
         super::keyring::password_set(account, "test")
     }
 }

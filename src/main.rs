@@ -286,6 +286,17 @@ unsafe extern "C" fn key_event_callback(
     event: *mut c_void,
     _user_info: *mut c_void,
 ) -> *mut c_void {
+    // Check if this event was created by our app - if so, pass it through
+    const APP_EVENT_MARKER: i64 = 0x5054484B44;
+    const CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA: u32 = 127;
+
+    let user_data = unsafe {
+        macos::CGEventGetIntegerValueField(event, CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA)
+    };
+    if user_data == APP_EVENT_MARKER {
+        return event; // Pass through events we created
+    }
+
     // Get key state (should always be initialized by this point)
     let key_state = KEY_STATE.get().expect("KEY_STATE not initialized");
 
@@ -515,7 +526,7 @@ fn init_logging() -> anyhow::Result<String> {
     );
 
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info) // Default to Info level if RUST_LOG not set
+        .filter_level(log::LevelFilter::Debug) // Default to Debug level if RUST_LOG not set
         .target(env_logger::Target::Pipe(target))
         .format(|buf, record| {
             writeln!(

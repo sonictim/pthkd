@@ -1,19 +1,45 @@
-use anyhow::{Result, bail};
-use keyring::Entry;
+use anyhow::{Result, anyhow};
+use security_framework::passwords::{set_generic_password, get_generic_password, delete_generic_password};
 
 pub fn password_set(account: &str, password: &str) -> Result<()> {
-    let service = "com.feralfrequencies.pthkd"; // use a reverse-DNS identifier
+    let service = "com.feralfrequencies.pthkd";
 
-    let entry = Entry::new(service, account)?;
-    entry.set_password(password)?;
-    Ok(())
+    log::info!("password_set: service='{}', account='{}'", service, account);
+
+    // Delete existing password if it exists (to avoid duplicates)
+    let _ = delete_generic_password(service, account);
+
+    log::info!("password_set: Attempting to set password using Security framework");
+
+    match set_generic_password(service, account, password.as_bytes()) {
+        Ok(_) => {
+            log::info!("password_set: Password set successfully in keychain");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("password_set: Failed to set password in keychain: {}", e);
+            Err(anyhow!("Failed to set password: {}", e))
+        }
+    }
 }
 
 pub fn password_get(account: &str) -> Result<String> {
     let service = "com.feralfrequencies.pthkd";
 
-    let entry = Entry::new(service, account)?;
-    Ok(entry.get_password()?)
+    log::info!("password_get: service='{}', account='{}'", service, account);
+
+    match get_generic_password(service, account) {
+        Ok(password_bytes) => {
+            let password = String::from_utf8(password_bytes.to_vec())
+                .map_err(|e| anyhow!("Failed to decode password: {}", e))?;
+            log::info!("password_get: Password retrieved successfully");
+            Ok(password)
+        }
+        Err(e) => {
+            log::error!("password_get: Failed to get password: {}", e);
+            Err(anyhow!("Failed to get password: {}", e))
+        }
+    }
 }
 
 pub fn password_prompt(account: &str) -> Result<()> {
@@ -89,12 +115,34 @@ pub fn password_prompt(account: &str) -> Result<()> {
         if response == 1000 {
             // User clicked OK - get the password
             let password_nsstring: *mut AnyObject = msg_send![text_field, stringValue];
-            if let Some(password) = nsstring_to_string(password_nsstring)
-                && !password.is_empty()
-            {
-                password_set(account, &password)?;
-                println!("Password stored successfully!");
+
+            log::info!("Retrieved password NSString pointer: {:?}", password_nsstring);
+
+            match nsstring_to_string(password_nsstring) {
+                Some(password) if !password.is_empty() => {
+                    log::info!("Password retrieved, length: {}", password.len());
+                    match password_set(account, &password) {
+                        Ok(_) => {
+                            println!("Password stored successfully!");
+                            log::info!("Password stored successfully for account: {}", account);
+                        }
+                        Err(e) => {
+                            log::error!("Failed to store password: {}", e);
+                            return Err(e);
+                        }
+                    }
+                }
+                Some(password) => {
+                    log::warn!("Password was empty");
+                    println!("Password was empty, not stored");
+                }
+                None => {
+                    log::error!("Failed to convert NSString to Rust string");
+                    return Err(anyhow!("Failed to retrieve password from dialog"));
+                }
             }
+        } else {
+            log::info!("User cancelled password dialog");
         }
 
         Ok(())
@@ -122,14 +170,25 @@ unsafe fn nsstring_to_string(ns_string: *mut objc2::runtime::AnyObject) -> Optio
     use objc2::{msg_send, runtime::AnyObject};
 
     if ns_string.is_null() {
+        log::error!("nsstring_to_string: NSString pointer is null");
         return None;
     }
 
     let utf8: *const u8 = msg_send![ns_string, UTF8String];
     if utf8.is_null() {
+        log::error!("nsstring_to_string: UTF8String method returned null");
         return None;
     }
 
     let c_str = std::ffi::CStr::from_ptr(utf8 as *const i8);
-    c_str.to_str().ok().map(|s| s.to_string())
+    match c_str.to_str() {
+        Ok(s) => {
+            log::info!("nsstring_to_string: Successfully converted string, length: {}", s.len());
+            Some(s.to_string())
+        }
+        Err(e) => {
+            log::error!("nsstring_to_string: Failed to convert CStr to str: {}", e);
+            None
+        }
+    }
 }

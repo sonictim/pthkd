@@ -6,7 +6,6 @@ use crate::actions_sync;
 // Actions are automatically registered with the "os" namespace
 actions_sync!("os", {
     test_notification,
-    test_keystroke,
     test_app_info,
     reload_config,
     dump_app_menus,
@@ -20,4 +19,5 @@ actions_sync!("os", {
     rapid_pw,
     test_pw,
     list_window_titles,
+    test_keystroke,
 });

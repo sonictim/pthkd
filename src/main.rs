@@ -480,7 +480,7 @@ fn run() -> anyhow::Result<()> {
         let event_tap = macos::create_keyboard_event_tap(key_event_callback)
             .context("Failed to create event tap")?;
 
-        macos::install_event_tap_on_run_loop(event_tap);
+        macos::install_event_tap_on_run_loop(event_tap, key_event_callback);
 
         log::info!("Hotkey daemon is running. Listening for hotkeys...");
 

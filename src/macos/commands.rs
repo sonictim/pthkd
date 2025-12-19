@@ -2,7 +2,8 @@
 
 use super::{app_info, keystroke, menu, show_notification};
 use crate::params::Params;
-use anyhow::Result;
+use anyhow::{Context, Result};
+use std::process::Command;
 
 // ============================================================================
 // Command Implementations
@@ -296,7 +297,7 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
 pub fn rapid_pw(params: &Params) -> Result<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
-    if set {
+    let result = if set {
         super::keyring::password_prompt(account)
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
@@ -304,14 +305,24 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
         super::keystroke::send_keystroke(&["enter"])
     } else {
         super::keyring::password_prompt(account)
+    };
+
+    // Check and recreate event tap if it was disabled by keychain dialog
+    if let Err(e) = super::recreate_event_tap_if_needed() {
+        log::error!(
+            "Failed to recreate event tap after keychain operation: {}",
+            e
+        );
     }
+
+    result
 }
 
 pub fn test_pw(params: &Params) -> Result<()> {
     let account = "test_pw";
     let set = params.get_bool("set", false);
     println!("Running Test PW");
-    if set {
+    let result = if set {
         println!("setting");
         super::keyring::password_set(account, "test")
     } else if let Ok(pw) = super::keyring::password_get(account) {
@@ -321,7 +332,17 @@ pub fn test_pw(params: &Params) -> Result<()> {
     } else {
         println!("Password not found.  Setting");
         super::keyring::password_set(account, "test")
+    };
+
+    // Check and recreate event tap if it was disabled by keychain dialog
+    if let Err(e) = super::recreate_event_tap_if_needed() {
+        log::error!(
+            "Failed to recreate event tap after keychain operation: {}",
+            e
+        );
     }
+
+    result
 }
 
 pub fn list_window_titles(params: &Params) -> Result<()> {
@@ -366,4 +387,33 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn shell_script(params: &Params) -> Result<()> {
+    let script = params.get_str("script_path", "");
+    if script.is_empty() {
+        return Err(anyhow::anyhow!("No Script Parameter Entered"));
+    }
+    match run_shell_script(script) {
+        Ok(r) => {
+            log::info!("Shell Script Successful: {}", r);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub fn run_shell_script(script_path: &str) -> Result<String> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(script_path)
+        .output()
+        .context("Failed to execute shell script")?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Script failed: {}", stderr)
+    }
 }

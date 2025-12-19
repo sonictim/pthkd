@@ -10,6 +10,21 @@
 use anyhow::Result;
 use libc::c_void;
 use std::ptr;
+use std::sync::Mutex;
+
+// ============================================================================
+// Global Event Tap Storage
+// ============================================================================
+
+/// Stores the event tap pointer and callback for monitoring and recreation
+struct EventTapState {
+    tap: *mut c_void,
+    callback: Option<unsafe extern "C" fn(*mut c_void, u32, *mut c_void, *mut c_void) -> *mut c_void>,
+}
+
+unsafe impl Send for EventTapState {}
+
+static EVENT_TAP_STATE: Mutex<Option<EventTapState>> = Mutex::new(None);
 
 // ============================================================================
 // Framework Linking
@@ -81,6 +96,7 @@ unsafe extern "C" {
     ) -> *mut c_void;
 
     pub fn CGEventTapEnable(tap: *mut c_void, enable: bool);
+    pub fn CGEventTapIsEnabled(tap: *mut c_void) -> bool;
 }
 
 // ============================================================================
@@ -137,17 +153,26 @@ pub unsafe fn create_keyboard_event_tap(
     }
 }
 
-/// Installs an event tap on the current run loop
+/// Installs an event tap on the current run loop and stores it for monitoring
 ///
 /// # Safety
 /// Must be called with a valid event tap pointer
-pub unsafe fn install_event_tap_on_run_loop(event_tap: *mut c_void) {
+pub unsafe fn install_event_tap_on_run_loop(
+    event_tap: *mut c_void,
+    callback: unsafe extern "C" fn(*mut c_void, u32, *mut c_void, *mut c_void) -> *mut c_void,
+) {
     unsafe {
         CGEventTapEnable(event_tap, true);
 
         let run_loop_source = CFMachPortCreateRunLoopSource(ptr::null_mut(), event_tap, 0);
         let run_loop = CFRunLoopGetCurrent();
         CFRunLoopAddSource(run_loop, run_loop_source, kCFRunLoopCommonModes);
+
+        // Store the event tap and callback for monitoring
+        *EVENT_TAP_STATE.lock().unwrap() = Some(EventTapState {
+            tap: event_tap,
+            callback: Some(callback),
+        });
     }
 }
 
@@ -158,5 +183,76 @@ pub unsafe fn install_event_tap_on_run_loop(event_tap: *mut c_void) {
 pub unsafe fn run_event_loop() {
     unsafe {
         CFRunLoopRun();
+    }
+}
+
+// ============================================================================
+// Event Tap Monitoring & Recreation
+// ============================================================================
+
+/// Checks if the event tap is currently enabled
+///
+/// Returns true if enabled, false if disabled or not created
+pub fn is_event_tap_enabled() -> bool {
+    unsafe {
+        if let Some(state) = EVENT_TAP_STATE.lock().unwrap().as_ref() {
+            if !state.tap.is_null() {
+                return CGEventTapIsEnabled(state.tap);
+            }
+        }
+        false
+    }
+}
+
+/// Recreates the event tap if it has been disabled
+///
+/// Returns true if recreation was needed and successful, false if tap was already enabled
+pub fn recreate_event_tap_if_needed() -> Result<bool> {
+    unsafe {
+        let state_guard = EVENT_TAP_STATE.lock().unwrap();
+
+        if let Some(state) = state_guard.as_ref() {
+            if state.tap.is_null() {
+                log::warn!("Event tap pointer is null, cannot recreate");
+                return Ok(false);
+            }
+
+            // Check if tap is still enabled
+            if CGEventTapIsEnabled(state.tap) {
+                return Ok(false); // Already enabled, no recreation needed
+            }
+
+            log::warn!("Event tap has been disabled by macOS - attempting to recreate");
+
+            // Get the callback before dropping the state
+            let callback = state.callback.ok_or_else(|| {
+                anyhow::anyhow!("Event tap callback not stored, cannot recreate")
+            })?;
+
+            // Drop the old state
+            drop(state_guard);
+
+            // Create new event tap
+            let new_tap = create_keyboard_event_tap(callback)?;
+
+            // Install it on the run loop (this will update the global state)
+            install_event_tap_on_run_loop(new_tap, callback);
+
+            log::info!("Event tap successfully recreated");
+
+            Ok(true)
+        } else {
+            log::warn!("Event tap state not initialized, cannot recreate");
+            Ok(false)
+        }
+    }
+}
+
+/// Checks event tap status and logs if it's been disabled
+///
+/// This is a lightweight check that can be called frequently
+pub fn check_event_tap_status() {
+    if !is_event_tap_enabled() {
+        log::warn!("Event tap check: tap is currently DISABLED");
     }
 }

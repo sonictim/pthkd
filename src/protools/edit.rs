@@ -31,16 +31,25 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
     let preset = params.get_string("preset", "");
     let crossfade = params.get_bool("crossfade_automation", false);
     let fill = params.get_bool("fill_selection", false);
-    let adjust = params.get_int("adjust_selection_frames", 0);
+    let adjust = params.get_float("adjust_selection_frames", 0.0);
+    let snap = params.get_bool("snap_to_grid", false);
     println!("adjustment frames: {}", adjust);
     let mut sel = PtSelectionTimecode::new(pt).await?;
-    let mut io = sel.get_io(pt).await?;
-    io.0.sub_hmsf(0, 0, 0, adjust);
-    io.1.add_hmsf(0, 0, 0, adjust);
-    sel.set_io(pt, &io.0, &io.1).await?;
+    if snap {
+        let mut io = sel.get_io(pt).await?;
+        io.0.snap_to_grid();
+        io.1.snap_to_grid();
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
+    if adjust > 0.0 {
+        let mut io = sel.get_io(pt).await?;
+        io.0.sub_hmsf(0, 0, 0, adjust);
+        io.1.add_hmsf(0, 0, 0, adjust);
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
     if fill {
-        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
-        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+        let _ = call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await;
+        let _ = call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await;
     }
     let result = pt
         .cmd::<_, serde_json::Value>(
@@ -66,9 +75,9 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         let mut sel = PtSelectionSamples::new(pt).await?;
         let c = sel.get_io();
         sel.set_io(pt, c.1, c.1).await?;
-        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        let _ = call_menu(&["Edit", "Automation", "Write to All Enabled"]).await;
         sel.set_io(pt, c.0, c.0).await?;
-        call_menu(&["Edit", "Automation", "Write to All Enabled"]).await?;
+        let _ = call_menu(&["Edit", "Automation", "Write to All Enabled"]).await;
         sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
 
         let _: serde_json::Value = pt
@@ -89,13 +98,22 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
 }
 pub async fn bg_paste_selection(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let preset = params.get_string("fade_preset", "");
-    let adjust = params.get_int("adjust_selection_frames", 1);
+    let adjust = params.get_float("adjust_selection_frames", 0.0);
+    let snap = params.get_bool("snap_to_grid", true);
     println!("adjustment frames: {}", adjust);
     let mut sel = PtSelectionTimecode::new(pt).await?;
-    let mut io = sel.get_io(pt).await?;
-    io.0.sub_hmsf(0, 0, 0, adjust);
-    io.1.add_hmsf(0, 0, 0, adjust);
-    sel.set_io(pt, &io.0, &io.1).await?;
+    if snap {
+        let mut io = sel.get_io(pt).await?;
+        io.0.snap_to_grid();
+        io.1.snap_to_grid();
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
+    if adjust > 0.0 {
+        let mut io = sel.get_io(pt).await?;
+        io.0.sub_hmsf(0, 0, 0, adjust);
+        io.1.add_hmsf(0, 0, 0, adjust);
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
     pt.paste_to_fill_selection().await?;
     if !preset.is_empty() {
         let _ = pt
@@ -113,13 +131,22 @@ pub async fn bg_paste_selection(pt: &mut ProtoolsSession, params: &Params) -> Re
     Ok(())
 }
 pub async fn bg_clear_selection(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    let adjust = params.get_int("adjust_selection_frames", 1);
+    let adjust = params.get_float("adjust_selection_frames", 0.0);
+    let snap = params.get_bool("snap_to_grid", true);
     println!("adjustment frames: {}", adjust);
     let mut sel = PtSelectionTimecode::new(pt).await?;
-    let mut io = sel.get_io(pt).await?;
-    io.0.add_hmsf(0, 0, 0, adjust);
-    io.1.sub_hmsf(0, 0, 0, adjust);
-    sel.set_io(pt, &io.0, &io.1).await?;
+    if snap {
+        let mut io = sel.get_io(pt).await?;
+        io.0.snap_to_grid();
+        io.1.snap_to_grid();
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
+    if adjust > 0.0 {
+        let mut io = sel.get_io(pt).await?;
+        io.0.add_hmsf(0, 0, 0, adjust);
+        io.1.sub_hmsf(0, 0, 0, adjust);
+        sel.set_io(pt, &io.0, &io.1).await?;
+    }
     pt.clear().await?;
     Ok(())
 }

@@ -7,7 +7,7 @@ pub struct Timecode {
     hr: i64,
     min: i64,
     sec: i64,
-    fr: i64,
+    fr: f64,
     fps: i64,
 }
 impl fmt::Display for Timecode {
@@ -24,7 +24,7 @@ impl Timecode {
         hr: i64,
         min: i64,
         sec: i64,
-        fr: i64,
+        fr: f64,
         pt: &mut ProtoolsSession,
     ) -> Result<Self> {
         let fps = pt.get_frames_per_second().await?;
@@ -40,29 +40,28 @@ impl Timecode {
     }
     pub async fn from_string(tc: &str, pt: &mut ProtoolsSession) -> Result<Self> {
         let fps = pt.get_frames_per_second().await?;
-        let tc = tc.split('.').next().unwrap_or(tc);
-        let v: Vec<i64> = tc
+        let v: Vec<f64> = tc
             .split(":")
-            .map(|n| n.parse::<i64>().unwrap_or(0))
+            .map(|n| n.parse::<f64>().unwrap_or(0.0))
             .collect();
         let mut s = Self {
-            hr: v.first().copied().unwrap_or(0),
-            min: v.get(1).copied().unwrap_or(0),
-            sec: v.get(2).copied().unwrap_or(0),
-            fr: v.get(3).copied().unwrap_or(0),
+            hr: v.first().copied().unwrap_or(0.0) as i64,
+            min: v.get(1).copied().unwrap_or(0.0) as i64,
+            sec: v.get(2).copied().unwrap_or(0.0) as i64,
+            fr: v.get(3).copied().unwrap_or(0.0),
             fps,
         };
         s.normalize();
         Ok(s)
     }
     fn normalize(&mut self) {
-        while self.fr >= self.fps {
+        while self.fr >= self.fps as f64 {
             self.sec += 1;
-            self.fr -= self.fps;
+            self.fr -= self.fps as f64;
         }
-        while self.fr < 0 {
+        while self.fr < 0.0 {
             self.sec -= 1;
-            self.fr += self.fps;
+            self.fr += self.fps as f64;
         }
 
         while self.sec >= 60 {
@@ -87,11 +86,14 @@ impl Timecode {
             self.hr = 0;
             self.min = 0;
             self.sec = 0;
-            self.fr = 0;
+            self.fr = 0.0;
         }
     }
+    pub fn snap_to_grid(&mut self) {
+        self.fr = self.fr.round();
+    }
 
-    pub fn add_hmsf(&mut self, hr: i64, min: i64, sec: i64, fr: i64) {
+    pub fn add_hmsf(&mut self, hr: i64, min: i64, sec: i64, fr: f64) {
         self.hr += hr;
         self.min += min;
         self.sec += sec;
@@ -99,7 +101,7 @@ impl Timecode {
         self.normalize();
     }
 
-    pub fn sub_hmsf(&mut self, hr: i64, min: i64, sec: i64, fr: i64) {
+    pub fn sub_hmsf(&mut self, hr: i64, min: i64, sec: i64, fr: f64) {
         self.hr -= hr;
         self.min -= min;
         self.sec -= sec;

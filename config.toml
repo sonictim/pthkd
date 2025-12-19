@@ -196,7 +196,8 @@ app_window = "Edit"
 preset = "TF Default"
 crossfade_automation = true
 fill_selection = true
-adjust_selection_frames = 1
+adjust_selection_frames = 1.0
+snap_to_grid = true
 
 [[hotkey]]
 keys = ["f"]
@@ -220,8 +221,9 @@ action = "pt.edit_bg_paste_selection"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
-adjust_selection_frames = 1
+adjust_selection_frames = 1.0
 fade_preset = "BG Default"
+snap_to_grid = true
 
 [[hotkey]]
 keys = ["control", "option", "command", "g"]
@@ -229,7 +231,8 @@ action = "pt.edit_bg_clear_selection"
 target_application = "Pro Tools"
 app_window = "Edit"
 [hotkey.params]
-adjust_selection_frames = 1
+adjust_selection_frames = 1.0
+snap_to_grid = true
 
 [[hotkey]]
 keys = ["cmd", "pad_delete"]

@@ -13,6 +13,12 @@ pub fn test_notification(_params: &Params) -> Result<()> {
     show_notification("CMD+Shift+K pressed!");
     Ok(())
 }
+pub fn test_window(_params: &Params) -> Result<()> {
+    unsafe {
+        super::window::show_message_dialog("Helllo World 2");
+    }
+    super::window::show_text_window("Hello World")
+}
 
 pub fn test_keystroke(_params: &Params) -> Result<()> {
     log::info!("Testing global keystroke - sending CMD+F1");
@@ -23,9 +29,8 @@ pub fn test_keystroke(_params: &Params) -> Result<()> {
 
 pub fn test_app_info(_params: &Params) -> Result<()> {
     use std::time::Instant;
-
-    log::info!("=== App Focus Information ===");
-    println!("=== App Focus Information ===");
+    let mut log = crate::MessageLog::default();
+    log.append("=== App Focus Information ===");
 
     // Benchmark get_current_app()
     let start = Instant::now();
@@ -38,14 +43,12 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
         elapsed / 1000,
         elapsed
     );
-    log::info!("{}", msg);
-    println!("{}", msg);
+    log.append(&msg);
 
     // Get current app (no permissions needed)
     match app_info::get_current_app() {
         Ok(app_name) => {
-            log::info!("Current App: {}", app_name);
-            println!("Current App: {}", app_name);
+            log.append(&format!("Current App: {}", app_name));
         }
         Err(e) => log::error!("Failed to get app: {}", e),
     }
@@ -62,7 +65,7 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
 
     // Get window title (requires permissions)
     match app_info::get_app_window() {
-        Ok(title) => println!("Window Title: {}", title),
+        Ok(title) => log.append(&format!("Window Title: {}", title)),
         Err(e) => log::error!("Failed to get window: {}", e),
     }
 
@@ -70,15 +73,14 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     match app_info::is_in_text_field() {
         Ok(is_text) => {
             if is_text {
-                println!("Text Field: ✅ Yes (cursor is in a text entry field)");
+                log.append("Text Field: ✅ Yes (cursor is in a text entry field)");
             } else {
-                println!("Text Field: ❌ No (not in a text field)");
+                log.append("Text Field: ❌ No (not in a text field)");
             }
         }
         Err(e) => log::error!("Failed to check text field: {}", e),
     }
-
-    Ok(())
+    log.display()
 }
 
 pub fn reload_config(_params: &Params) -> Result<()> {
@@ -127,10 +129,8 @@ pub fn dump_app_menus(_params: &Params) -> Result<()> {
         menu::get_app_menus(app_name).context(format!("Failed to get menus for {}", app_name))?;
 
     let json = serde_json::to_string_pretty(&menu_bar)?;
-    log::info!("Menu structure for {}:\n{}", app_name, json);
-    println!("Menu structure for {}:\n{}", app_name, json);
-
-    Ok(())
+    let log = crate::MessageLog::new(&format!("Menu structure for {}:\n{}", app_name, json));
+    log.display()
 }
 
 pub fn test_menu_click(_params: &Params) -> Result<()> {
@@ -155,13 +155,11 @@ pub fn list_running_apps(_params: &Params) -> Result<()> {
         app_info::get_all_running_applications().context("Failed to get running applications")?;
 
     log::info!("Running applications ({}):", apps.len());
-    println!("\n=== Running Applications ({}) ===", apps.len());
+    let mut log = crate::MessageLog::new(&format!("=== Running Applications ({}) ===", apps.len()));
     for app in &apps {
-        log::info!("  - {}", app);
-        println!("  - {}", app);
+        log.append(&format!("  - {}", app));
     }
-
-    Ok(())
+    log.display()
 }
 
 pub fn focus_protools(_params: &Params) -> Result<()> {
@@ -193,14 +191,13 @@ pub fn list_window_buttons(params: &Params) -> Result<()> {
     let buttons = super::ui_elements::get_window_buttons(&app_name, &window_name)
         .context("Failed to get window buttons")?;
 
-    log::info!("Found {} buttons:", buttons.len());
-    println!("\n=== Buttons in window ===");
+    let mut log = crate::MessageLog::new("\n=== Buttons in window ===");
+    log.append(&format!("Found {} buttons:", buttons.len()));
     for (i, button) in buttons.iter().enumerate() {
-        log::info!("  {}. {}", i + 1, button);
-        println!("  {}. {}", i + 1, button);
+        log.append(&format!("  {}. {}", i + 1, button));
     }
 
-    Ok(())
+    log.display()
 }
 
 pub fn click_window_button(params: &Params) -> Result<()> {
@@ -236,17 +233,18 @@ pub fn display_window_text(_params: &Params) -> Result<()> {
 
     // Get current app
     let app_name = super::app_info::get_current_app()?;
-    log::info!("Current app: {}", app_name);
-    println!("Current app: {}", app_name);
+    let mut log = crate::MessageLog::default();
+    log.append(&format!("Current app: {}", app_name));
 
     // Get text from focused window (empty string = focused window)
     match super::ui_elements::get_window_text(&app_name, "") {
         Ok(text_elements) => {
-            log::info!("Found {} text elements", text_elements.len());
-            println!("\n=== Window Text ({} elements) ===", text_elements.len());
+            log.append(&format!(
+                "\n=== Window Text ({} elements) ===",
+                text_elements.len()
+            ));
             for (i, text) in text_elements.iter().enumerate() {
-                log::info!("  {}. {}", i + 1, text);
-                println!("  {}. {}", i + 1, text);
+                log.append(&format!("  {}. {}", i + 1, text));
             }
         }
         Err(e) => {
@@ -349,6 +347,7 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
     use anyhow::Context;
 
     let app_name = params.get_string("app", "");
+    let mut log = crate::MessageLog::default();
 
     if app_name.is_empty() {
         // If no app specified, use current app
@@ -358,15 +357,13 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
         let titles = super::ui_elements::get_window_titles(&current_app)
             .context("Failed to get window titles")?;
 
-        log::info!("Found {} windows:", titles.len());
-        println!(
+        log.append(&format!(
             "\n=== Window Titles for '{}' ({} windows) ===",
             current_app,
             titles.len()
-        );
+        ));
         for (i, title) in titles.iter().enumerate() {
-            log::info!("  {}. {}", i + 1, title);
-            println!("  {}. {}", i + 1, title);
+            log.append(&format!("  {}. {}", i + 1, title));
         }
     } else {
         log::info!("Getting window titles for app: {}", app_name);
@@ -374,23 +371,23 @@ pub fn list_window_titles(params: &Params) -> Result<()> {
         let titles = super::ui_elements::get_window_titles(&app_name)
             .context("Failed to get window titles")?;
 
-        log::info!("Found {} windows:", titles.len());
-        println!(
+        log.append(&format!(
             "\n=== Window Titles for '{}' ({} windows) ===",
             app_name,
             titles.len()
-        );
+        ));
         for (i, title) in titles.iter().enumerate() {
-            log::info!("  {}. {}", i + 1, title);
+            log.append(&format!("  {}. {}", i + 1, title));
             println!("  {}. {}", i + 1, title);
         }
     }
 
-    Ok(())
+    log.display()
 }
 
 pub fn shell_script(params: &Params) -> Result<()> {
     let script = params.get_str("script_path", "");
+    println!("script from params: {}", script);
     if script.is_empty() {
         return Err(anyhow::anyhow!("No Script Parameter Entered"));
     }
@@ -404,6 +401,7 @@ pub fn shell_script(params: &Params) -> Result<()> {
 }
 
 pub fn run_shell_script(script_path: &str) -> Result<String> {
+    println!("running shell script: {}", script_path);
     let output = Command::new("sh")
         .arg("-c")
         .arg(script_path)

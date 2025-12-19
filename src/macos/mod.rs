@@ -26,6 +26,7 @@ pub mod keystroke;
 pub mod menu;
 pub mod menubar;
 pub mod ui_elements;
+pub mod window;
 
 // Commands and Actions
 pub mod actions;

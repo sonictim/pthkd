@@ -53,15 +53,17 @@ keys = ["cmd", "shift", "r", "l"]
 action = "os.reload_config"
 notify = true
 
-[[hotkey]]
-keys = ["cmd", "shift", "a", "m"]
-action = "os.dump_app_menus"
+# [[hotkey]]
+# keys = ["cmd", "shift", "a", "m"]
+# action = "os.dump_app_menus"
 
-[[hotkey]]
-keys = ["cmd", "shift", "b"]
-action = "pt.edit_click_a_button"
-[hotkey.params]
-button = "Track List pop-up"
+# [[hotkey]]
+# keys = ["cmd", "shift", "b"]
+# action = "pt.edit_click_a_button"
+# target_application = "Pro Tools"
+# trigger_on_release = true
+# [hotkey.params]
+# button = "Track List pop-up"
 
 [[hotkey]]
 keys = ["cmd", "shift", "a", "i"]
@@ -77,8 +79,7 @@ action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.test_keystroke2"
-trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+action = "os.test_window"
 notify = true
 
 [[hotkey]]
@@ -90,7 +91,7 @@ trigger_on_release = true  # Trigger after keys released (solves modifier passth
   [[hotkey]]
   keys = ["cmd", "shift", "l", "b"]
   action = "os.list_window_buttons"
-
+trigger_on_release = true
 
   [[hotkey]]
   keys = ["cmd", "shift", "w", "t"]
@@ -110,9 +111,9 @@ notify = true
 set = true
 
 
-[[hotkey]]
-keys = ["shift", "cmd", "o", "p"]
-action = "pt.session_popups"
+# [[hotkey]]
+# keys = ["shift", "cmd", "o", "p"]
+# action = "pt.session_popups"
 
 # ============================================================================
 # ProTools actions (pt.* namespace)
@@ -601,6 +602,7 @@ keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = ["Pro Tools", "Soundminer", "Reaper"]
 notify = true
+trigger_on_release = true
 [hotkey.params]
 daw = "current"
 command = "Spot To DAW"
@@ -639,5 +641,21 @@ command = "Send Files to DAW"
 keys = [ "F4"]
 action = "sm.select_spotting_folder"
 target_application = ["Soundminer"]
+
+[[hotkey]]
+keys = ["control", "command", "s", "u"]
+action = "os.shell_script"
+trigger_on_release = true
+notify = true
+[hotkey.params]
+script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh TF"
+
+[[hotkey]]
+keys = ["control", "command", "s", "k"]
+action = "os.shell_script"
+trigger_on_release = true
+notify = true
+[hotkey.params]
+script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh Skysound"
 
 

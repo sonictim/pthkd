@@ -21,4 +21,5 @@ actions_sync!("os", {
     list_window_titles,
     test_keystroke,
     shell_script,
+    test_window,
 });

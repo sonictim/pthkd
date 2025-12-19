@@ -290,9 +290,8 @@ unsafe extern "C" fn key_event_callback(
     const APP_EVENT_MARKER: i64 = 0x5054484B44;
     const CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA: u32 = 127;
 
-    let user_data = unsafe {
-        macos::CGEventGetIntegerValueField(event, CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA)
-    };
+    let user_data =
+        unsafe { macos::CGEventGetIntegerValueField(event, CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA) };
     if user_data == APP_EVENT_MARKER {
         return event; // Pass through events we created
     }
@@ -394,8 +393,7 @@ fn run() -> anyhow::Result<()> {
 
     // BLOCKING permission check - will not return until all permissions granted or user quits
     log::info!("Checking required permissions...");
-    macos::permissions::ensure_permissions_granted()
-        .context("Failed to verify permissions")?;
+    macos::permissions::ensure_permissions_granted().context("Failed to verify permissions")?;
 
     log::info!("✅ All permissions granted, starting daemon...");
 
@@ -558,4 +556,27 @@ pub fn soft_match(haystack: &str, needle: &str) -> bool {
     let needle = normalize(needle);
 
     haystack == needle || haystack.contains(&needle)
+}
+
+#[derive(Default)]
+struct MessageLog {
+    message: String,
+}
+impl MessageLog {
+    pub fn new(s: &str) -> Self {
+        log::info!("{}", s);
+        println!("{}", s);
+        Self {
+            message: format!("{}\n", s),
+        }
+    }
+    pub fn append(&mut self, s: &str) {
+        log::info!("{}", s);
+        println!("{}", s);
+        self.message.push_str(s);
+        self.message.push('\n');
+    }
+    pub fn display(&self) -> anyhow::Result<()> {
+        crate::macos::window::show_text_window(&self.message)
+    }
 }

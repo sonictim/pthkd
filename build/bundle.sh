@@ -29,7 +29,9 @@ BUNDLE_IDENTIFIER="com.feralfrequencies.pthkd"
 # Cleanup on exit
 clean_up() {
     echo "Cleaning up temporary files..."
-    [ -n "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
+    [ -n "$TEMP_DIR" ] && {
+        rm -rf "$TEMP_DIR"
+    }
 }
 trap clean_up EXIT
 
@@ -219,6 +221,7 @@ fi
 if [ -d "$INSTALL_PATH" ]; then
     echo "   Removing old version..."
     rm -rf "$INSTALL_PATH"
+    rm -rf "~/Library/Application Support/pthkd"
 fi
 
 # Copy new version

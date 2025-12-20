@@ -221,7 +221,6 @@ fi
 if [ -d "$INSTALL_PATH" ]; then
     echo "   Removing old version..."
     rm -rf "$INSTALL_PATH"
-    rm -rf "~/Library/Application Support/pthkd"
 fi
 
 # Copy new version

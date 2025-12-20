@@ -3,23 +3,35 @@ use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use std::process::Command;
 
-/// Show a macOS notification
-///
-/// Tries native NSUserNotificationCenter first (uses app icon),
-/// falls back to osascript if native fails (more reliable)
-pub fn show_notification(message: &str) {
-    let message = message.to_string();
-    std::thread::spawn(move || {
-        // Try native notification first (uses app icon)
-        if let Err(e) = show_notification_native(&message) {
-            log::debug!("Native notification failed ({}), falling back to osascript", e);
+// ============================================================================
+// MacOSSession Extensions for Notifications
+// ============================================================================
 
-            // Fall back to osascript (more reliable for menu bar apps)
-            if let Err(e) = show_notification_osascript(&message) {
-                log::error!("Failed to show notification: {}", e);
+impl MacOSSession {
+    /// Show a macOS notification
+    ///
+    /// Tries native NSUserNotificationCenter first (uses app icon),
+    /// falls back to osascript if native fails (more reliable)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let os = MacOSSession::global();
+    /// os.show_notification("Task completed!");
+    /// ```
+    pub fn show_notification(&self, message: &str) {
+        let message = message.to_string();
+        std::thread::spawn(move || {
+            // Try native notification first (uses app icon)
+            if let Err(e) = show_notification_native(&message) {
+                log::debug!("Native notification failed ({}), falling back to osascript", e);
+
+                // Fall back to osascript (more reliable for menu bar apps)
+                if let Err(e) = show_notification_osascript(&message) {
+                    log::error!("Failed to show notification: {}", e);
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 /// Show notification using NSUserNotificationCenter (native API)

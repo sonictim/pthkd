@@ -1,6 +1,6 @@
 //! macOS system command implementations
 
-use super::{app_info, keystroke, menu, show_notification, MacOSSession};
+use super::{app_info, keystroke, menu, MacOSSession};
 use crate::params::Params;
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -10,7 +10,7 @@ use std::process::Command;
 // ============================================================================
 
 pub fn test_notification(_params: &Params) -> Result<()> {
-    show_notification("CMD+Shift+K pressed!");
+    MacOSSession::global().show_notification("CMD+Shift+K pressed!");
     Ok(())
 }
 pub fn test_window(_params: &Params) -> Result<()> {
@@ -274,12 +274,12 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
         Ok(Some(text)) => {
             let msg = format!("You entered: {}", text);
             log::info!("Showing success notification: {}", msg);
-            show_notification(&msg);
+            MacOSSession::global().show_notification(&msg);
             log::info!("Notification shown");
         }
         Ok(None) => {
             log::info!("User cancelled, showing cancel notification");
-            show_notification("Input cancelled");
+            MacOSSession::global().show_notification("Input cancelled");
             log::info!("Cancel notification shown");
         }
         Err(e) => {

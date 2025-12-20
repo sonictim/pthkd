@@ -9,7 +9,6 @@
 use anyhow::{Context, Result};
 use objc2::runtime::{AnyClass, AnyObject};
 use objc2::{msg_send, Encode, Encoding};
-use std::ptr;
 use std::sync::OnceLock;
 
 // ============================================================================
@@ -107,7 +106,7 @@ impl MacOSSession {
     /// This function calls Objective-C runtime functions
     unsafe fn new() -> Result<Self> {
         Ok(Self {
-            class_cache: ClassCache::new()?,
+            class_cache: unsafe { ClassCache::new()? },
         })
     }
 
@@ -172,39 +171,79 @@ impl MacOSSession {
         Ok(ns_string)
     }
 
-    /// Show a simple alert dialog
+    // ========================================================================
+    // Alert Building Blocks (Composable - Used Across Multiple Functions)
+    // ========================================================================
+
+    /// Create a new NSAlert (empty, ready to configure)
     ///
-    /// This consolidates the NSAlert pattern that appears 4+ times across
-    /// the codebase (keyring.rs, permissions.rs, menubar.rs, window.rs).
+    /// **CROSSOVER:** Used by show_alert, password_prompt, show_permission_dialog
+    pub unsafe fn create_alert(&self) -> Result<*mut AnyObject> {
+        self.alloc_init(self.class_cache.ns_alert)
+    }
+
+    /// Set alert style (informational=1, warning=0, critical=2)
     ///
-    /// # Safety
-    /// Calls Objective-C runtime functions
+    /// **CROSSOVER:** Used by show_permission_dialog (critical alerts)
+    pub unsafe fn set_alert_style(&self, alert: *mut AnyObject, style: i64) -> Result<()> {
+        let _: () = msg_send![alert, setAlertStyle: style];
+        Ok(())
+    }
+
+    /// Set alert title and message text
+    ///
+    /// **CROSSOVER:** Used by ALL alert functions (show_alert, password_prompt, permission_dialog)
+    pub unsafe fn set_alert_text(&self, alert: *mut AnyObject, title: &str, message: &str) -> Result<()> {
+        let title_str = self.create_nsstring(title)?;
+        let msg_str = self.create_nsstring(message)?;
+        let _: () = msg_send![alert, setMessageText: title_str];
+        let _: () = msg_send![alert, setInformativeText: msg_str];
+        Ok(())
+    }
+
+    /// Add a button to an alert
+    ///
+    /// Buttons added in order: first=1000 (default), second=1001, third=1002, etc.
+    ///
+    /// **CROSSOVER:** Used by ALL alert functions
+    pub unsafe fn add_alert_button(&self, alert: *mut AnyObject, title: &str) -> Result<()> {
+        let btn_str = self.create_nsstring(title)?;
+        let _: () = msg_send![alert, addButtonWithTitle: btn_str];
+        Ok(())
+    }
+
+    /// Add an accessory view to an alert (for custom UI like text fields)
+    ///
+    /// **CROSSOVER:** Used by password_prompt (adds NSSecureTextField)
+    pub unsafe fn add_accessory_view(&self, alert: *mut AnyObject, view: *mut AnyObject) -> Result<()> {
+        let _: () = msg_send![alert, setAccessoryView: view];
+        Ok(())
+    }
+
+    /// Show modal alert and return button response
+    ///
+    /// Returns: 1000=first button, 1001=second, 1002=third, etc.
+    ///
+    /// **CROSSOVER:** Used by ALL alert functions
+    pub unsafe fn show_modal_alert(&self, alert: *mut AnyObject) -> Result<isize> {
+        let response: isize = msg_send![alert, runModal];
+        Ok(response)
+    }
+
+    /// Show a simple alert dialog (convenience method built from building blocks)
     ///
     /// # Example
     /// ```ignore
     /// let response = os.show_alert("Error", "Something went wrong", &["OK", "Cancel"])?;
-    /// if response == 1000 {  // NSAlertFirstButtonReturn
-    ///     // User clicked OK
-    /// }
+    /// if response == 1000 { /* User clicked OK */ }
     /// ```
     pub unsafe fn show_alert(&self, title: &str, message: &str, buttons: &[&str]) -> Result<isize> {
-        let alert = self.alloc_init(self.class_cache.ns_alert)?;
-
-        let title_str = self.create_nsstring(title)?;
-        let msg_str = self.create_nsstring(message)?;
-
-        let _: () = msg_send![alert, setMessageText: title_str];
-        let _: () = msg_send![alert, setInformativeText: msg_str];
-
-        // Add buttons
+        let alert = self.create_alert()?;
+        self.set_alert_text(alert, title, message)?;
         for button in buttons {
-            let btn_str = self.create_nsstring(button)?;
-            let _: () = msg_send![alert, addButtonWithTitle: btn_str];
+            self.add_alert_button(alert, button)?;
         }
-
-        // Show modal dialog
-        let response: isize = msg_send![alert, runModal];
-        Ok(response)
+        self.show_modal_alert(alert)
     }
 
     /// Helper to create NSRect from coordinates

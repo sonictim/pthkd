@@ -314,68 +314,14 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
 }
 
 /// Creates a menu item with title and action selector
+///
+/// Legacy wrapper that calls the session method
 unsafe fn create_menu_item(
     title: &str,
     action: &str,
     target: Option<*mut AnyObject>,
 ) -> Result<*mut AnyObject> {
-    let menu_item_class = AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
-
-    // Create NSString for title
-    let ns_string_class = AnyClass::get("NSString").context("Failed to get NSString class")?;
-    let title_string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let title_string: *mut AnyObject = msg_send![
-        title_string,
-        initWithBytes: title.as_ptr() as *const std::ffi::c_void
-        length: title.len()
-        encoding: 4_usize  // NSUTF8StringEncoding = 4
-    ];
-
-    if title_string.is_null() {
-        anyhow::bail!("Failed to create NSString for menu item title");
-    }
-
-    // Create selector from action string
-    use objc2::sel;
-    let selector = match action {
-        "terminate:" => sel!(terminate:),
-        "restoreDefaults:" => sel!(restoreDefaults:),
-        "reloadConfig:" => sel!(reloadConfig:),
-        "showAbout:" => sel!(showAbout:),
-        _ => anyhow::bail!("Unknown action: {}", action),
-    };
-
-    // Create empty NSString for key equivalent (no keyboard shortcut)
-    let empty_string: *mut AnyObject = msg_send![ns_string_class, string];
-
-    // Create menu item
-    let menu_item: *mut AnyObject = msg_send![menu_item_class, alloc];
-    let menu_item: *mut AnyObject = msg_send![
-        menu_item,
-        initWithTitle: title_string
-        action: selector
-        keyEquivalent: empty_string
-    ];
-
-    if menu_item.is_null() {
-        anyhow::bail!("Failed to create NSMenuItem");
-    }
-
-    // Set target based on action
-    if let Some(target_obj) = target {
-        // Custom target (for Reload Config and About)
-        let _: () = msg_send![menu_item, setTarget: target_obj];
-        log::debug!("Set menu item target to custom delegate");
-    } else if action == "terminate:" {
-        // For Quit, set target to NSApp
-        let ns_app_class =
-            AnyClass::get("NSApplication").context("Failed to get NSApplication class")?;
-        let ns_app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
-        let _: () = msg_send![menu_item, setTarget: ns_app];
-        log::debug!("Set menu item target to NSApp for terminate:");
-    }
-
-    Ok(menu_item)
+    unsafe { MacOSSession::global().create_menu_item(title, action, target) }
 }
 
 /// Creates an NSImage from PNG data
@@ -483,6 +429,70 @@ unsafe fn create_text_image(_text: &str) -> Option<*mut AnyObject> {
 // ============================================================================
 
 impl MacOSSession {
+    /// Create an NSMenuItem with title and action
+    ///
+    /// # Example
+    /// ```ignore
+    /// let os = MacOSSession::global();
+    /// let item = os.create_menu_item("Quit", "terminate:", None)?;
+    /// ```
+    pub unsafe fn create_menu_item(
+        &self,
+        title: &str,
+        action: &str,
+        target: Option<*mut AnyObject>,
+    ) -> Result<*mut AnyObject> {
+        use objc2::sel;
+
+        let menu_item_class = unsafe { self.get_class("NSMenuItem")? };
+
+        // Create NSString for title using session method
+        let title_string = unsafe { self.create_nsstring(title)? };
+
+        // Create selector from action string
+        let selector = match action {
+            "terminate:" => sel!(terminate:),
+            "restoreDefaults:" => sel!(restoreDefaults:),
+            "reloadConfig:" => sel!(reloadConfig:),
+            "showAbout:" => sel!(showAbout:),
+            _ => anyhow::bail!("Unknown action: {}", action),
+        };
+
+        // Create empty NSString for key equivalent (no keyboard shortcut)
+        let ns_string_class = unsafe { self.get_class("NSString")? };
+        let empty_string: *mut AnyObject = unsafe { msg_send![ns_string_class, string] };
+
+        // Create menu item
+        let menu_item: *mut AnyObject = unsafe { msg_send![menu_item_class, alloc] };
+        let menu_item: *mut AnyObject = unsafe {
+            msg_send![
+                menu_item,
+                initWithTitle: title_string
+                action: selector
+                keyEquivalent: empty_string
+            ]
+        };
+
+        if menu_item.is_null() {
+            anyhow::bail!("Failed to create NSMenuItem");
+        }
+
+        // Set target based on action
+        unsafe {
+            if let Some(target_obj) = target {
+                let _: () = msg_send![menu_item, setTarget: target_obj];
+                log::debug!("Set menu item target to custom delegate");
+            } else if action == "terminate:" {
+                let ns_app_class = self.get_class("NSApplication")?;
+                let ns_app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
+                let _: () = msg_send![menu_item, setTarget: ns_app];
+                log::debug!("Set menu item target to NSApp for terminate:");
+            }
+        }
+
+        Ok(menu_item)
+    }
+
     /// Show an About dialog with version information
     ///
     /// # Example
@@ -497,12 +507,12 @@ impl MacOSSession {
             version
         );
 
-        self.show_alert("About pthkd", &message, &["OK"])?;
+        unsafe { self.show_alert("About pthkd", &message, &["OK"])? };
         Ok(())
     }
 }
 
 /// Legacy wrapper for show_about_dialog() - calls session method
 unsafe fn show_about_dialog() {
-    MacOSSession::global().show_about_dialog().ok();
+    unsafe { MacOSSession::global().show_about_dialog().ok() };
 }

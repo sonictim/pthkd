@@ -139,82 +139,50 @@ impl MacOSSession {
     unsafe fn show_permission_dialog(&self, state: &PermissionState) -> DialogResult {
         log::debug!("Showing permission dialog");
 
-        // Create alert using session method
-        let alert_class = match self.get_class("NSAlert") {
-            Ok(class) => class,
-            Err(e) => {
-                log::error!("Failed to get NSAlert class: {}", e);
-                return DialogResult::Quit;
-            }
-        };
-
-        let alert = match self.alloc_init(alert_class) {
+        // Create alert using building block (CROSSOVER #1)
+        let alert = match self.create_alert() {
             Ok(a) => a,
             Err(e) => {
-                log::error!("Failed to create NSAlert: {}", e);
+                log::error!("Failed to create alert: {}", e);
                 return DialogResult::Quit;
             }
         };
 
-        // Set alert style to critical (NSAlertStyleCritical = 2)
-        let _: () = msg_send![alert, setAlertStyle: 2_i64];
+        // Set critical style using building block (CROSSOVER #2)
+        if let Err(e) = self.set_alert_style(alert, 2) {
+            log::error!("Failed to set alert style: {}", e);
+            return DialogResult::Quit;
+        }
 
-        // Set title and informative text using session methods
-        let title = match self.create_nsstring("Permissions Required") {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to create title string: {}", e);
-                return DialogResult::Quit;
-            }
-        };
-
+        // Set title and message using building block (CROSSOVER #3)
         let message = format_permission_message(state);
-        let message_ns = match self.create_nsstring(&message) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to create message string: {}", e);
-                return DialogResult::Quit;
-            }
-        };
+        if let Err(e) = self.set_alert_text(alert, "Permissions Required", &message) {
+            log::error!("Failed to set alert text: {}", e);
+            return DialogResult::Quit;
+        }
 
-        let _: () = msg_send![alert, setMessageText: title];
-        let _: () = msg_send![alert, setInformativeText: message_ns];
+        // Add buttons using building blocks (CROSSOVER #4)
+        if let Err(e) = self.add_alert_button(alert, "Open System Settings") {
+            log::error!("Failed to add button: {}", e);
+            return DialogResult::Quit;
+        }
+        if let Err(e) = self.add_alert_button(alert, "Quit") {
+            log::error!("Failed to add button: {}", e);
+            return DialogResult::Quit;
+        }
 
-        // Add buttons using session methods (order matters - first button is default/highlighted)
-        let open_button = match self.create_nsstring("Open System Settings") {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to create button string: {}", e);
-                return DialogResult::Quit;
-            }
-        };
-
-        let quit_button = match self.create_nsstring("Quit") {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to create button string: {}", e);
-                return DialogResult::Quit;
-            }
-        };
-
-        let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: open_button];
-        let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: quit_button];
-
-        // Show modal dialog - this BLOCKS until user clicks a button
-        let response: i64 = msg_send![alert, runModal];
-
-        // NSAlertFirstButtonReturn = 1000, NSAlertSecondButtonReturn = 1001
-        match response {
-            1000 => {
+        // Show modal and get response using building block (CROSSOVER #5)
+        match self.show_modal_alert(alert) {
+            Ok(1000) => {
                 log::debug!("User clicked 'Open System Settings'");
                 DialogResult::OpenSettings
             }
-            1001 => {
+            Ok(1001) => {
                 log::debug!("User clicked 'Quit'");
                 DialogResult::Quit
             }
-            _ => {
-                log::warn!("Unexpected dialog response: {}", response);
+            Ok(_) | Err(_) => {
+                log::warn!("Unexpected dialog response");
                 DialogResult::Quit
             }
         }
@@ -225,7 +193,7 @@ impl MacOSSession {
 ///
 /// Legacy wrapper that calls the session method
 unsafe fn show_permission_dialog(state: &PermissionState) -> DialogResult {
-    MacOSSession::global().show_permission_dialog(state)
+    unsafe { MacOSSession::global().show_permission_dialog(state) }
 }
 
 // ============================================================================

@@ -66,14 +66,12 @@ impl MacOSSession {
     pub unsafe fn password_prompt(&self, account: &str) -> Result<()> {
         use objc2::{msg_send, runtime::AnyObject};
 
-        // Create alert using session method
-        let alert_class = self.get_class("NSAlert")?;
-        let alert = self.alloc_init(alert_class)?;
+        // Create alert using building block (CROSSOVER #1)
+        let alert = self.create_alert()?;
 
-        // Set message text using session method
+        // Set message text using building block (CROSSOVER #2)
         let message = "Please enter password to store in keychain:";
-        let message_string = self.create_nsstring(message)?;
-        let _: () = msg_send![alert, setMessageText: message_string];
+        self.set_alert_text(alert, "", message)?;
 
         // Create a secure text field for password input
         let text_field_class = self.get_class("NSSecureTextField")?;
@@ -81,35 +79,31 @@ impl MacOSSession {
 
         // Set a reasonable width for the text field
         let _: () = msg_send![text_field, sizeToFit];
-
-        // Get current frame and adjust width
         let mut frame: NSRect = msg_send![text_field, frame];
-        frame.size.width = 300.0; // Set width to 300 pixels
+        frame.size.width = 300.0;
         let _: () = msg_send![text_field, setFrame: frame];
 
-        // Set the text field as the accessory view
-        let _: () = msg_send![alert, setAccessoryView: text_field];
+        // Add text field as accessory using building block (CROSSOVER #3)
+        self.add_accessory_view(alert, text_field)?;
 
-        // Add buttons using session method
-        let ok_string = self.create_nsstring("OK")?;
-        let cancel_string = self.create_nsstring("Cancel")?;
-        let _: () = msg_send![alert, addButtonWithTitle: ok_string];
-        let _: () = msg_send![alert, addButtonWithTitle: cancel_string];
+        // Add buttons using building blocks (CROSSOVER #4)
+        self.add_alert_button(alert, "OK")?;
+        self.add_alert_button(alert, "Cancel")?;
 
-        // Show the alert and get response
-        let response: isize = msg_send![alert, runModal];
+        // Show modal and get response using building block (CROSSOVER #5)
+        let response = self.show_modal_alert(alert)?;
 
         // NSAlertFirstButtonReturn = 1000, NSAlertSecondButtonReturn = 1001
         if response == 1000 {
             // User clicked OK - get the password
-            let password_nsstring: *mut AnyObject = msg_send![text_field, stringValue];
+            let password_nsstring: *mut AnyObject = unsafe { msg_send![text_field, stringValue] };
 
             log::info!(
                 "Retrieved password NSString pointer: {:?}",
                 password_nsstring
             );
 
-            match nsstring_to_string(password_nsstring) {
+            match unsafe { nsstring_to_string(password_nsstring) } {
                 Some(password) if !password.is_empty() => {
                     log::info!("Password retrieved, length: {}", password.len());
                     match password_set(account, &password) {
@@ -146,7 +140,7 @@ impl MacOSSession {
 
 // Helper to convert NSString to Rust String
 unsafe fn nsstring_to_string(ns_string: *mut objc2::runtime::AnyObject) -> Option<String> {
-    use objc2::{msg_send, runtime::AnyObject};
+    use objc2::msg_send;
 
     if ns_string.is_null() {
         log::error!("nsstring_to_string: NSString pointer is null");

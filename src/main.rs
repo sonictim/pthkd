@@ -577,6 +577,8 @@ impl MessageLog {
         self.message.push('\n');
     }
     pub fn display(&self) -> anyhow::Result<()> {
-        crate::macos::window::show_text_window(&self.message)
+        unsafe {
+            crate::macos::MacOSSession::global().show_text_window(&self.message)
+        }
     }
 }

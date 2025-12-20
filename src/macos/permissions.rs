@@ -5,12 +5,11 @@
 //! - Input Monitoring (required for keystroke sending)
 
 use super::ffi::{AXIsProcessTrusted, CGRequestPostEventAccess};
+use super::session::MacOSSession;
 use anyhow::{Context, Result};
 use objc2::msg_send;
-use objc2::runtime::{AnyClass, AnyObject};
-use std::ffi::c_void;
+use objc2::runtime::AnyObject;
 use std::process::Command;
-use std::ptr;
 use std::thread;
 use std::time::Duration;
 
@@ -100,26 +99,8 @@ fn open_input_monitoring_settings() -> Result<()> {
 }
 
 // ============================================================================
-// NSAlert Dialog Implementation
+// Permission Dialog Implementation
 // ============================================================================
-
-/// Helper to create an NSString from a Rust &str
-unsafe fn create_nsstring(s: &str) -> *mut AnyObject {
-    let ns_string_class = match AnyClass::get("NSString") {
-        Some(class) => class,
-        None => return ptr::null_mut(),
-    };
-
-    let ns_string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let ns_string: *mut AnyObject = msg_send![
-        ns_string,
-        initWithBytes: s.as_ptr() as *const c_void
-        length: s.len()
-        encoding: 4_usize  // NSUTF8StringEncoding = 4
-    ];
-
-    ns_string
-}
 
 /// Format the informative text for the permission dialog
 fn format_permission_message(state: &PermissionState) -> String {
@@ -146,71 +127,105 @@ fn format_permission_message(state: &PermissionState) -> String {
     message
 }
 
+// ============================================================================
+// MacOSSession Extensions for Permissions
+// ============================================================================
+
+impl MacOSSession {
+    /// Show a critical permission dialog
+    ///
+    /// Creates a native macOS alert dialog with critical styling that blocks
+    /// until the user responds. Returns DialogResult indicating choice.
+    unsafe fn show_permission_dialog(&self, state: &PermissionState) -> DialogResult {
+        log::debug!("Showing permission dialog");
+
+        // Create alert using session method
+        let alert_class = match self.get_class("NSAlert") {
+            Ok(class) => class,
+            Err(e) => {
+                log::error!("Failed to get NSAlert class: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        let alert = match self.alloc_init(alert_class) {
+            Ok(a) => a,
+            Err(e) => {
+                log::error!("Failed to create NSAlert: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        // Set alert style to critical (NSAlertStyleCritical = 2)
+        let _: () = msg_send![alert, setAlertStyle: 2_i64];
+
+        // Set title and informative text using session methods
+        let title = match self.create_nsstring("Permissions Required") {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create title string: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        let message = format_permission_message(state);
+        let message_ns = match self.create_nsstring(&message) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create message string: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        let _: () = msg_send![alert, setMessageText: title];
+        let _: () = msg_send![alert, setInformativeText: message_ns];
+
+        // Add buttons using session methods (order matters - first button is default/highlighted)
+        let open_button = match self.create_nsstring("Open System Settings") {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create button string: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        let quit_button = match self.create_nsstring("Quit") {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create button string: {}", e);
+                return DialogResult::Quit;
+            }
+        };
+
+        let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: open_button];
+        let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: quit_button];
+
+        // Show modal dialog - this BLOCKS until user clicks a button
+        let response: i64 = msg_send![alert, runModal];
+
+        // NSAlertFirstButtonReturn = 1000, NSAlertSecondButtonReturn = 1001
+        match response {
+            1000 => {
+                log::debug!("User clicked 'Open System Settings'");
+                DialogResult::OpenSettings
+            }
+            1001 => {
+                log::debug!("User clicked 'Quit'");
+                DialogResult::Quit
+            }
+            _ => {
+                log::warn!("Unexpected dialog response: {}", response);
+                DialogResult::Quit
+            }
+        }
+    }
+}
+
 /// Show a blocking permission dialog using NSAlert
 ///
-/// This creates a native macOS alert dialog that blocks until the user responds.
-/// The dialog explains what permissions are needed and provides buttons to
-/// open System Settings or quit the app.
-///
-/// Returns DialogResult indicating the user's choice.
+/// Legacy wrapper that calls the session method
 unsafe fn show_permission_dialog(state: &PermissionState) -> DialogResult {
-    log::debug!("Showing permission dialog");
-
-    // Get NSAlert class
-    let alert_class = match AnyClass::get("NSAlert") {
-        Some(class) => class,
-        None => {
-            log::error!("Failed to get NSAlert class");
-            return DialogResult::Quit;
-        }
-    };
-
-    // Create alert instance
-    let alert: *mut AnyObject = msg_send![alert_class, alloc];
-    let alert: *mut AnyObject = msg_send![alert, init];
-
-    if alert.is_null() {
-        log::error!("Failed to create NSAlert instance");
-        return DialogResult::Quit;
-    }
-
-    // Set alert style to critical (NSAlertStyleCritical = 2)
-    let _: () = msg_send![alert, setAlertStyle: 2_i64];
-
-    // Set title and informative text
-    let title = unsafe { create_nsstring("Permissions Required") };
-    let message = format_permission_message(state);
-    let message_ns = unsafe { create_nsstring(&message) };
-
-    let _: () = msg_send![alert, setMessageText: title];
-    let _: () = msg_send![alert, setInformativeText: message_ns];
-
-    // Add buttons (order matters - first button is default/highlighted)
-    let open_button = unsafe { create_nsstring("Open System Settings") };
-    let quit_button = unsafe { create_nsstring("Quit") };
-
-    let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: open_button];
-    let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: quit_button];
-
-    // Show modal dialog - this BLOCKS until user clicks a button
-    let response: i64 = msg_send![alert, runModal];
-
-    // NSAlertFirstButtonReturn = 1000
-    // NSAlertSecondButtonReturn = 1001
-    match response {
-        1000 => {
-            log::debug!("User clicked 'Open System Settings'");
-            DialogResult::OpenSettings
-        }
-        1001 => {
-            log::debug!("User clicked 'Quit'");
-            DialogResult::Quit
-        }
-        _ => {
-            log::warn!("Unexpected dialog response: {}", response);
-            DialogResult::Quit
-        }
-    }
+    MacOSSession::global().show_permission_dialog(state)
 }
 
 // ============================================================================

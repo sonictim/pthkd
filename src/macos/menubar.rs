@@ -9,6 +9,9 @@ use objc2::runtime::{AnyClass, AnyObject};
 use std::ptr;
 use std::sync::OnceLock;
 
+// Import session
+use super::session::MacOSSession;
+
 // Global callback for reload config
 static RELOAD_CALLBACK: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
@@ -475,61 +478,31 @@ unsafe fn create_text_image(_text: &str) -> Option<*mut AnyObject> {
     None
 }
 
-/// Show an About dialog with version information
+// ============================================================================
+// MacOSSession Extensions for Menubar
+// ============================================================================
+
+impl MacOSSession {
+    /// Show an About dialog with version information
+    ///
+    /// # Example
+    /// ```ignore
+    /// let os = MacOSSession::global();
+    /// os.show_about_dialog()?;
+    /// ```
+    pub unsafe fn show_about_dialog(&self) -> Result<()> {
+        let version = env!("CARGO_PKG_VERSION");
+        let message = format!(
+            "ProTools Hotkey Daemon\nA fast, scriptable hotkey system for Pro Tools\n\nVersion {}",
+            version
+        );
+
+        self.show_alert("About pthkd", &message, &["OK"])?;
+        Ok(())
+    }
+}
+
+/// Legacy wrapper for show_about_dialog() - calls session method
 unsafe fn show_about_dialog() {
-    use objc2::{msg_send, runtime::AnyClass, sel};
-
-    let version = env!("CARGO_PKG_VERSION");
-    let message = format!(
-        "pthkd v{}\n\nProTools Hotkey Daemon\nA fast, scriptable hotkey system for Pro Tools",
-        version
-    );
-
-    // Get NSAlert class
-    let alert_class = match AnyClass::get("NSAlert") {
-        Some(c) => c,
-        None => {
-            log::error!("Failed to get NSAlert class");
-            return;
-        }
-    };
-
-    // Create alert
-    let alert: *mut AnyObject = msg_send![alert_class, alloc];
-    let alert: *mut AnyObject = msg_send![alert, init];
-
-    // Set message text
-    let ns_string_class = match AnyClass::get("NSString") {
-        Some(c) => c,
-        None => {
-            log::error!("Failed to get NSString class");
-            return;
-        }
-    };
-
-    let message_string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let message_string: *mut AnyObject = msg_send![
-        message_string,
-        initWithBytes: message.as_ptr() as *const std::ffi::c_void
-        length: message.len()
-        encoding: 4_usize  // NSUTF8StringEncoding
-    ];
-
-    let _: () = msg_send![alert, setMessageText: message_string];
-
-    // Add OK button
-    let ok_string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let ok_string: *mut AnyObject = msg_send![
-        ok_string,
-        initWithBytes: "OK".as_ptr() as *const std::ffi::c_void
-        length: 2_usize
-        encoding: 4_usize
-    ];
-    let _: () = msg_send![alert, addButtonWithTitle: ok_string];
-
-    // Set alert style to informational
-    let _: () = msg_send![alert, setAlertStyle: 1_isize]; // NSAlertStyleInformational = 1
-
-    // Show the alert
-    let _: () = msg_send![alert, runModal];
+    MacOSSession::global().show_about_dialog().ok();
 }

@@ -18,6 +18,9 @@ pub mod events;
 pub mod notifications;
 pub mod permissions;
 
+// Core abstractions
+pub mod session;
+
 // Experimental modules (work in progress)
 pub mod app_info;
 pub mod input_dialog;
@@ -35,6 +38,7 @@ pub mod commands;
 // Re-export commonly used items
 pub use events::*;
 pub use notifications::*;
+pub use session::MacOSSession;
 
 // Experimental items are not re-exported - must be explicitly imported
 // This makes it clear when experimental code is being used

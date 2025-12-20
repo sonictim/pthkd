@@ -1,6 +1,6 @@
 //! macOS system command implementations
 
-use super::{app_info, keystroke, menu, show_notification};
+use super::{app_info, keystroke, menu, show_notification, MacOSSession};
 use crate::params::Params;
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -15,9 +15,9 @@ pub fn test_notification(_params: &Params) -> Result<()> {
 }
 pub fn test_window(_params: &Params) -> Result<()> {
     unsafe {
-        super::window::show_message_dialog("Helllo World 2");
+        MacOSSession::global().show_message_dialog("Helllo World 2")?;
+        MacOSSession::global().show_text_window("Hello World")
     }
-    super::window::show_text_window("Hello World")
 }
 
 pub fn test_keystroke(_params: &Params) -> Result<()> {
@@ -296,13 +296,13 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
     let result = if set {
-        super::keyring::password_prompt(account)
+        unsafe { MacOSSession::global().password_prompt(account) }
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
         super::keystroke::type_text(&pw)?;
         super::keystroke::send_keystroke(&["enter"])
     } else {
-        super::keyring::password_prompt(account)
+        unsafe { MacOSSession::global().password_prompt(account) }
     };
 
     // Check and recreate event tap if it was disabled by keychain dialog

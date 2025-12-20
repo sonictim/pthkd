@@ -1,7 +1,7 @@
+use super::session::MacOSSession;
 use objc2::msg_send;
-use objc2::runtime::{AnyClass, AnyObject};
+use objc2::runtime::AnyObject;
 use std::process::Command;
-use std::ptr;
 
 /// Show a macOS notification
 ///
@@ -27,9 +27,12 @@ pub fn show_notification(message: &str) {
 /// This will use the app's icon from the bundle instead of the AppleScript icon
 fn show_notification_native(message: &str) -> Result<(), String> {
     unsafe {
-        // Get NSUserNotificationCenter class
-        let notification_center_class = AnyClass::get("NSUserNotificationCenter")
-            .ok_or("Failed to get NSUserNotificationCenter class")?;
+        let os = MacOSSession::global();
+
+        // Get NSUserNotificationCenter class using session
+        let notification_center_class = os
+            .get_class("NSUserNotificationCenter")
+            .map_err(|e| format!("Failed to get NSUserNotificationCenter class: {}", e))?;
 
         // Get the default notification center
         let center: *mut AnyObject = msg_send![notification_center_class, defaultUserNotificationCenter];
@@ -37,27 +40,22 @@ fn show_notification_native(message: &str) -> Result<(), String> {
             return Err("Failed to get default notification center".to_string());
         }
 
-        // Create a new notification
-        let notification_class = AnyClass::get("NSUserNotification")
-            .ok_or("Failed to get NSUserNotification class")?;
-        let notification: *mut AnyObject = msg_send![notification_class, alloc];
-        let notification: *mut AnyObject = msg_send![notification, init];
+        // Create a new notification using session
+        let notification_class = os
+            .get_class("NSUserNotification")
+            .map_err(|e| format!("Failed to get NSUserNotification class: {}", e))?;
+        let notification = os
+            .alloc_init(notification_class)
+            .map_err(|e| format!("Failed to create notification: {}", e))?;
 
-        if notification.is_null() {
-            return Err("Failed to create notification".to_string());
-        }
+        // Create NSStrings using session methods
+        let title = os
+            .create_nsstring("ProTools Hotkey Daemon")
+            .map_err(|e| format!("Failed to create title string: {}", e))?;
 
-        // Create NSString for title
-        let title = create_nsstring("ProTools Hotkey Daemon");
-        if title.is_null() {
-            return Err("Failed to create title string".to_string());
-        }
-
-        // Create NSString for message
-        let message_str = create_nsstring(message);
-        if message_str.is_null() {
-            return Err("Failed to create message string".to_string());
-        }
+        let message_str = os
+            .create_nsstring(message)
+            .map_err(|e| format!("Failed to create message string: {}", e))?;
 
         // Set notification properties
         let _: () = msg_send![notification, setTitle: title];
@@ -96,22 +94,4 @@ fn show_notification_osascript(message: &str) -> Result<(), String> {
 
     log::debug!("osascript notification delivered: {}", message);
     Ok(())
-}
-
-/// Helper to create an NSString from a Rust &str
-unsafe fn create_nsstring(s: &str) -> *mut AnyObject {
-    let ns_string_class = match AnyClass::get("NSString") {
-        Some(class) => class,
-        None => return ptr::null_mut(),
-    };
-
-    let ns_string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let ns_string: *mut AnyObject = msg_send![
-        ns_string,
-        initWithBytes: s.as_ptr() as *const std::ffi::c_void
-        length: s.len()
-        encoding: 4_usize  // NSUTF8StringEncoding = 4
-    ];
-
-    ns_string
 }

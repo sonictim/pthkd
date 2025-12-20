@@ -3,6 +3,9 @@ use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
 
+// Import session types
+use super::session::{MacOSSession, NSRect};
+
 pub fn password_set(account: &str, password: &str) -> Result<()> {
     let service = "com.feralfrequencies.pthkd";
 
@@ -44,69 +47,52 @@ pub fn password_get(account: &str) -> Result<String> {
     }
 }
 
-pub fn password_prompt(account: &str) -> Result<()> {
-    use objc2::{msg_send, runtime::AnyClass, runtime::AnyObject};
-    use std::ffi::c_void;
+// ============================================================================
+// MacOSSession Extensions for Keyring
+// ============================================================================
 
-    unsafe {
-        // Get NSAlert class
-        let alert_class = AnyClass::get("NSAlert")
-            .ok_or_else(|| anyhow::anyhow!("Failed to get NSAlert class"))?;
+impl MacOSSession {
+    /// Prompt for password with secure text field
+    ///
+    /// Shows an alert dialog with a secure text field for password entry.
+    /// If the user clicks OK and enters a non-empty password, it's stored
+    /// in the keychain for the given account.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let os = MacOSSession::global();
+    /// os.password_prompt("my_account")?;
+    /// ```
+    pub unsafe fn password_prompt(&self, account: &str) -> Result<()> {
+        use objc2::{msg_send, runtime::AnyObject};
 
-        // Create alert
-        let alert: *mut AnyObject = msg_send![alert_class, alloc];
-        let alert: *mut AnyObject = msg_send![alert, init];
+        // Create alert using session method
+        let alert_class = self.get_class("NSAlert")?;
+        let alert = self.alloc_init(alert_class)?;
 
-        // Set message text
+        // Set message text using session method
         let message = "Please enter password to store in keychain:";
-        let message_string = create_nsstring(message);
+        let message_string = self.create_nsstring(message)?;
         let _: () = msg_send![alert, setMessageText: message_string];
 
         // Create a secure text field for password input
-        let text_field_class = AnyClass::get("NSSecureTextField")
-            .ok_or_else(|| anyhow::anyhow!("Failed to get NSSecureTextField class"))?;
+        let text_field_class = self.get_class("NSSecureTextField")?;
+        let text_field = self.alloc_init(text_field_class)?;
 
-        let text_field: *mut AnyObject = msg_send![text_field_class, alloc];
-        let text_field: *mut AnyObject = msg_send![text_field, init];
-
-        // Set a reasonable width for the text field (NSTextField needs explicit sizing)
-        // We'll use sizeToFit and then adjust the width
+        // Set a reasonable width for the text field
         let _: () = msg_send![text_field, sizeToFit];
 
-        // Get current frame to adjust width
-        use objc2::encode::{Encode, Encoding};
-
-        #[repr(C)]
-        #[derive(Copy, Clone, Debug)]
-        struct NSRect {
-            x: f64,
-            y: f64,
-            width: f64,
-            height: f64,
-        }
-
-        unsafe impl Encode for NSRect {
-            const ENCODING: Encoding = Encoding::Struct(
-                "NSRect",
-                &[
-                    Encoding::Double,
-                    Encoding::Double,
-                    Encoding::Double,
-                    Encoding::Double,
-                ],
-            );
-        }
-
+        // Get current frame and adjust width
         let mut frame: NSRect = msg_send![text_field, frame];
-        frame.width = 300.0; // Set width to 300 pixels
+        frame.size.width = 300.0; // Set width to 300 pixels
         let _: () = msg_send![text_field, setFrame: frame];
 
         // Set the text field as the accessory view
         let _: () = msg_send![alert, setAccessoryView: text_field];
 
-        // Add buttons
-        let ok_string = create_nsstring("OK");
-        let cancel_string = create_nsstring("Cancel");
+        // Add buttons using session method
+        let ok_string = self.create_nsstring("OK")?;
+        let cancel_string = self.create_nsstring("Cancel")?;
         let _: () = msg_send![alert, addButtonWithTitle: ok_string];
         let _: () = msg_send![alert, addButtonWithTitle: cancel_string];
 
@@ -154,21 +140,9 @@ pub fn password_prompt(account: &str) -> Result<()> {
     }
 }
 
-// Helper to create NSString from &str
-unsafe fn create_nsstring(s: &str) -> *mut objc2::runtime::AnyObject {
-    use objc2::{msg_send, runtime::AnyClass, runtime::AnyObject};
-    use std::ffi::c_void;
-
-    let ns_string_class = AnyClass::get("NSString").expect("NSString class");
-    let string: *mut AnyObject = msg_send![ns_string_class, alloc];
-    let string: *mut AnyObject = msg_send![
-        string,
-        initWithBytes: s.as_ptr() as *const c_void
-        length: s.len()
-        encoding: 4_usize  // NSUTF8StringEncoding
-    ];
-    string
-}
+// ============================================================================
+// Local Helpers
+// ============================================================================
 
 // Helper to convert NSString to Rust String
 unsafe fn nsstring_to_string(ns_string: *mut objc2::runtime::AnyObject) -> Option<String> {

@@ -58,8 +58,8 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
                 .count();
         }
         println!("one window detected");
-        let _ = crate::macos::app_info::focus_app("Pro Tools", "", true, false, 50);
-        let _ = crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 50);
+        crate::macos::app_info::focus_app("Pro Tools", "", true, false, 50).ok();
+        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 50).ok();
         // Focus Pro Tools and wait for confirmation (switch but don't launch)
 
         // Now render the changes back
@@ -193,10 +193,14 @@ pub async fn plugin_selector(
     let close = Box::new(close);
     log::info!("plugin_selector called with {} plugins", plugins.len());
     counter.press(timeout_ms, plugins.len() as u32, |idx| async move {
-        log::info!("Callback executing with idx={}, plugins.len()={}", idx, plugins.len());
+        log::info!(
+            "Callback executing with idx={}, plugins.len()={}",
+            idx,
+            plugins.len()
+        );
         if let Some(plugin) = plugins.get(idx as usize) {
             log::info!("Opening plugin: {}", plugin);
-            let _ = call_plugin(plugin, &button, *close).await;
+            call_plugin(plugin, &button, *close).await.ok();
         } else {
             log::error!("No plugin found at index {}", idx);
         }

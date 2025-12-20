@@ -1,5 +1,7 @@
 use anyhow::{Result, anyhow};
-use security_framework::passwords::{set_generic_password, get_generic_password, delete_generic_password};
+use security_framework::passwords::{
+    delete_generic_password, get_generic_password, set_generic_password,
+};
 
 pub fn password_set(account: &str, password: &str) -> Result<()> {
     let service = "com.feralfrequencies.pthkd";
@@ -7,7 +9,7 @@ pub fn password_set(account: &str, password: &str) -> Result<()> {
     log::info!("password_set: service='{}', account='{}'", service, account);
 
     // Delete existing password if it exists (to avoid duplicates)
-    let _ = delete_generic_password(service, account);
+    delete_generic_password(service, account).ok();
 
     log::info!("password_set: Attempting to set password using Security framework");
 
@@ -116,7 +118,10 @@ pub fn password_prompt(account: &str) -> Result<()> {
             // User clicked OK - get the password
             let password_nsstring: *mut AnyObject = msg_send![text_field, stringValue];
 
-            log::info!("Retrieved password NSString pointer: {:?}", password_nsstring);
+            log::info!(
+                "Retrieved password NSString pointer: {:?}",
+                password_nsstring
+            );
 
             match nsstring_to_string(password_nsstring) {
                 Some(password) if !password.is_empty() => {
@@ -183,7 +188,10 @@ unsafe fn nsstring_to_string(ns_string: *mut objc2::runtime::AnyObject) -> Optio
     let c_str = std::ffi::CStr::from_ptr(utf8 as *const i8);
     match c_str.to_str() {
         Ok(s) => {
-            log::info!("nsstring_to_string: Successfully converted string, length: {}", s.len());
+            log::info!(
+                "nsstring_to_string: Successfully converted string, length: {}",
+                s.len()
+            );
             Some(s.to_string())
         }
         Err(e) => {

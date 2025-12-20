@@ -97,10 +97,10 @@ pub struct HotkeyConfig {
 ///
 /// If the config file doesn't exist, creates one from the embedded default in Application Support
 /// If the config file has TOML errors, falls back to the embedded default
-pub fn load_config(path: &str) -> Result<Config> {
+pub fn load_config(_path: &str) -> Result<Config> {
     // Ignore the path parameter - kept for API compatibility
     // Use our smart path resolution instead
-    let _ = path;
+    // let _ = path;
 
     let paths = get_config_paths();
 
@@ -124,7 +124,10 @@ pub fn load_config(path: &str) -> Result<Config> {
                 let default_path = get_app_support_config_path()
                     .context("Failed to get Application Support path")?;
 
-                log::warn!("Config file not found, creating from default at {}", default_path.display());
+                log::warn!(
+                    "Config file not found, creating from default at {}",
+                    default_path.display()
+                );
                 fs::write(&default_path, DEFAULT_CONFIG)
                     .context("Failed to write default config file")?;
                 log::info!("Created default config at {}", default_path.display());

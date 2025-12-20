@@ -48,8 +48,12 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         sel.set_io(pt, &io.0, &io.1).await?;
     }
     if fill {
-        let _ = call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await;
-        let _ = call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await;
+        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"])
+            .await
+            .ok();
+        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"])
+            .await
+            .ok();
     }
     let result = pt
         .cmd::<_, serde_json::Value>(
@@ -75,9 +79,13 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         let mut sel = PtSelectionSamples::new(pt).await?;
         let c = sel.get_io();
         sel.set_io(pt, c.1, c.1).await?;
-        let _ = call_menu(&["Edit", "Automation", "Write to All Enabled"]).await;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"])
+            .await
+            .ok();
         sel.set_io(pt, c.0, c.0).await?;
-        let _ = call_menu(&["Edit", "Automation", "Write to All Enabled"]).await;
+        call_menu(&["Edit", "Automation", "Write to All Enabled"])
+            .await
+            .ok();
         sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
 
         let _: serde_json::Value = pt
@@ -116,15 +124,15 @@ pub async fn bg_paste_selection(pt: &mut ProtoolsSession, params: &Params) -> Re
     }
     pt.paste_to_fill_selection().await?;
     if !preset.is_empty() {
-        let _ = pt
-            .cmd::<_, serde_json::Value>(
-                CommandId::CreateFadesBasedOnPreset,
-                ptsl::CreateFadesBasedOnPresetRequestBody {
-                    fade_preset_name: preset,
-                    auto_adjust_bounds: true,
-                },
-            )
-            .await;
+        pt.cmd::<_, serde_json::Value>(
+            CommandId::CreateFadesBasedOnPreset,
+            ptsl::CreateFadesBasedOnPresetRequestBody {
+                fade_preset_name: preset,
+                auto_adjust_bounds: true,
+            },
+        )
+        .await
+        .ok();
     }
     // sel.set_io(pt, &io.0, &io.1).await?;
     // adjust_clip_to_match_selection(pt, params).await?;

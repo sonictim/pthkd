@@ -35,7 +35,7 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     // Benchmark get_current_app()
     let start = Instant::now();
     for _ in 0..1000 {
-        let _ = app_info::get_current_app();
+        app_info::get_current_app().ok();
     }
     let elapsed = start.elapsed();
     let msg = format!(

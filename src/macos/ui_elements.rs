@@ -1061,7 +1061,7 @@ pub fn close_window_with_retry(app_name: &str, window_name: &str, timeout_ms: u6
         }
 
         // Try to close it
-        let _ = close_window(app_name, window_name); // Ignore errors, will retry
+        close_window(app_name, window_name).ok(); // Ignore errors, will retry
 
         // Wait a bit before checking again
         std::thread::sleep(Duration::from_millis(100));

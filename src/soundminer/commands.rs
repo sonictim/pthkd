@@ -33,7 +33,7 @@ pub fn send_to_daw(params: &Params) -> R<()> {
     }
 
     // Soundminer is running, focus it and execute the command
-    let _ = crate::macos::app_info::focus_app("Soundminer", "", true, false, 50);
+    crate::macos::app_info::focus_app("Soundminer", "", true, false, 50).ok();
 
     match daw.as_deref() {
         Some("Pro Tools") => {
@@ -47,7 +47,7 @@ pub fn send_to_daw(params: &Params) -> R<()> {
             if sprn.is_none() {
                 sprn = Some(true)
             };
-            let _ = super::menu(&["DAW", "Pro Tools"]);
+            super::menu(&["DAW", "Pro Tools"]).ok();
         }
         Some("Reaper") => {
             log::info!("Spotting to Reaper Timeline via Soundminer");
@@ -60,22 +60,22 @@ pub fn send_to_daw(params: &Params) -> R<()> {
             if sprn.is_none() {
                 sprn = Some(true)
             };
-            let _ = super::menu(&["DAW", "Soundminer Reaper Extension"]);
+            super::menu(&["DAW", "Soundminer Reaper Extension"]).ok();
         }
         Some("iZotope RX 11") => {
             command = "Send Files to DAW";
             let apps = crate::macos::app_info::get_all_running_applications()?;
             if !apps.contains(&"iZotope RX 11".to_string()) {
-                let _ = crate::macos::app_info::launch_application("iZotope RX 11 Audio Editor");
-                let _ = crate::macos::ui_elements::wait_for_window_focused(
+                crate::macos::app_info::launch_application("iZotope RX 11 Audio Editor").ok();
+                crate::macos::ui_elements::wait_for_window_focused(
                     "iZotope RX 11 Audio Editor",
                     "",
                     500,
-                );
-                let _ = crate::macos::app_info::focus_app("Soundminer", "", true, false, 50);
+                )
+                .ok();
+                crate::macos::app_info::focus_app("Soundminer", "", true, false, 50).ok();
             }
-            let _ = super::menu(&["DAW", "iZotope RX 11"]);
-            // let _ = crate::macos::ui_elements::wait_for_window_focused("iZotope RX 11 Audio Editor", "", 50);
+            super::menu(&["DAW", "iZotope RX 11"]).ok();
         }
         _ => {}
     }

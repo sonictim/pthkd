@@ -185,7 +185,7 @@ unsafe fn nsstring_to_string(ns_string: *mut objc2::runtime::AnyObject) -> Optio
         return None;
     }
 
-    let c_str = std::ffi::CStr::from_ptr(utf8 as *const i8);
+    let c_str = unsafe { std::ffi::CStr::from_ptr(utf8 as *const i8) };
     match c_str.to_str() {
         Ok(s) => {
             log::info!(

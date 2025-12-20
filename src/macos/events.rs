@@ -19,7 +19,8 @@ use std::sync::Mutex;
 /// Stores the event tap pointer and callback for monitoring and recreation
 struct EventTapState {
     tap: *mut c_void,
-    callback: Option<unsafe extern "C" fn(*mut c_void, u32, *mut c_void, *mut c_void) -> *mut c_void>,
+    callback:
+        Option<unsafe extern "C" fn(*mut c_void, u32, *mut c_void, *mut c_void) -> *mut c_void>,
 }
 
 unsafe impl Send for EventTapState {}
@@ -130,7 +131,8 @@ pub unsafe fn create_keyboard_event_tap(
 ) -> Result<*mut c_void> {
     unsafe {
         // Event mask for key down, key up, and flags changed (for modifiers)
-        let event_mask = (1 << CG_EVENT_KEY_DOWN) | (1 << CG_EVENT_KEY_UP) | (1 << CG_EVENT_FLAGS_CHANGED);
+        let event_mask =
+            (1 << CG_EVENT_KEY_DOWN) | (1 << CG_EVENT_KEY_UP) | (1 << CG_EVENT_FLAGS_CHANGED);
 
         let event_tap = CGEventTapCreate(
             CG_SESSION_EVENT_TAP,
@@ -195,10 +197,10 @@ pub unsafe fn run_event_loop() {
 /// Returns true if enabled, false if disabled or not created
 pub fn is_event_tap_enabled() -> bool {
     unsafe {
-        if let Some(state) = EVENT_TAP_STATE.lock().unwrap().as_ref() {
-            if !state.tap.is_null() {
-                return CGEventTapIsEnabled(state.tap);
-            }
+        if let Some(state) = EVENT_TAP_STATE.lock().unwrap().as_ref()
+            && !state.tap.is_null()
+        {
+            return CGEventTapIsEnabled(state.tap);
         }
         false
     }
@@ -225,9 +227,9 @@ pub fn recreate_event_tap_if_needed() -> Result<bool> {
             log::warn!("Event tap has been disabled by macOS - attempting to recreate");
 
             // Get the callback before dropping the state
-            let callback = state.callback.ok_or_else(|| {
-                anyhow::anyhow!("Event tap callback not stored, cannot recreate")
-            })?;
+            let callback = state
+                .callback
+                .ok_or_else(|| anyhow::anyhow!("Event tap callback not stored, cannot recreate"))?;
 
             // Drop the old state
             drop(state_guard);

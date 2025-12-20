@@ -155,6 +155,21 @@ pub fn load_config(_path: &str) -> Result<Config> {
     Ok(config)
 }
 
+pub fn create_default_config() -> Result<()> {
+    let default_path =
+        get_app_support_config_path().context("Failed to get Application Support path")?;
+    if default_path.exists() {
+        let mut new_path = default_path.with_file_name("config.toml.bak");
+        new_path.set_file_name("config.toml.bak");
+        fs::rename(&default_path, &new_path).ok();
+    }
+    log::warn!(
+        "Creating Default config file at {}",
+        &default_path.display()
+    );
+    fs::write(&default_path, DEFAULT_CONFIG).context("Failed to write default config file")
+}
+
 /// Convert config hotkeys to runtime Hotkey structs
 /// Skips any hotkeys that fail to parse instead of failing entirely
 pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {

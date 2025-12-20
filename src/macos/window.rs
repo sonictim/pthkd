@@ -204,7 +204,7 @@ pub fn show_text_window(text: &str) -> Result<()> {
 
 /// Show an About dialog with version information
 pub unsafe fn show_message_dialog(message: &str) {
-    use objc2::{msg_send, runtime::AnyClass, sel};
+    use objc2::{msg_send, runtime::AnyClass};
 
     // Get NSAlert class
     let alert_class = match AnyClass::get("NSAlert") {

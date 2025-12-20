@@ -87,10 +87,7 @@ unsafe extern "C" {
     ) -> i32;
 
     /// Perform an accessibility action
-    pub fn AXUIElementPerformAction(
-        element: AXUIElementRef,
-        action: CFStringRef,
-    ) -> i32;
+    pub fn AXUIElementPerformAction(element: AXUIElementRef, action: CFStringRef) -> i32;
 
     /// Set an attribute value on an element
     pub fn AXUIElementSetAttributeValue(
@@ -103,7 +100,7 @@ unsafe extern "C" {
     pub fn AXIsProcessTrusted() -> bool;
 }
 
-/// CoreGraphics framework for input monitoring permissions
+// CoreGraphics framework for input monitoring permissions
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     /// Check if the current process has permission to post events (Input Monitoring)
@@ -115,51 +112,61 @@ unsafe extern "C" {
 // ============================================================================
 
 /// Helper to create a CFString from a Rust &str
-pub unsafe fn create_cfstring(s: &str) -> *mut c_void { unsafe {
-    let c_str = std::ffi::CString::new(s).unwrap();
-    CFStringCreateWithCString(std::ptr::null_mut(), c_str.as_ptr(), K_CF_STRING_ENCODING_UTF8)
-}}
+pub unsafe fn create_cfstring(s: &str) -> *mut c_void {
+    unsafe {
+        let c_str = std::ffi::CString::new(s).unwrap();
+        CFStringCreateWithCString(
+            std::ptr::null_mut(),
+            c_str.as_ptr(),
+            K_CF_STRING_ENCODING_UTF8,
+        )
+    }
+}
 
 /// Check if a Core Foundation object is a CFString
-pub unsafe fn is_cfstring(value: *mut c_void) -> bool { unsafe {
-    if value.is_null() {
-        return false;
+pub unsafe fn is_cfstring(value: *mut c_void) -> bool {
+    unsafe {
+        if value.is_null() {
+            return false;
+        }
+        CFGetTypeID(value) == CFStringGetTypeID()
     }
-    CFGetTypeID(value) == CFStringGetTypeID()
-}}
+}
 
 /// Helper to convert CFString to Rust String
-pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> { unsafe {
-    if cfstring.is_null() {
-        return None;
+pub unsafe fn cfstring_to_string(cfstring: *mut c_void) -> Option<String> {
+    unsafe {
+        if cfstring.is_null() {
+            return None;
+        }
+
+        // Check if it's actually a CFString before calling CFString functions
+        if !is_cfstring(cfstring) {
+            return None;
+        }
+
+        let length = CFStringGetLength(cfstring);
+        if length == 0 {
+            return Some(String::new());
+        }
+
+        // Allocate buffer with extra space for null terminator
+        let buffer_size = (length * 4 + 1) as usize; // UTF-8 can be up to 4 bytes per char
+        let mut buffer = vec![0u8; buffer_size];
+
+        let success = CFStringGetCString(
+            cfstring,
+            buffer.as_mut_ptr(),
+            buffer_size as isize,
+            K_CF_STRING_ENCODING_UTF8,
+        );
+
+        if success {
+            // Find the null terminator and create string from bytes
+            let null_pos = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
+            String::from_utf8(buffer[..null_pos].to_vec()).ok()
+        } else {
+            None
+        }
     }
-
-    // Check if it's actually a CFString before calling CFString functions
-    if !is_cfstring(cfstring) {
-        return None;
-    }
-
-    let length = CFStringGetLength(cfstring);
-    if length == 0 {
-        return Some(String::new());
-    }
-
-    // Allocate buffer with extra space for null terminator
-    let buffer_size = (length * 4 + 1) as usize; // UTF-8 can be up to 4 bytes per char
-    let mut buffer = vec![0u8; buffer_size];
-
-    let success = CFStringGetCString(
-        cfstring,
-        buffer.as_mut_ptr(),
-        buffer_size as isize,
-        K_CF_STRING_ENCODING_UTF8,
-    );
-
-    if success {
-        // Find the null terminator and create string from bytes
-        let null_pos = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
-        String::from_utf8(buffer[..null_pos].to_vec()).ok()
-    } else {
-        None
-    }
-}}
+}

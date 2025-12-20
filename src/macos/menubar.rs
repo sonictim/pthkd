@@ -27,6 +27,15 @@ extern "C" fn menu_reload_config(
     }
 }
 
+extern "C" fn menu_restore_defaults(
+    _this: *mut AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) {
+    log::info!("Restore Defaults menu item clicked");
+    crate::config::create_default_config().ok();
+}
+
 extern "C" fn menu_show_about(
     _this: *mut AnyObject,
     _cmd: objc2::runtime::Sel,
@@ -211,8 +220,15 @@ unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
     let mut builder = ClassBuilder::new("MenuBarDelegate", superclass)
         .context("Failed to create class builder")?;
 
-    // Add the reloadConfig: method
+    // Add the restoreDefaults: method
     unsafe {
+        builder.add_method(
+            sel!(restoreDefaults:),
+            menu_restore_defaults
+                as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
+        );
+
+        // Add the reloadConfig: method
         builder.add_method(
             sel!(reloadConfig:),
             menu_reload_config
@@ -222,8 +238,7 @@ unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
         // Add the showAbout: method
         builder.add_method(
             sel!(showAbout:),
-            menu_show_about
-                as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
+            menu_show_about as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
         );
     }
 
@@ -259,7 +274,8 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
     log::debug!("Added 'About' item");
 
     // Create separator
-    let separator_class_1 = AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
+    let separator_class_1 =
+        AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
     let separator_1: *mut AnyObject = msg_send![separator_class_1, separatorItem];
     let _: () = msg_send![menu, addItem: separator_1];
 
@@ -269,6 +285,13 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
         unsafe { create_menu_item("Reload Config", "reloadConfig:", Some(delegate))? };
     let _: () = msg_send![menu, addItem: reload_item];
     log::debug!("Added 'Reload Config' item");
+
+    // Create "Restore Defaults" menu item
+    log::debug!("Creating 'Restore Defaults' menu item...");
+    let restore_item =
+        unsafe { create_menu_item("Restore Defaults", "restoreDefaults:", Some(delegate))? };
+    let _: () = msg_send![menu, addItem: restore_item];
+    log::debug!("Added 'Restore Defaults' item");
 
     // Create separator
     log::debug!("Creating separator...");
@@ -313,6 +336,7 @@ unsafe fn create_menu_item(
     use objc2::sel;
     let selector = match action {
         "terminate:" => sel!(terminate:),
+        "restoreDefaults:" => sel!(restoreDefaults:),
         "reloadConfig:" => sel!(reloadConfig:),
         "showAbout:" => sel!(showAbout:),
         _ => anyhow::bail!("Unknown action: {}", action),
@@ -456,7 +480,10 @@ unsafe fn show_about_dialog() {
     use objc2::{msg_send, runtime::AnyClass, sel};
 
     let version = env!("CARGO_PKG_VERSION");
-    let message = format!("pthkd v{}\n\nProTools Hotkey Daemon\nA fast, scriptable hotkey system for Pro Tools", version);
+    let message = format!(
+        "pthkd v{}\n\nProTools Hotkey Daemon\nA fast, scriptable hotkey system for Pro Tools",
+        version
+    );
 
     // Get NSAlert class
     let alert_class = match AnyClass::get("NSAlert") {

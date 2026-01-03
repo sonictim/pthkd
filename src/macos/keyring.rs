@@ -66,32 +66,36 @@ impl MacOSSession {
     pub unsafe fn password_prompt(&self, account: &str) -> Result<()> {
         use objc2::{msg_send, runtime::AnyObject};
 
-        // Create alert using building block (CROSSOVER #1)
-        let alert = self.create_alert()?;
+        let (response, text_field) = unsafe {
+            // Create alert using building block (CROSSOVER #1)
+            let alert = self.create_alert()?;
 
-        // Set message text using building block (CROSSOVER #2)
-        let message = "Please enter password to store in keychain:";
-        self.set_alert_text(alert, "", message)?;
+            // Set message text using building block (CROSSOVER #2)
+            let message = "Please enter password to store in keychain:";
+            self.set_alert_text(alert, "", message)?;
 
-        // Create a secure text field for password input
-        let text_field_class = self.get_class("NSSecureTextField")?;
-        let text_field = self.alloc_init(text_field_class)?;
+            // Create a secure text field for password input
+            let text_field_class = self.get_class("NSSecureTextField")?;
+            let text_field = self.alloc_init(text_field_class)?;
 
-        // Set a reasonable width for the text field
-        let _: () = msg_send![text_field, sizeToFit];
-        let mut frame: NSRect = msg_send![text_field, frame];
-        frame.size.width = 300.0;
-        let _: () = msg_send![text_field, setFrame: frame];
+            // Set a reasonable width for the text field
+            let _: () = msg_send![text_field, sizeToFit];
+            let mut frame: NSRect = msg_send![text_field, frame];
+            frame.size.width = 300.0;
+            let _: () = msg_send![text_field, setFrame: frame];
 
-        // Add text field as accessory using building block (CROSSOVER #3)
-        self.add_accessory_view(alert, text_field)?;
+            // Add text field as accessory using building block (CROSSOVER #3)
+            self.add_accessory_view(alert, text_field)?;
 
-        // Add buttons using building blocks (CROSSOVER #4)
-        self.add_alert_button(alert, "OK")?;
-        self.add_alert_button(alert, "Cancel")?;
+            // Add buttons using building blocks (CROSSOVER #4)
+            self.add_alert_button(alert, "OK")?;
+            self.add_alert_button(alert, "Cancel")?;
 
-        // Show modal and get response using building block (CROSSOVER #5)
-        let response = self.show_modal_alert(alert)?;
+            // Show modal and get response using building block (CROSSOVER #5)
+            let response = self.show_modal_alert(alert)?;
+
+            (response, text_field)
+        };
 
         // NSAlertFirstButtonReturn = 1000, NSAlertSecondButtonReturn = 1001
         if response == 1000 {
@@ -117,7 +121,7 @@ impl MacOSSession {
                         }
                     }
                 }
-                Some(password) => {
+                Some(_password) => {
                     log::warn!("Password was empty");
                     println!("Password was empty, not stored");
                 }

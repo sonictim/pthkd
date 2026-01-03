@@ -27,34 +27,32 @@ impl MacOSSession {
     /// let window = os.create_window(frame, "My Window")?;
     /// ```
     pub unsafe fn create_window(&self, frame: NSRect, title: &str) -> Result<*mut AnyObject> {
-        let window_class = unsafe { self.get_class("NSWindow")? };
-        let window: *mut AnyObject = unsafe { msg_send![window_class, alloc] };
+        unsafe {
+            let window_class = self.get_class("NSWindow")?;
+            let window: *mut AnyObject = msg_send![window_class, alloc];
 
-        // initWithContentRect:styleMask:backing:defer:
-        //   - styleMask: 15 = Titled + Closable + Miniaturizable + Resizable
-        //   - backing: 2 = NSBackingStoreBuffered
-        let window: *mut AnyObject = unsafe {
-            msg_send![
+            // initWithContentRect:styleMask:backing:defer:
+            //   - styleMask: 15 = Titled + Closable + Miniaturizable + Resizable
+            //   - backing: 2 = NSBackingStoreBuffered
+            let window: *mut AnyObject = msg_send![
                 window,
                 initWithContentRect: frame
                 styleMask: 15_usize
                 backing: 2_usize
                 defer: false
-            ]
-        };
+            ];
 
-        if window.is_null() {
-            anyhow::bail!("Failed to create NSWindow");
-        }
+            if window.is_null() {
+                anyhow::bail!("Failed to create NSWindow");
+            }
 
-        // Set window title
-        let title_str = unsafe { self.create_nsstring(title)? };
-        unsafe {
+            // Set window title
+            let title_str = self.create_nsstring(title)?;
             let _: () = msg_send![window, setTitle: title_str];
             let _: () = msg_send![window, setReleasedWhenClosed: false];
-        }
 
-        Ok(window)
+            Ok(window)
+        }
     }
 
     /// Create an NSScrollView with frame
@@ -64,23 +62,23 @@ impl MacOSSession {
     /// let scroll_view = os.create_scroll_view(frame)?;
     /// ```
     pub unsafe fn create_scroll_view(&self, frame: NSRect) -> Result<*mut AnyObject> {
-        let scroll_view_class = unsafe { self.get_class("NSScrollView")? };
-        let scroll_view: *mut AnyObject = unsafe { msg_send![scroll_view_class, alloc] };
-        let scroll_view: *mut AnyObject = unsafe { msg_send![scroll_view, initWithFrame: frame] };
-
-        if scroll_view.is_null() {
-            anyhow::bail!("Failed to create NSScrollView");
-        }
-
-        // Configure scroll view
         unsafe {
+            let scroll_view_class = self.get_class("NSScrollView")?;
+            let scroll_view: *mut AnyObject = msg_send![scroll_view_class, alloc];
+            let scroll_view: *mut AnyObject = msg_send![scroll_view, initWithFrame: frame];
+
+            if scroll_view.is_null() {
+                anyhow::bail!("Failed to create NSScrollView");
+            }
+
+            // Configure scroll view
             let _: () = msg_send![scroll_view, setHasVerticalScroller: true];
             let _: () = msg_send![scroll_view, setHasHorizontalScroller: true];
             let _: () = msg_send![scroll_view, setAutohidesScrollers: true];
             let _: () = msg_send![scroll_view, setBorderType: 0_usize]; // NSNoBorder
-        }
 
-        Ok(scroll_view)
+            Ok(scroll_view)
+        }
     }
 
     /// Create an NSTextView with frame and content

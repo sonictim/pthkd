@@ -6,7 +6,6 @@
 //! - ✅ Global keystroke sending (send_keystroke) - Using pure C API
 //! - 🚧 App-specific keystrokes (send_keystroke_to_app) - Needs main thread dispatch
 
-use super::ffi::CFRelease;
 use anyhow::{Result, bail};
 use libc::c_void;
 
@@ -132,48 +131,47 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
     }
 
     unsafe {
-        // Create event source
-        let event_source = CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
+        use super::helpers::CGEvent;
+
+        // Create event source (RAII wrapper for auto-cleanup)
+        let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
         if event_source.is_null() {
             bail!("Failed to create event source");
         }
 
         // Send key-down events with modifier flags
         for &key_code in &key_codes {
-            let key_down_event = CGEventCreateKeyboardEvent(event_source, key_code, true);
+            let key_down_event = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
             if key_down_event.is_null() {
-                CFRelease(event_source);
                 bail!("Failed to create key down event for keycode {}", key_code);
             }
 
             // Set modifier flags if any
             if modifier_flags != 0 {
-                CGEventSetFlags(key_down_event, modifier_flags);
+                CGEventSetFlags(key_down_event.as_ptr(), modifier_flags);
             }
 
-            CGEventPost(CG_HID_EVENT_TAP, key_down_event);
-            CFRelease(key_down_event);
+            CGEventPost(CG_HID_EVENT_TAP, key_down_event.as_ptr());
+            // key_down_event automatically released here
         }
 
         // Send key-up events in reverse order with modifier flags
         for &key_code in key_codes.iter().rev() {
-            let key_up_event = CGEventCreateKeyboardEvent(event_source, key_code, false);
+            let key_up_event = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
             if key_up_event.is_null() {
-                CFRelease(event_source);
                 bail!("Failed to create key up event for keycode {}", key_code);
             }
 
             // Set modifier flags on key up as well
             if modifier_flags != 0 {
-                CGEventSetFlags(key_up_event, modifier_flags);
+                CGEventSetFlags(key_up_event.as_ptr(), modifier_flags);
             }
 
-            CGEventPost(CG_HID_EVENT_TAP, key_up_event);
-            CFRelease(key_up_event);
+            CGEventPost(CG_HID_EVENT_TAP, key_up_event.as_ptr());
+            // key_up_event automatically released here
         }
 
-        // Clean up
-        CFRelease(event_source);
+        // event_source automatically released here
     }
 
     Ok(())
@@ -329,7 +327,10 @@ pub fn type_text(text: &str) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("Unknown key: {}", key_name))?[0];
 
         unsafe {
-            let event_source = CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE);
+            use super::helpers::CGEvent;
+
+            // Create event source (RAII wrapper for auto-cleanup)
+            let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
             if event_source.is_null() {
                 bail!("Failed to create event source");
             }
@@ -339,37 +340,37 @@ pub fn type_text(text: &str) -> Result<()> {
 
             if needs_shift {
                 // Send shift down (keycode 56 = left shift)
-                let shift_down = CGEventCreateKeyboardEvent(event_source, 56, true);
-                CGEventSetIntegerValueField(shift_down, EVENT_USER_DATA_FIELD, APP_MARKER);
-                CGEventPost(CG_HID_EVENT_TAP, shift_down);
-                super::ffi::CFRelease(shift_down);
+                let shift_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, true));
+                CGEventSetIntegerValueField(shift_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_HID_EVENT_TAP, shift_down.as_ptr());
+                // shift_down automatically released here
             }
 
             // Send key down
-            let key_down = CGEventCreateKeyboardEvent(event_source, key_code, true);
-            CGEventSetIntegerValueField(key_down, EVENT_USER_DATA_FIELD, APP_MARKER);
+            let key_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
+            CGEventSetIntegerValueField(key_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
             // Set shift flag on the key event (or explicitly clear it)
-            CGEventSetFlags(key_down, if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_down);
-            super::ffi::CFRelease(key_down);
+            CGEventSetFlags(key_down.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_HID_EVENT_TAP, key_down.as_ptr());
+            // key_down automatically released here
 
             // Send key up
-            let key_up = CGEventCreateKeyboardEvent(event_source, key_code, false);
-            CGEventSetIntegerValueField(key_up, EVENT_USER_DATA_FIELD, APP_MARKER);
+            let key_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
+            CGEventSetIntegerValueField(key_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
             // Set shift flag on key up (or explicitly clear it)
-            CGEventSetFlags(key_up, if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_up);
-            super::ffi::CFRelease(key_up);
+            CGEventSetFlags(key_up.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_HID_EVENT_TAP, key_up.as_ptr());
+            // key_up automatically released here
 
             if needs_shift {
                 // Send shift up
-                let shift_up = CGEventCreateKeyboardEvent(event_source, 56, false);
-                CGEventSetIntegerValueField(shift_up, EVENT_USER_DATA_FIELD, APP_MARKER);
-                CGEventPost(CG_HID_EVENT_TAP, shift_up);
-                super::ffi::CFRelease(shift_up);
+                let shift_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, false));
+                CGEventSetIntegerValueField(shift_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_HID_EVENT_TAP, shift_up.as_ptr());
+                // shift_up automatically released here
             }
 
-            super::ffi::CFRelease(event_source);
+            // event_source automatically released here
         }
 
         // Small delay between characters

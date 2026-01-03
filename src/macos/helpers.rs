@@ -72,6 +72,36 @@ impl Drop for AXElement {
     }
 }
 
+/// RAII wrapper for CGEvent that automatically releases on drop
+pub struct CGEvent(pub *mut c_void);
+
+impl CGEvent {
+    /// Wrap an existing CGEvent pointer
+    pub unsafe fn new(event: *mut c_void) -> Self {
+        Self(event)
+    }
+
+    /// Get the raw pointer
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+
+    /// Check if the pointer is null
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+}
+
+impl Drop for CGEvent {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                CFRelease(self.0);
+            }
+        }
+    }
+}
+
 // ============================================================================
 // NSWorkspace / Application Helpers
 // ============================================================================
@@ -84,20 +114,12 @@ where
     F: FnOnce(*mut objc2::runtime::AnyObject) -> Result<R>,
 {
     use objc2::msg_send;
-    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::runtime::AnyObject;
+    use super::session::MacOSSession;
 
-    let workspace_class = AnyClass::get("NSWorkspace")
-        .ok_or_else(|| anyhow::anyhow!("Failed to get NSWorkspace class"))?;
-
-    let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-    if workspace.is_null() {
-        bail!("Failed to get NSWorkspace");
-    }
-
-    let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
-    if running_apps.is_null() {
-        bail!("Failed to get running applications");
-    }
+    // Use building block to get running apps
+    let os = MacOSSession::global();
+    let running_apps = os.get_running_apps()?;
 
     let count: usize = msg_send![running_apps, count];
 

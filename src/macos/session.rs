@@ -179,7 +179,7 @@ impl MacOSSession {
     ///
     /// **CROSSOVER:** Used by show_alert, password_prompt, show_permission_dialog
     pub unsafe fn create_alert(&self) -> Result<*mut AnyObject> {
-        self.alloc_init(self.class_cache.ns_alert)
+        unsafe { self.alloc_init(self.class_cache.ns_alert) }
     }
 
     /// Set alert style (informational=1, warning=0, critical=2)
@@ -194,11 +194,13 @@ impl MacOSSession {
     ///
     /// **CROSSOVER:** Used by ALL alert functions (show_alert, password_prompt, permission_dialog)
     pub unsafe fn set_alert_text(&self, alert: *mut AnyObject, title: &str, message: &str) -> Result<()> {
-        let title_str = self.create_nsstring(title)?;
-        let msg_str = self.create_nsstring(message)?;
-        let _: () = msg_send![alert, setMessageText: title_str];
-        let _: () = msg_send![alert, setInformativeText: msg_str];
-        Ok(())
+        unsafe {
+            let title_str = self.create_nsstring(title)?;
+            let msg_str = self.create_nsstring(message)?;
+            let _: () = msg_send![alert, setMessageText: title_str];
+            let _: () = msg_send![alert, setInformativeText: msg_str];
+            Ok(())
+        }
     }
 
     /// Add a button to an alert
@@ -207,9 +209,11 @@ impl MacOSSession {
     ///
     /// **CROSSOVER:** Used by ALL alert functions
     pub unsafe fn add_alert_button(&self, alert: *mut AnyObject, title: &str) -> Result<()> {
-        let btn_str = self.create_nsstring(title)?;
-        let _: () = msg_send![alert, addButtonWithTitle: btn_str];
-        Ok(())
+        unsafe {
+            let btn_str = self.create_nsstring(title)?;
+            let _: () = msg_send![alert, addButtonWithTitle: btn_str];
+            Ok(())
+        }
     }
 
     /// Add an accessory view to an alert (for custom UI like text fields)
@@ -238,13 +242,231 @@ impl MacOSSession {
     /// if response == 1000 { /* User clicked OK */ }
     /// ```
     pub unsafe fn show_alert(&self, title: &str, message: &str, buttons: &[&str]) -> Result<isize> {
-        let alert = self.create_alert()?;
-        self.set_alert_text(alert, title, message)?;
-        for button in buttons {
-            self.add_alert_button(alert, button)?;
+        unsafe {
+            let alert = self.create_alert()?;
+            self.set_alert_text(alert, title, message)?;
+            for button in buttons {
+                self.add_alert_button(alert, button)?;
+            }
+            self.show_modal_alert(alert)
         }
-        self.show_modal_alert(alert)
     }
+
+    // ========================================================================
+    // Accessibility API Building Blocks
+    // ========================================================================
+
+    /// Get a string attribute from an AXUIElement
+    ///
+    /// Handles CFString creation, attribute lookup, conversion, and cleanup
+    ///
+    /// **CROSSOVER:** Used throughout ui_elements.rs for getting element properties
+    ///
+    /// # Example
+    /// ```ignore
+    /// let role = os.get_ax_string_attr(element, "AXRole")?;
+    /// let title = os.get_ax_string_attr(element, "AXTitle")?;
+    /// ```
+    pub unsafe fn get_ax_string_attr(&self, element: *mut std::ffi::c_void, attr_name: &str) -> Result<String> {
+        use super::ffi::*;
+        use std::ffi::c_void;
+        use std::ptr;
+
+        unsafe {
+            let attr = self.create_cfstring(attr_name)?;
+            let mut value: *mut c_void = ptr::null_mut();
+
+            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr as *mut c_void, &mut value);
+            CFRelease(attr as *mut c_void);
+
+            if result != K_AX_ERROR_SUCCESS || value.is_null() {
+                anyhow::bail!("Failed to get attribute '{}'", attr_name);
+            }
+
+            let text = cfstring_to_string(value).ok_or_else(|| {
+                anyhow::anyhow!("Failed to convert attribute '{}' to string", attr_name)
+            })?;
+
+            CFRelease(value);
+
+            Ok(text)
+        }
+    }
+
+    /// Get an element attribute from an AXUIElement (returns raw pointer)
+    ///
+    /// **CROSSOVER:** Used throughout ui_elements.rs for getting child elements
+    ///
+    /// # Safety
+    /// Caller is responsible for releasing the returned pointer with CFRelease
+    ///
+    /// # Example
+    /// ```ignore
+    /// let window = os.get_ax_element_attr(app, "AXFocusedWindow")?;
+    /// // ... use window ...
+    /// CFRelease(window);
+    /// ```
+    pub unsafe fn get_ax_element_attr(&self, element: *mut std::ffi::c_void, attr_name: &str) -> Result<*mut std::ffi::c_void> {
+        use super::ffi::*;
+        use std::ffi::c_void;
+        use std::ptr;
+
+        unsafe {
+            let attr = self.create_cfstring(attr_name)?;
+            let mut value: *mut c_void = ptr::null_mut();
+
+            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr as *mut c_void, &mut value);
+            CFRelease(attr as *mut c_void);
+
+            if result != K_AX_ERROR_SUCCESS || value.is_null() {
+                anyhow::bail!("Failed to get element attribute '{}'", attr_name);
+            }
+
+            Ok(value)
+        }
+    }
+
+    /// Set an attribute value on an AXUIElement
+    ///
+    /// **CROSSOVER:** Used in ui_elements.rs for setting checkbox values, etc.
+    ///
+    /// # Example
+    /// ```ignore
+    /// os.set_ax_attribute(checkbox, "AXValue", cf_number)?;
+    /// ```
+    pub unsafe fn set_ax_attribute(&self, element: *mut std::ffi::c_void, attr_name: &str, value: *mut std::ffi::c_void) -> Result<()> {
+        use super::ffi::*;
+        use std::ffi::c_void;
+
+        unsafe {
+            let attr = self.create_cfstring(attr_name)?;
+            let result = AXUIElementSetAttributeValue(element as AXUIElementRef, attr as *mut c_void, value);
+            CFRelease(attr as *mut c_void);
+
+            if result != K_AX_ERROR_SUCCESS {
+                anyhow::bail!("Failed to set attribute '{}' (error code: {})", attr_name, result);
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Perform an action on an AXUIElement
+    ///
+    /// **CROSSOVER:** Used in ui_elements.rs for clicking buttons, pressing keys, etc.
+    ///
+    /// # Example
+    /// ```ignore
+    /// os.perform_ax_action(button, "AXPress")?;
+    /// os.perform_ax_action(menu_item, "AXPick")?;
+    /// ```
+    pub unsafe fn perform_ax_action(&self, element: *mut std::ffi::c_void, action: &str) -> Result<()> {
+        use super::ffi::*;
+        use std::ffi::c_void;
+
+        unsafe {
+            let action_cf = self.create_cfstring(action)?;
+            let result = AXUIElementPerformAction(element as AXUIElementRef, action_cf as *mut c_void);
+            CFRelease(action_cf as *mut c_void);
+
+            if result != K_AX_ERROR_SUCCESS {
+                anyhow::bail!("Failed to perform action '{}' (error code: {})", action, result);
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Create a CFString (returns raw pointer for FFI)
+    ///
+    /// **CROSSOVER:** Used throughout macos module for creating CFString values
+    ///
+    /// # Safety
+    /// Caller is responsible for releasing the returned pointer with CFRelease
+    ///
+    /// # Example
+    /// ```ignore
+    /// let cf_str = os.create_cfstring("Hello")?;
+    /// // ... use cf_str ...
+    /// CFRelease(cf_str);
+    /// ```
+    pub unsafe fn create_cfstring(&self, s: &str) -> Result<*mut std::ffi::c_void> {
+        use super::ffi::create_cfstring;
+        let ptr = unsafe { create_cfstring(s) };
+        if ptr.is_null() {
+            anyhow::bail!("Failed to create CFString");
+        }
+        Ok(ptr)
+    }
+
+    // ========================================================================
+    // NSWorkspace Building Blocks
+    // ========================================================================
+
+    /// Get the shared NSWorkspace instance
+    ///
+    /// **CROSSOVER:** Used in app_info.rs, helpers.rs for app management
+    ///
+    /// # Example
+    /// ```ignore
+    /// let workspace = os.get_workspace()?;
+    /// ```
+    pub fn get_workspace(&self) -> Result<*mut AnyObject> {
+        use objc2::class;
+
+        unsafe {
+            let workspace_class = class!(NSWorkspace);
+            let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
+            if workspace.is_null() {
+                anyhow::bail!("Failed to get NSWorkspace");
+            }
+            Ok(workspace)
+        }
+    }
+
+    /// Get the frontmost (currently focused) application
+    ///
+    /// **CROSSOVER:** Used in app_info.rs for getting current app
+    ///
+    /// # Example
+    /// ```ignore
+    /// let app = os.get_frontmost_app()?;
+    /// let name: *mut AnyObject = msg_send![app, localizedName];
+    /// ```
+    pub fn get_frontmost_app(&self) -> Result<*mut AnyObject> {
+        unsafe {
+            let workspace = self.get_workspace()?;
+            let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
+            if app.is_null() {
+                anyhow::bail!("No frontmost application");
+            }
+            Ok(app)
+        }
+    }
+
+    /// Get the list of all running applications
+    ///
+    /// **CROSSOVER:** Used in helpers.rs for finding apps by name
+    ///
+    /// # Example
+    /// ```ignore
+    /// let apps = os.get_running_apps()?;
+    /// let count: usize = msg_send![apps, count];
+    /// ```
+    pub fn get_running_apps(&self) -> Result<*mut AnyObject> {
+        unsafe {
+            let workspace = self.get_workspace()?;
+            let apps: *mut AnyObject = msg_send![workspace, runningApplications];
+            if apps.is_null() {
+                anyhow::bail!("Failed to get running applications");
+            }
+            Ok(apps)
+        }
+    }
+
+    // ========================================================================
+    // Geometry Helpers
+    // ========================================================================
 
     /// Helper to create NSRect from coordinates
     ///

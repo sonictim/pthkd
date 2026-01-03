@@ -68,12 +68,16 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
 
     Ok(())
 }
-pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn multitap_selector(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let plugins = params.get_string_vec("plugins");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
     let timeout_ms = params.get_timeout_ms("timeout", 500);
+    let save = params.get_bool("save", true);
 
+    if save {
+        pt.save_session().await?;
+    }
     plugin_selector(&plugins, button, close, timeout_ms).await?;
 
     Ok(())

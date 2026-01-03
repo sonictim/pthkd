@@ -255,7 +255,6 @@ target_application = "Pro Tools"
 keys = ["control", "pad_divide"]
 action = "pt.plugins_audiosuite"
 target_application = "Pro Tools"
-notify = true
 [hotkey.params]
 plugin = "Reverse"
 button = "Render"
@@ -267,7 +266,6 @@ keys = ["control", "pad_multiply"]
 action = "pt.plugins_send_receive_rx"
 [hotkey.params]
 version = 11
-notify = true
 
 [[hotkey]]
 keys = ["ctrl", "space"]
@@ -661,4 +659,9 @@ notify = true
 [hotkey.params]
 script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh Skysound"
 
-
+[[hotkey]]
+keys = ["command", "option", "control", "7"]
+action = "os.launch_application"
+notify = true
+[hotkey.params]
+app = "EmbedaData"

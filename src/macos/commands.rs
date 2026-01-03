@@ -162,6 +162,17 @@ pub fn list_running_apps(_params: &Params) -> Result<()> {
     log.display()
 }
 
+pub fn launch_application(params: &Params) -> Result<()> {
+    use anyhow::Context;
+    let app = params.get_str("app", "");
+    if !app.is_empty() {
+        log::info!("Launching {}...", app);
+        app_info::launch_application(app).context("Failed to focus application")?;
+        log::info!("✅ {} launched successfully!", app);
+    }
+    Ok(())
+}
+
 pub fn focus_protools(_params: &Params) -> Result<()> {
     use anyhow::Context;
 

@@ -12,6 +12,7 @@ actions_sync!("os", {
     test_menu_click,
     list_running_apps,
     focus_protools,
+    launch_application,
     list_window_buttons,
     click_window_button,
     display_window_text,
@@ -22,4 +23,6 @@ actions_sync!("os", {
     test_keystroke,
     shell_script,
     test_window,
+    test_modal_window,
+    test_text_window,
 });

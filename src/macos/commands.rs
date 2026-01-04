@@ -1,6 +1,6 @@
 //! macOS system command implementations
 
-use super::{app_info, keystroke, menu, MacOSSession};
+use super::{MacOSSession, app_info, keystroke, menu};
 use crate::params::Params;
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -14,10 +14,65 @@ pub fn test_notification(_params: &Params) -> Result<()> {
     Ok(())
 }
 pub fn test_window(_params: &Params) -> Result<()> {
+    log::info!("=== test_window: Dispatching to main queue ===");
+
     unsafe {
-        MacOSSession::global().show_message_dialog("Helllo World 2")?;
-        MacOSSession::global().show_text_window("Hello World")
+        super::dispatch_to_main_queue(|| {
+            log::info!("Main queue: Showing message dialog...");
+
+            if let Err(e) = MacOSSession::global().show_message_dialog("Hello World 2") {
+                log::error!("Message dialog error: {}", e);
+                return;
+            }
+            log::info!("Main queue: Message dialog closed");
+
+            log::info!("Main queue: Showing text window...");
+            if let Err(e) = MacOSSession::global().show_text_window("Hello World") {
+                log::error!("Text window error: {}", e);
+                return;
+            }
+            log::info!("Main queue: Text window shown");
+        });
     }
+
+    log::info!("Event callback returning immediately");
+    Ok(())
+}
+
+pub fn test_modal_window(_params: &Params) -> Result<()> {
+    log::info!("=== test_modal_window: Dispatching to main queue ===");
+
+    unsafe {
+        super::dispatch_to_main_queue(|| {
+            log::info!("Main queue: Showing modal dialog...");
+
+            if let Err(e) = MacOSSession::global().show_message_dialog("Modal Dialog Test") {
+                log::error!("Modal dialog error: {}", e);
+            } else {
+                log::info!("Main queue: Modal dialog closed");
+            }
+        });
+    }
+
+    log::info!("Event callback returning immediately");
+    Ok(())
+}
+
+pub fn test_text_window(_params: &Params) -> Result<()> {
+    log::info!("=== test_text_window: Dispatching to main queue ===");
+
+    unsafe {
+        super::dispatch_to_main_queue(|| {
+            if let Err(e) = MacOSSession::global().show_text_window("Text Window Test") {
+                log::error!("Text window error: {}", e);
+            } else {
+                log::info!("Main queue: Text window shown");
+            }
+        });
+    }
+
+    log::info!("Event callback returning immediately");
+    Ok(())
 }
 
 pub fn test_keystroke(_params: &Params) -> Result<()> {
@@ -171,6 +226,16 @@ pub fn focus_protools(_params: &Params) -> Result<()> {
 
     Ok(())
 }
+pub fn launch_application(params: &Params) -> Result<()> {
+    use anyhow::Context;
+    let app = params.get_str("app", "");
+    if !app.is_empty() {
+        log::info!("Launching {app}...");
+        app_info::launch_application(app).context("Failed to launch {app}")?;
+        log::info!("✅ {app} launched successfully!");
+    }
+    Ok(())
+}
 
 pub fn list_window_buttons(params: &Params) -> Result<()> {
     use anyhow::Context;
@@ -289,6 +354,12 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
     }
 
     log::info!("=== test_input_dialog: END ===");
+
+    // Check and recreate event tap if disabled by input dialog
+    if let Err(e) = super::recreate_event_tap_if_needed() {
+        log::error!("Failed to recreate event tap after input dialog: {}", e);
+    }
+
     Ok(())
 }
 

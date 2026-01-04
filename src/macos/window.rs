@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use objc2::msg_send;
+use objc2::rc::autoreleasepool;
 use objc2::runtime::AnyObject;
 use std::ptr;
 
@@ -49,7 +50,8 @@ impl MacOSSession {
             // Set window title
             let title_str = self.create_nsstring(title)?;
             let _: () = msg_send![window, setTitle: title_str];
-            let _: () = msg_send![window, setReleasedWhenClosed: false];
+            // Auto-release the window when closed to prevent memory leaks and crashes
+            let _: () = msg_send![window, setReleasedWhenClosed: true];
 
             Ok(window)
         }
@@ -147,36 +149,39 @@ impl MacOSSession {
     /// os.show_text_window("Hello World!")?;
     /// ```
     pub unsafe fn show_text_window(&self, text: &str) -> Result<()> {
-        // Create window
-        let frame = MacOSSession::rect(100.0, 100.0, 800.0, 600.0);
-        let window = unsafe { self.create_window(frame, "Output")? };
-
-        // Create scroll view to hold the text
-        let scroll_frame = MacOSSession::rect(0.0, 0.0, 800.0, 600.0);
-        let scroll_view = unsafe { self.create_scroll_view(scroll_frame)? };
-
-        // Get actual content size (accounts for scrollers)
-        let content_size: NSSize = unsafe { msg_send![scroll_view, contentSize] };
-        let text_frame = NSRect {
-            origin: NSPoint { x: 0.0, y: 0.0 },
-            size: content_size,
-        };
-
-        // Create text view with the content
-        let text_view = unsafe { self.create_text_view(text_frame, text, false)? };
-
-        // Assemble the view hierarchy
+        // Wrap in autorelease pool for proper memory management
         unsafe {
-            let _: () = msg_send![scroll_view, setDocumentView: text_view];
-            let content_view: *mut AnyObject = msg_send![window, contentView];
-            let _: () = msg_send![content_view, addSubview: scroll_view];
+            autoreleasepool(|_pool| {
+                // Create window
+                let frame = MacOSSession::rect(100.0, 100.0, 800.0, 600.0);
+                let window = self.create_window(frame, "Output")?;
+
+                // Create scroll view to hold the text
+                let scroll_frame = MacOSSession::rect(0.0, 0.0, 800.0, 600.0);
+                let scroll_view = self.create_scroll_view(scroll_frame)?;
+
+                // Get actual content size (accounts for scrollers)
+                let content_size: NSSize = msg_send![scroll_view, contentSize];
+                let text_frame = NSRect {
+                    origin: NSPoint { x: 0.0, y: 0.0 },
+                    size: content_size,
+                };
+
+                // Create text view with the content
+                let text_view = self.create_text_view(text_frame, text, false)?;
+
+                // Assemble the view hierarchy
+                let _: () = msg_send![scroll_view, setDocumentView: text_view];
+                let content_view: *mut AnyObject = msg_send![window, contentView];
+                let _: () = msg_send![content_view, addSubview: scroll_view];
+
+                // Show the window
+                self.show_window(window);
+
+                log::info!("Text window displayed successfully");
+                Ok(())
+            })
         }
-
-        // Show the window
-        unsafe { self.show_window(window) };
-
-        log::info!("Text window displayed successfully");
-        Ok(())
     }
 
     /// Show a simple message dialog
@@ -187,7 +192,12 @@ impl MacOSSession {
     /// os.show_message_dialog("Operation completed successfully")?;
     /// ```
     pub unsafe fn show_message_dialog(&self, message: &str) -> Result<()> {
-        unsafe { self.show_alert("Message", message, &["OK"])? };
-        Ok(())
+        // Wrap in autorelease pool for proper memory management
+        unsafe {
+            autoreleasepool(|_pool| {
+                self.show_alert("Message", message, &["OK"])?;
+                Ok(())
+            })
+        }
     }
 }

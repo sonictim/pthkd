@@ -78,10 +78,20 @@ keys = ["cmd", "shift", "a", "l"]
 action = "os.list_running_apps"
 
 [[hotkey]]
-keys = ["cmd", "shift", "k"]
-action = "os.test_window"
+keys = ["cmd", "shift", "k", "m"]
+action = "os.test_modal_window"
 notify = true
 
+[[hotkey]]
+keys = ["cmd", "shift", "k", "t"]
+action = "os.test_text_window"
+notify = true
+
+# [[hotkey]]
+# keys = ["cmd", "shift", "k"]
+# action = "os.test_window"
+# notify = true
+#
 [[hotkey]]
 keys = ["cmd", "shift", "t"]
 action = "os.test_keystroke"

@@ -211,7 +211,7 @@ impl MacOSSession {
     pub unsafe fn add_alert_button(&self, alert: *mut AnyObject, title: &str) -> Result<()> {
         unsafe {
             let btn_str = self.create_nsstring(title)?;
-            let _: () = msg_send![alert, addButtonWithTitle: btn_str];
+            let _: *mut AnyObject = msg_send![alert, addButtonWithTitle: btn_str];
             Ok(())
         }
     }

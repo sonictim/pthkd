@@ -296,6 +296,24 @@ unsafe extern "C" fn key_event_callback(
         return event; // Pass through events we created
     }
 
+    // Handle event tap disable events (types 14/15)
+    if event_type == macos::CG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == macos::CG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
+        log::warn!(
+            "Event tap disabled by macOS (type {}). Attempting recovery...",
+            event_type
+        );
+
+        if let Err(e) = macos::recreate_event_tap_if_needed() {
+            log::error!("Failed to recreate event tap: {}", e);
+        } else {
+            log::info!("Event tap successfully recovered");
+        }
+
+        return event;
+    }
+
     // Get key state (should always be initialized by this point)
     let key_state = KEY_STATE.get().expect("KEY_STATE not initialized");
 

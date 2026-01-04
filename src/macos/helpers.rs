@@ -102,6 +102,82 @@ impl Drop for CGEvent {
     }
 }
 
+/// RAII wrapper for CFArray that automatically releases on drop
+pub struct CFArray(pub *mut c_void);
+
+impl CFArray {
+    /// Wrap an existing CFArray pointer
+    pub unsafe fn new(ptr: *mut c_void) -> Self {
+        Self(ptr)
+    }
+
+    /// Get the raw pointer
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+
+    /// Get array count
+    pub fn count(&self) -> isize {
+        unsafe { super::ffi::CFArrayGetCount(self.0) }
+    }
+
+    /// Get element at index (returns borrowed reference)
+    pub fn get(&self, index: isize) -> *mut c_void {
+        unsafe { super::ffi::CFArrayGetValueAtIndex(self.0, index) }
+    }
+
+    /// Check if null
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+}
+
+impl Drop for CFArray {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                super::ffi::CFRelease(self.0);
+            }
+        }
+    }
+}
+
+/// RAII wrapper for CFNumber that automatically releases on drop
+pub struct CFNumber(pub *mut c_void);
+
+impl CFNumber {
+    /// Create CFNumber from i32
+    pub unsafe fn from_i32(value: i32) -> Self {
+        Self(unsafe {
+            super::ffi::CFNumberCreate(
+                std::ptr::null(),
+                9, // kCFNumberSInt32Type
+                &value as *const i32 as *const libc::c_void,
+            )
+        })
+    }
+
+    /// Get the raw pointer
+    pub fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+
+    /// Check if null
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+}
+
+impl Drop for CFNumber {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                super::ffi::CFRelease(self.0);
+            }
+        }
+    }
+}
+
 // ============================================================================
 // NSWorkspace / Application Helpers
 // ============================================================================

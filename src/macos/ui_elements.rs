@@ -5,6 +5,7 @@
 
 use super::app_info::get_pid_by_name;
 use super::ffi::*;
+use super::helpers::{CFArray, CFNumber};
 use anyhow::{Context, Result, bail};
 use libc::c_void;
 use std::ptr;
@@ -25,25 +26,9 @@ use std::ptr;
 /// ```
 pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<String>> {
     unsafe {
-        let pid = get_pid_by_name(app_name).context(format!("Failed to find app: {}", app_name))?;
-
-        let app_element = AXUIElementCreateApplication(pid);
-
-        // Get the target window (focused or by name)
-        let window = if window_name.is_empty() {
-            get_focused_window(app_element)?
-        } else {
-            find_window_by_name(app_element, window_name)?
-        };
-
-        // Get all buttons in the window
-        let buttons = find_buttons_in_element(window)?;
-
-        // Clean up
-        CFRelease(app_element);
-        CFRelease(window);
-
-        Ok(buttons)
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            find_buttons_in_element(window)
+        })
     }
 }
 
@@ -128,22 +113,15 @@ pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Resu
             println!("Found checkbox '{}', setting to CHECKED...", checkbox_name);
 
             // Create a CFNumber for value 1 (checked)
-            let num_value: i32 = 1;
-            let cf_number = CFNumberCreate(
-                std::ptr::null(),
-                9, // kCFNumberSInt32Type
-                &num_value as *const i32 as *const c_void,
-            );
+            let cf_number = CFNumber::from_i32(1);
 
             // Set the value using building block
             let os = MacOSSession::global();
-            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number) {
-                CFRelease(cf_number);
+            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
                 CFRelease(checkbox_element);
                 return Err(e);
             }
 
-            CFRelease(cf_number);
             CFRelease(checkbox_element);
             println!("✅ Set checkbox '{}' to CHECKED", checkbox_name);
             Ok(())
@@ -200,11 +178,11 @@ pub fn get_popup_menu_items(
 
                 // Try method 2: Look in children
                 if let Ok(children_value) = os.get_ax_element_attr(popup_element, "AXChildren") {
-                    let children_count = CFArrayGetCount(children_value);
-                    println!("  Found {} children", children_count);
+                    let children = CFArray::new(children_value);
+                    println!("  Found {} children", children.count());
 
-                    for i in 0..children_count {
-                        let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+                    for i in 0..children.count() {
+                        let child = children.get(i) as AXUIElementRef;
 
                         // Get the role of this child
                         if let Ok(role) = os.get_ax_string_attr(child, "AXRole") {
@@ -218,8 +196,6 @@ pub fn get_popup_menu_items(
                             }
                         }
                     }
-
-                    CFRelease(children_value);
                 } else {
                     println!("  No children found");
                 }
@@ -246,10 +222,10 @@ unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> 
         let mut items = Vec::new();
 
         if let Ok(children_value) = os.get_ax_element_attr(menu, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
 
                 // Get the title of this menu item
                 if let Ok(title) = os.get_ax_string_attr(child, "AXTitle") {
@@ -258,8 +234,6 @@ unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> 
                     }
                 }
             }
-
-            CFRelease(children_value);
         }
 
         Ok(items)
@@ -298,18 +272,15 @@ unsafe fn find_popup_in_element(
 
         // Search children recursively
         if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
                 if let Ok(popup) = find_popup_in_element(child, popup_name) {
-                    CFRelease(children_value);
                     // popup is already retained by the recursive call
                     return Ok(popup);
                 }
             }
-
-            CFRelease(children_value);
         }
 
         bail!("Popup not found")
@@ -330,22 +301,15 @@ pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Re
             );
 
             // Create a CFNumber for value 0 (unchecked)
-            let num_value: i32 = 0;
-            let cf_number = CFNumberCreate(
-                std::ptr::null(),
-                9, // kCFNumberSInt32Type
-                &num_value as *const i32 as *const c_void,
-            );
+            let cf_number = CFNumber::from_i32(0);
 
             // Set the value using building block
             let os = MacOSSession::global();
-            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number) {
-                CFRelease(cf_number);
+            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
                 CFRelease(checkbox_element);
                 return Err(e);
             }
 
-            CFRelease(cf_number);
             CFRelease(checkbox_element);
             println!("✅ Set checkbox '{}' to UNCHECKED", checkbox_name);
             Ok(())
@@ -393,19 +357,18 @@ pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
         CFRelease(app_element);
 
         let windows_value = windows_value?;
-        let windows_count = CFArrayGetCount(windows_value);
+        let windows = CFArray::new(windows_value);
         let mut titles = Vec::new();
 
         // Collect all window titles
-        for i in 0..windows_count {
-            let window = CFArrayGetValueAtIndex(windows_value, i) as AXUIElementRef;
+        for i in 0..windows.count() {
+            let window = windows.get(i) as AXUIElementRef;
 
             if let Ok(title) = os.get_ax_string_attr(window, "AXTitle") {
                 titles.push(title);
             }
         }
 
-        CFRelease(windows_value);
         Ok(titles)
     }
 }
@@ -421,25 +384,22 @@ pub(crate) unsafe fn find_window_by_name(
     unsafe {
         // Get all windows using building block
         let windows_value = os.get_ax_element_attr(app_element, "AXWindows")?;
-
-        let windows_count = CFArrayGetCount(windows_value);
+        let windows = CFArray::new(windows_value);
 
         // Search for window with matching title
-        for i in 0..windows_count {
-            let window = CFArrayGetValueAtIndex(windows_value, i) as AXUIElementRef;
+        for i in 0..windows.count() {
+            let window = windows.get(i) as AXUIElementRef;
 
             if let Ok(title) = os.get_ax_string_attr(window, "AXTitle") {
                 // Use soft_match from main.rs
                 if crate::soft_match(&title, window_name) {
                     // Found it! Retain the window before returning (CFArrayGetValueAtIndex returns non-retained)
                     CFRetain(window);
-                    CFRelease(windows_value);
                     return Ok(window);
                 }
             }
         }
 
-        CFRelease(windows_value);
         bail!("Window '{}' not found", window_name)
     }
 }
@@ -466,16 +426,14 @@ unsafe fn find_buttons_in_element(element: AXUIElementRef) -> Result<Vec<String>
 
         // Recursively search children
         if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
                 if let Ok(mut child_buttons) = find_buttons_in_element(child) {
                     buttons.append(&mut child_buttons);
                 }
             }
-
-            CFRelease(children_value);
         }
 
         Ok(buttons)
@@ -517,18 +475,15 @@ unsafe fn find_button_in_element(
 
         // Search children recursively
         if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
                 if let Ok(button) = find_button_in_element(child, button_name) {
-                    CFRelease(children_value);
                     // button is already retained by the recursive call
                     return Ok(button);
                 }
             }
-
-            CFRelease(children_value);
         }
 
         bail!("Button not found")
@@ -570,18 +525,15 @@ unsafe fn find_checkbox_in_element(
 
         // Search children recursively
         if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
                 if let Ok(checkbox) = find_checkbox_in_element(child, checkbox_name) {
-                    CFRelease(children_value);
                     // checkbox is already retained by the recursive call
                     return Ok(checkbox);
                 }
             }
-
-            CFRelease(children_value);
         }
 
         bail!("Checkbox not found")
@@ -595,21 +547,9 @@ unsafe fn find_checkbox_in_element(
 /// Ok(true) if window exists, Ok(false) if not found
 pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
     unsafe {
-        let pid = get_pid_by_name(app_name)?;
-        let app_element = AXUIElementCreateApplication(pid);
-
-        // find_window_by_name returns a retained window that needs CFRelease
-        let exists = match find_window_by_name(app_element, window_name) {
-            Ok(window) => {
-                CFRelease(window); // ✅ Release the window element
-                true
-            }
-            Err(_) => false,
-        };
-
-        CFRelease(app_element);
-
-        Ok(exists)
+        super::helpers::with_app_window(app_name, window_name, |_app, _window| {
+            Ok(true)
+        }).or(Ok(false))
     }
 }
 
@@ -827,49 +767,34 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
 }
 
 pub fn close_window(app_name: &str, window_name: &str) -> Result<()> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
     unsafe {
-        let pid = get_pid_by_name(app_name)?;
-        let app_element = AXUIElementCreateApplication(pid);
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            use super::session::MacOSSession;
+            let os = MacOSSession::global();
 
-        let window = if window_name.is_empty() {
-            get_focused_window(app_element)?
-        } else {
-            find_window_by_name(app_element, window_name)?
-        };
+            // Get the close button (standard AXCloseButton) using building block
+            let close_button = os.get_ax_element_attr(window, "AXCloseButton")
+                .context("Window does not have a close button")?;
 
-        // Get the close button (standard AXCloseButton) using building block
-        let close_button = match os.get_ax_element_attr(window, "AXCloseButton") {
-            Ok(btn) => btn,
-            Err(_) => {
-                CFRelease(window);
-                CFRelease(app_element);
-                bail!("Window does not have a close button");
+            // Click the close button using building block
+            let result = os.perform_ax_action(close_button, "AXPress");
+            CFRelease(close_button);
+
+            if result.is_err() {
+                bail!("Failed to click close button");
             }
-        };
 
-        // Click the close button using building block
-        let result = os.perform_ax_action(close_button, "AXPress");
-        CFRelease(close_button);
-        CFRelease(window);
-        CFRelease(app_element);
+            log::info!(
+                "✅ Closed window '{}'",
+                if window_name.is_empty() {
+                    "<focused>"
+                } else {
+                    window_name
+                }
+            );
 
-        if result.is_err() {
-            bail!("Failed to click close button");
-        }
-
-        log::info!(
-            "✅ Closed window '{}'",
-            if window_name.is_empty() {
-                "<focused>"
-            } else {
-                window_name
-            }
-        );
-
-        Ok(())
+            Ok(())
+        })
     }
 }
 /// Close a window with retry - keeps trying until window disappears
@@ -924,24 +849,9 @@ pub fn close_window_with_retry(app_name: &str, window_name: &str, timeout_ms: u6
 /// ```
 pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>> {
     unsafe {
-        let pid = get_pid_by_name(app_name)?;
-        let app_element = AXUIElementCreateApplication(pid);
-
-        // Get the target window
-        let window = if window_name.is_empty() {
-            get_focused_window(app_element)?
-        } else {
-            find_window_by_name(app_element, window_name)?
-        };
-
-        // Get all text in the window
-        let text_elements = find_text_in_element(window)?;
-
-        // Clean up
-        CFRelease(app_element);
-        CFRelease(window);
-
-        Ok(text_elements)
+        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+            find_text_in_element(window)
+        })
     }
 }
 
@@ -993,16 +903,14 @@ unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
 
         // Recursively search children
         if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children_count = CFArrayGetCount(children_value);
+            let children = CFArray::new(children_value);
 
-            for i in 0..children_count {
-                let child = CFArrayGetValueAtIndex(children_value, i) as AXUIElementRef;
+            for i in 0..children.count() {
+                let child = children.get(i) as AXUIElementRef;
                 if let Ok(mut child_text) = find_text_in_element(child) {
                     text_strings.append(&mut child_text);
                 }
             }
-
-            CFRelease(children_value);
         }
 
         Ok(text_strings)

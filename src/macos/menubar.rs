@@ -506,6 +506,12 @@ impl MacOSSession {
         );
 
         unsafe { self.show_alert("About pthkd", &message, &["OK"])? };
+
+        // Check and recreate event tap if disabled by about dialog
+        if let Err(e) = crate::macos::recreate_event_tap_if_needed() {
+            log::warn!("Failed to recreate event tap after about dialog: {}", e);
+        }
+
         Ok(())
     }
 }

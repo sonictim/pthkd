@@ -49,6 +49,8 @@ mod constants {
     pub const CG_EVENT_KEY_DOWN: u32 = 10;
     pub const CG_EVENT_KEY_UP: u32 = 11;
     pub const CG_EVENT_FLAGS_CHANGED: u32 = 12;
+    pub const CG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 14;
+    pub const CG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 15;
 
     // Event fields
     pub const CG_EVENT_FIELD_KEYBOARD_EVENT_KEYCODE: u32 = 9;
@@ -206,6 +208,21 @@ pub fn is_event_tap_enabled() -> bool {
     }
 }
 
+// ============================================================================
+// Event Tap Monitoring & Recreation
+// ============================================================================
+//
+// IMPORTANT: Modal dialogs (runModal) block the main thread, causing macOS
+// to disable the event tap with timeout errors (event types 14/15).
+//
+// Protection layers:
+// 1. key_event_callback detects types 14/15 and auto-recovers (automatic)
+// 2. Modal operations call recreate_event_tap_if_needed() (defensive)
+//
+// Modal operations: show_alert, show_message_dialog, password_prompt,
+// show_input_dialog, show_permission_dialog, any NSAlert runModal calls
+// ============================================================================
+
 /// Recreates the event tap if it has been disabled
 ///
 /// Returns true if recreation was needed and successful, false if tap was already enabled
@@ -256,5 +273,50 @@ pub fn recreate_event_tap_if_needed() -> Result<bool> {
 pub fn check_event_tap_status() {
     if !is_event_tap_enabled() {
         log::warn!("Event tap check: tap is currently DISABLED");
+    }
+}
+
+// ============================================================================
+// Main Thread Dispatch via GCD
+// ============================================================================
+
+// Access the _dispatch_main_q global directly (dispatch_get_main_queue is a macro)
+unsafe extern "C" {
+    static _dispatch_main_q: c_void;
+    fn dispatch_async_f(
+        queue: *const c_void,
+        context: *mut c_void,
+        work: unsafe extern "C" fn(*mut c_void),
+    );
+}
+
+/// Dispatches a closure to run on the main thread
+///
+/// This is critical for modal operations triggered from hotkeys:
+/// - Modal dialogs (NSAlert) MUST run on main thread (AppKit requirement)
+/// - But they can't block the event tap callback (causes timeout)
+/// - Solution: dispatch to main thread via GCD AFTER callback returns
+///
+/// # Safety
+/// The closure must be safe to call from the main thread
+pub unsafe fn dispatch_to_main_queue<F>(f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    unsafe {
+        let boxed = Box::new(f);
+        let raw = Box::into_raw(boxed) as *mut c_void;
+
+        unsafe extern "C" fn trampoline<F>(context: *mut c_void)
+        where
+            F: FnOnce() + Send + 'static,
+        {
+            unsafe {
+                let boxed = Box::from_raw(context as *mut F);
+                (*boxed)();
+            }
+        }
+
+        dispatch_async_f(&_dispatch_main_q, raw, trampoline::<F>);
     }
 }

@@ -57,6 +57,9 @@ unsafe extern "C" {
 
     /// Get the type ID for CFString type
     pub fn CFStringGetTypeID() -> usize;
+
+    /// Get the singleton kCFBooleanTrue value
+    pub static kCFBooleanTrue: *mut c_void;
 }
 
 // ============================================================================

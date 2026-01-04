@@ -112,8 +112,8 @@ macro_rules! actions_async {
                     // Show notification if requested
                     if notify {
                         match &result {
-                            Ok(_) => $crate::macos::show_notification(&format!("✅ {}", action_name)),
-                            Err(e) => $crate::macos::show_notification(&format!("❌ {}: {}", action_name, e)),
+                            Ok(_) => $crate::macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
+                            Err(e) => $crate::macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e)),
                         }
                     }
 
@@ -177,13 +177,13 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     // Show notification if requested
                     if notify {
                         match result {
-                            Ok(Ok(_)) => macos::show_notification(&format!("✅ {}", action_name)),
+                            Ok(Ok(_)) => macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
                             Ok(Err(e)) => {
-                                macos::show_notification(&format!("❌ {}: {}", action_name, e))
+                                macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e))
                             }
                             Err(_) => {
                                 log::error!("Action '{}' panicked!", action_name);
-                                macos::show_notification(&format!(
+                                macos::MacOSSession::global().show_notification(&format!(
                                     "💥 {}: action panicked",
                                     action_name
                                 ))
@@ -249,13 +249,13 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
                 // Show notification if requested
                 if notify {
                     match result {
-                        Ok(Ok(_)) => macos::show_notification(&format!("✅ {}", action_name)),
+                        Ok(Ok(_)) => macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
                         Ok(Err(e)) => {
-                            macos::show_notification(&format!("❌ {}: {}", action_name, e))
+                            macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e))
                         }
                         Err(_) => {
                             log::error!("Action '{}' panicked!", action_name);
-                            macos::show_notification(&format!(
+                            macos::MacOSSession::global().show_notification(&format!(
                                 "💥 {}: action panicked",
                                 action_name
                             ))
@@ -294,6 +294,24 @@ unsafe extern "C" fn key_event_callback(
         unsafe { macos::CGEventGetIntegerValueField(event, CG_EVENT_FIELD_EVENT_SOURCE_USER_DATA) };
     if user_data == APP_EVENT_MARKER {
         return event; // Pass through events we created
+    }
+
+    // Handle event tap disable events (types 14/15)
+    if event_type == macos::CG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == macos::CG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
+        log::warn!(
+            "Event tap disabled by macOS (type {}). Attempting recovery...",
+            event_type
+        );
+
+        if let Err(e) = macos::recreate_event_tap_if_needed() {
+            log::error!("Failed to recreate event tap: {}", e);
+        } else {
+            log::info!("Event tap successfully recovered");
+        }
+
+        return event;
     }
 
     // Get key state (should always be initialized by this point)
@@ -465,9 +483,9 @@ fn run() -> anyhow::Result<()> {
                 std::collections::HashMap::new(),
             )) {
                 log::error!("Failed to reload config: {}", e);
-                macos::show_notification(&format!("❌ Failed to reload config: {}", e));
+                macos::MacOSSession::global().show_notification(&format!("❌ Failed to reload config: {}", e));
             } else {
-                macos::show_notification("✅ Config reloaded successfully!");
+                macos::MacOSSession::global().show_notification("✅ Config reloaded successfully!");
             }
         })
         .context("Failed to create menu bar")?;
@@ -577,6 +595,8 @@ impl MessageLog {
         self.message.push('\n');
     }
     pub fn display(&self) -> anyhow::Result<()> {
-        crate::macos::window::show_text_window(&self.message)
+        unsafe {
+            crate::macos::MacOSSession::global().show_text_window(&self.message)
+        }
     }
 }

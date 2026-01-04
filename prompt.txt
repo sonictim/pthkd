@@ -1,0 +1,59 @@
+  # Create macox: A Safe Rust Library for macOS UI
+
+  ## Context
+  I have a working Rust project (`pthkd`) at `/Users/tfarrell/dev/pthkd` that contains a `src/macos/` module with macOS UI functionality. I want to extract this into a standalone library called **macox** (macOS + Rust/OX) that can be reused in future projects.
+
+  ## Current State
+  The `pthkd/src/macos/` module contains:
+  - **Working code**: Event tap, notifications, dialogs, windows, menubar
+  - **Architecture**: FFI layer → RAII wrappers → MacOSSession singleton → Feature modules
+  - **Problem**: Everything requires `unsafe` blocks, not well-organized for library use
+
+  ## Goal
+  Create a new crate at `~/dev/macox` with:
+  1. **Rust 2024 edition**
+  2. **Safe public API** - users never write `unsafe`
+  3. **Clear module organization**:
+     - `ffi/` - Private FFI bindings
+     - `sys/` - Private RAII wrappers
+     - `session.rs` - Internal session management
+     - Public modules: `dialogs`, `notifications`, `events`, `windows`, `menubar`
+  4. **Builder pattern** for ergonomic APIs (e.g., `Alert::new("Title").message("Text").show()`)
+
+  ## Architecture Design
+  macox/
+  ├── src/
+  │   ├── lib.rs              // Public API
+  │   ├── ffi/                // 🔒 Private FFI
+  │   ├── sys/                // 🔒 Private RAII wrappers
+  │   ├── session.rs          // 🔒 Internal MacOSSession
+  │   ├── dialogs.rs          // ✅ Public safe API
+  │   ├── notifications.rs    // ✅ Public safe API
+  │   └── events/             // ✅ Public safe API
+  │       ├── mod.rs
+  │       ├── keyboard.rs
+  │       └── permissions.rs
+  └── examples/
+      ├── hello_notification.rs
+      └── alert_dialog.rs
+
+  ## Key Design Patterns
+  1. **Safe wrappers hide unsafe**: Builder pattern (Alert, Notification, etc.)
+  2. **GCD dispatch for modals**: `Alert::show_async()` uses `dispatch_to_main_queue()`
+  3. **RAII for memory safety**: CFString, AXElement auto-release via Drop
+
+  ## Request
+  Please create a comprehensive plan for:
+  1. Setting up the new `macox` crate structure at `~/dev/macox`
+  2. Migrating core code from `pthkd/src/macos/` to `macox/src/`
+  3. Creating safe public APIs (start with dialogs + notifications)
+  4. Adding example programs to validate it works
+  5. Document how to migrate pthkd to use macox as a dependency
+
+  **Important**: Create a detailed plan FIRST before implementing, as we may need to pause/resume. Include specific file paths and code structure.
+
+  Source material to reference: `/Users/tfarrell/dev/pthkd/src/macos/`
+
+  Start by exploring the existing macos module to understand the current architecture, then create the plan.
+
+  This gives the fresh session everything it needs to pick up where we left off!

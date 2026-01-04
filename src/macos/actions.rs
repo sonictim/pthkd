@@ -23,4 +23,6 @@ actions_sync!("os", {
     test_keystroke,
     shell_script,
     test_window,
+    test_modal_window,
+    test_text_window,
 });

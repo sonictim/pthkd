@@ -28,23 +28,13 @@ use std::ptr;
 /// ```
 pub fn get_current_app() -> Result<String> {
     use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
+    use super::session::MacOSSession;
 
     unsafe {
-        // Get NSWorkspace class
-        let workspace_class = class!(NSWorkspace);
-
-        // Call [NSWorkspace sharedWorkspace]
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
-
-        // Call [workspace frontmostApplication]
-        let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
-        if app.is_null() {
-            bail!("No frontmost application");
-        }
+        // Use building block to get frontmost app
+        let os = MacOSSession::global();
+        let app = os.get_frontmost_app()?;
 
         // Call [app localizedName] - returns NSString*
         let name_nsstring: *mut AnyObject = msg_send![app, localizedName];
@@ -80,24 +70,13 @@ pub fn get_app_window() -> Result<String> {
             );
         }
 
-        // Get frontmost app using NSWorkspace
+        // Use building block to get frontmost app
         use objc2::runtime::AnyObject;
-        use objc2::{class, msg_send};
+        use objc2::msg_send;
+        use super::session::MacOSSession;
 
-        // Get NSWorkspace class
-        let workspace_class = class!(NSWorkspace);
-
-        // Call [NSWorkspace sharedWorkspace]
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
-
-        // Call [workspace frontmostApplication]
-        let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
-        if app.is_null() {
-            bail!("No frontmost application");
-        }
+        let os = MacOSSession::global();
+        let app = os.get_frontmost_app()?;
 
         // Call [app processIdentifier]
         let pid: i32 = msg_send![app, processIdentifier];
@@ -288,23 +267,13 @@ pub fn has_accessibility_permission() -> bool {
 /// ```
 pub fn get_all_running_applications() -> Result<Vec<String>> {
     use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
+    use super::session::MacOSSession;
 
     unsafe {
-        // Get NSWorkspace class
-        let workspace_class = class!(NSWorkspace);
-
-        // Call [NSWorkspace sharedWorkspace]
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
-
-        // Call [workspace runningApplications] to get array of all running apps
-        let running_apps: *mut AnyObject = msg_send![workspace, runningApplications];
-        if running_apps.is_null() {
-            bail!("Failed to get running applications");
-        }
+        // Use building block to get running apps
+        let os = MacOSSession::global();
+        let running_apps = os.get_running_apps()?;
 
         // Get the count of running applications
         let count: usize = msg_send![running_apps, count];
@@ -413,19 +382,17 @@ pub fn launch_application(app_name: &str) -> Result<()> {
     );
 
     unsafe {
-        let workspace_class = class!(NSWorkspace);
-        let workspace: *mut AnyObject = msg_send![workspace_class, sharedWorkspace];
-        if workspace.is_null() {
-            bail!("Failed to get NSWorkspace");
-        }
+        // Use building blocks
+        use super::session::MacOSSession;
+        let os = MacOSSession::global();
 
-        // Create NSString for the app name
-        let app_name_cfstring = create_cfstring(app_name);
+        let workspace = os.get_workspace()?;
+        let app_name_cfstring = os.create_cfstring(app_name)?;
 
         // Launch the application
         let success: bool = msg_send![workspace, launchApplication: app_name_cfstring];
 
-        CFRelease(app_name_cfstring);
+        CFRelease(app_name_cfstring as *mut c_void);
 
         if success {
             log::info!("Successfully launched application: {}", app_name);

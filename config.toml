@@ -108,7 +108,7 @@ trigger_on_release = true
   action = "os.display_window_text"
 
 [[hotkey]]
-keys = ["control", "option", "command", "p"]
+keys = ["control", "option", "command", "return"]
 action = "os.rapid_pw"
 trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
 notify = true
@@ -671,4 +671,8 @@ notify = true
 [hotkey.params]
 script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh Skysound"
 
-
+[[hotkey]]
+keys = ["control", "option", "command", "7"]
+action = "os.launch_application"
+[hotkey.params]
+app = "EmbedaData"

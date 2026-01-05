@@ -256,6 +256,20 @@ action = "pt.edit_toggle_mode"
 target_application = "Pro Tools"
 # app_window = "Edit"
 
+[[hotkey]]
+keys = ["control", "option", "command", "up"]
+action = "pt.session_version_up"
+target_application = "Pro Tools"
+[hotkey.params]
+name_id = "TF"
+
+[[hotkey]]
+keys = ["control", "option", "command", "down"]
+action = "pt.session_save_as"
+target_application = "Pro Tools"
+[hotkey.params]
+name = "test"
+location = "~/Desktop/"
 
 # ============================================================================
 # Audiosuite Plugin Management (pt.* namespace)

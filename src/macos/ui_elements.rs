@@ -171,7 +171,8 @@ pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Resu
 
                 // Set the value using building block
                 let os = MacOSSession::global();
-                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr())
+                {
                     CFRelease(checkbox_element);
                     return Err(e);
                 }
@@ -197,78 +198,77 @@ pub fn get_popup_menu_items(
     unsafe {
         dispatch_to_main(move || {
             super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-            use super::session::MacOSSession;
-            let os = MacOSSession::global();
+                use super::session::MacOSSession;
+                let os = MacOSSession::global();
 
-            // Find the popup button
-            let popup_element = find_popup_in_window(window, &popup_name)?;
+                // Find the popup button
+                let popup_element = find_popup_in_window(window, &popup_name)?;
 
-            println!("Found popup '{}', opening menu...", popup_name);
+                println!("Found popup '{}', opening menu...", popup_name);
 
-            // Click it to open the menu
-            let result = os.perform_ax_action(popup_element, "AXPress");
+                // Click it to open the menu
+                let result = os.perform_ax_action(popup_element, "AXPress");
 
-            // Note: Some apps (like Pro Tools) return error codes even though the popup opens
-            // For example, Pro Tools returns -25204 (K_AX_ERROR_INVALID_UI_ELEMENT) but the popup still opens
-            if result.is_err() {
-                println!(
-                    "  ⚠️  AXPress returned error (but popup may still open)"
-                );
-            } else {
-                println!("  ✅ AXPress succeeded");
-            }
+                // Note: Some apps (like Pro Tools) return error codes even though the popup opens
+                // For example, Pro Tools returns -25204 (K_AX_ERROR_INVALID_UI_ELEMENT) but the popup still opens
+                if result.is_err() {
+                    println!("  ⚠️  AXPress returned error (but popup may still open)");
+                } else {
+                    println!("  ✅ AXPress succeeded");
+                }
 
-            println!("  Waiting for menu to appear...");
+                println!("  Waiting for menu to appear...");
 
-            // Wait for menu to appear
-            std::thread::sleep(std::time::Duration::from_millis(200));
+                // Wait for menu to appear
+                std::thread::sleep(std::time::Duration::from_millis(200));
 
-            println!("  Wait complete, enumerating menu...");
+                println!("  Wait complete, enumerating menu...");
 
-            let mut menu_items = Vec::new();
+                let mut menu_items = Vec::new();
 
-            // Try method 1: Check for AXMenu attribute on the popup itself
-            println!("  Checking for AXMenu attribute...");
-            if let Ok(menu_value) = os.get_ax_element_attr(popup_element, "AXMenu") {
-                println!("  Found menu via AXMenu attribute!");
-                menu_items = get_menu_items_from_menu(menu_value)?;
-                CFRelease(menu_value);
-            } else {
-                println!("  No AXMenu attribute, checking children...");
+                // Try method 1: Check for AXMenu attribute on the popup itself
+                println!("  Checking for AXMenu attribute...");
+                if let Ok(menu_value) = os.get_ax_element_attr(popup_element, "AXMenu") {
+                    println!("  Found menu via AXMenu attribute!");
+                    menu_items = get_menu_items_from_menu(menu_value)?;
+                    CFRelease(menu_value);
+                } else {
+                    println!("  No AXMenu attribute, checking children...");
 
-                // Try method 2: Look in children
-                if let Ok(children_value) = os.get_ax_element_attr(popup_element, "AXChildren") {
-                    let children = CFArray::new(children_value);
-                    println!("  Found {} children", children.count());
+                    // Try method 2: Look in children
+                    if let Ok(children_value) = os.get_ax_element_attr(popup_element, "AXChildren")
+                    {
+                        let children = CFArray::new(children_value);
+                        println!("  Found {} children", children.count());
 
-                    for i in 0..children.count() {
-                        let child = children.get(i) as AXUIElementRef;
+                        for i in 0..children.count() {
+                            let child = children.get(i) as AXUIElementRef;
 
-                        // Get the role of this child
-                        if let Ok(role) = os.get_ax_string_attr(child, "AXRole") {
-                            println!("    Child {}: role = {}", i, role);
+                            // Get the role of this child
+                            if let Ok(role) = os.get_ax_string_attr(child, "AXRole") {
+                                println!("    Child {}: role = {}", i, role);
 
-                            // Look for menu items
-                            if role == "AXMenu" {
-                                println!("  Found AXMenu child!");
-                                menu_items = get_menu_items_from_menu(child)?;
-                                break;
+                                // Look for menu items
+                                if role == "AXMenu" {
+                                    println!("  Found AXMenu child!");
+                                    menu_items = get_menu_items_from_menu(child)?;
+                                    break;
+                                }
                             }
                         }
+                    } else {
+                        println!("  No children found");
                     }
-                } else {
-                    println!("  No children found");
                 }
-            }
 
-            CFRelease(popup_element);
+                CFRelease(popup_element);
 
-            println!("Found {} menu items", menu_items.len());
-            for (i, item) in menu_items.iter().enumerate() {
-                println!("  {}. {}", i + 1, item);
-            }
+                println!("Found {} menu items", menu_items.len());
+                for (i, item) in menu_items.iter().enumerate() {
+                    println!("  {}. {}", i + 1, item);
+                }
 
-            Ok(menu_items)
+                Ok(menu_items)
             })
         })
     }
@@ -289,10 +289,10 @@ unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> 
                 let child = children.get(i) as AXUIElementRef;
 
                 // Get the title of this menu item
-                if let Ok(title) = os.get_ax_string_attr(child, "AXTitle") {
-                    if !title.is_empty() {
-                        items.push(title);
-                    }
+                if let Ok(title) = os.get_ax_string_attr(child, "AXTitle")
+                    && !title.is_empty()
+                {
+                    items.push(title);
                 }
             }
         }
@@ -319,16 +319,13 @@ unsafe fn find_popup_in_element(
 
     unsafe {
         // Check if this element is a popup button with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole") {
-            if role == "AXPopUpButton" {
-                if let Ok(title) = os.get_ax_string_attr(element, "AXTitle") {
-                    if crate::soft_match(&title, popup_name) {
-                        // Found it! Retain before returning so caller owns it
-                        CFRetain(element);
-                        return Ok(element);
-                    }
-                }
-            }
+        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
+            && role == "AXPopUpButton"
+            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
+            && crate::soft_match(&title, popup_name)
+        {
+            CFRetain(element);
+            return Ok(element);
         }
 
         // Search children recursively
@@ -371,7 +368,8 @@ pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Re
 
                 // Set the value using building block
                 let os = MacOSSession::global();
-                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr())
+                {
                     CFRelease(checkbox_element);
                     return Err(e);
                 }
@@ -479,16 +477,12 @@ unsafe fn find_buttons_in_element(element: AXUIElementRef) -> Result<Vec<String>
     unsafe {
         let mut buttons = Vec::new();
 
-        // Get role using building block
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole") {
-            // If this is a button, get its title
-            if role == "AXButton" {
-                if let Ok(title) = os.get_ax_string_attr(element, "AXTitle") {
-                    if !title.is_empty() {
-                        buttons.push(title);
-                    }
-                }
-            }
+        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
+            && role == "AXButton"
+            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
+            && !title.is_empty()
+        {
+            buttons.push(title);
         }
 
         // Recursively search children
@@ -528,16 +522,14 @@ unsafe fn find_button_in_element(
 
     unsafe {
         // Check if this element is a button with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole") {
-            if role == "AXButton" {
-                if let Ok(title) = os.get_ax_string_attr(element, "AXTitle") {
-                    if crate::soft_match(&title, button_name) {
-                        // Found it! Retain before returning so caller owns it
-                        CFRetain(element);
-                        return Ok(element);
-                    }
-                }
-            }
+        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
+            && role == "AXButton"
+            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
+            && crate::soft_match(&title, button_name)
+        {
+            // Found it! Retain before returning so caller owns it
+            CFRetain(element);
+            return Ok(element);
         }
 
         // Search children recursively
@@ -578,16 +570,14 @@ unsafe fn find_checkbox_in_element(
 
     unsafe {
         // Check if this element is a checkbox with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole") {
-            if role == "AXCheckBox" {
-                if let Ok(title) = os.get_ax_string_attr(element, "AXTitle") {
-                    if crate::soft_match(&title, checkbox_name) {
-                        // Found it! Retain before returning so caller owns it
-                        CFRetain(element);
-                        return Ok(element);
-                    }
-                }
-            }
+        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
+            && role == "AXCheckBox"
+            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
+            && crate::soft_match(&title, checkbox_name)
+        {
+            // Found it! Retain before returning so caller owns it
+            CFRetain(element);
+            return Ok(element);
         }
 
         // Search children recursively
@@ -618,9 +608,8 @@ pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
 
     unsafe {
         dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, _window| {
-                Ok(true)
-            }).or(Ok(false))
+            super::helpers::with_app_window(&app_name, &window_name, |_app, _window| Ok(true))
+                .or(Ok(false))
         })
     }
 }
@@ -845,7 +834,8 @@ pub fn close_window(app_name: &str, window_name: &str) -> Result<()> {
             let os = MacOSSession::global();
 
             // Get the close button (standard AXCloseButton) using building block
-            let close_button = os.get_ax_element_attr(window, "AXCloseButton")
+            let close_button = os
+                .get_ax_element_attr(window, "AXCloseButton")
                 .context("Window does not have a close button")?;
 
             // Click the close button using building block
@@ -937,7 +927,8 @@ unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
         let mut text_strings = Vec::new();
 
         // Get role using building block
-        let role = os.get_ax_string_attr(element, "AXRole")
+        let role = os
+            .get_ax_string_attr(element, "AXRole")
             .unwrap_or_else(|_| "Unknown".to_string());
 
         // Try to get AXValue from ANY element (not just specific roles)
@@ -960,17 +951,19 @@ unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
         }
 
         // Also try AXTitle attribute (some elements use this for text)
-        if let Ok(text) = os.get_ax_string_attr(element, "AXTitle") {
-            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
-                text_strings.push(format!("[{} Title] {}", role, text));
-            }
+        if let Ok(text) = os.get_ax_string_attr(element, "AXTitle")
+            && !text.is_empty()
+            && !text_strings.iter().any(|s| s.contains(&text))
+        {
+            text_strings.push(format!("[{} Title] {}", role, text));
         }
 
         // Also try AXDescription attribute
-        if let Ok(text) = os.get_ax_string_attr(element, "AXDescription") {
-            if !text.is_empty() && !text_strings.iter().any(|s| s.contains(&text)) {
-                text_strings.push(format!("[{} Description] {}", role, text));
-            }
+        if let Ok(text) = os.get_ax_string_attr(element, "AXDescription")
+            && !text.is_empty()
+            && !text_strings.iter().any(|s| s.contains(&text))
+        {
+            text_strings.push(format!("[{} Description] {}", role, text));
         }
 
         // Recursively search children

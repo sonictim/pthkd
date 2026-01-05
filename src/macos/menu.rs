@@ -74,11 +74,7 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
         let menu_bar_key = create_cfstring("AXMenuBar");
         let mut menu_bar_value: *mut c_void = std::ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            app_ref,
-            menu_bar_key,
-            &mut menu_bar_value,
-        );
+        let result = AXUIElementCopyAttributeValue(app_ref, menu_bar_key, &mut menu_bar_value);
         CFRelease(menu_bar_key);
 
         if result != 0 {
@@ -111,11 +107,7 @@ pub fn get_app_menus(app_name: &str) -> Result<MenuBar> {
         let children_key = create_cfstring("AXChildren");
         let mut children_value: *mut c_void = std::ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            menu_bar_ref,
-            children_key,
-            &mut children_value,
-        );
+        let result = AXUIElementCopyAttributeValue(menu_bar_ref, children_key, &mut children_value);
         CFRelease(children_key);
 
         if result != 0 || children_value.is_null() {
@@ -150,11 +142,7 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
         // Get title
         let title_key = create_cfstring("AXTitle");
         let mut title_value: *mut c_void = std::ptr::null_mut();
-        AXUIElementCopyAttributeValue(
-            element,
-            title_key,
-            &mut title_value,
-        );
+        AXUIElementCopyAttributeValue(element, title_key, &mut title_value);
         CFRelease(title_key);
 
         let title = if !title_value.is_null() {
@@ -166,11 +154,7 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
         // Get enabled state
         let enabled_key = create_cfstring("AXEnabled");
         let mut enabled_value: *mut c_void = std::ptr::null_mut();
-        AXUIElementCopyAttributeValue(
-            element,
-            enabled_key,
-            &mut enabled_value,
-        );
+        AXUIElementCopyAttributeValue(element, enabled_key, &mut enabled_value);
         CFRelease(enabled_key);
 
         let enabled = if !enabled_value.is_null() {
@@ -184,11 +168,7 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
         // Get children (submenu items)
         let children_key = create_cfstring("AXChildren");
         let mut children_value: *mut c_void = std::ptr::null_mut();
-        AXUIElementCopyAttributeValue(
-            element,
-            children_key,
-            &mut children_value,
-        );
+        AXUIElementCopyAttributeValue(element, children_key, &mut children_value);
         CFRelease(children_key);
 
         let mut children = Vec::new();
@@ -250,11 +230,7 @@ unsafe fn navigate_to_menu_item(
         let menu_bar_key = create_cfstring("AXMenuBar");
         let mut menu_bar_value: *mut c_void = std::ptr::null_mut();
 
-        let result = AXUIElementCopyAttributeValue(
-            app_ref,
-            menu_bar_key,
-            &mut menu_bar_value,
-        );
+        let result = AXUIElementCopyAttributeValue(app_ref, menu_bar_key, &mut menu_bar_value);
         CFRelease(menu_bar_key);
         log::info!("🔍 navigate: Menu bar result: {}", result);
 
@@ -267,7 +243,10 @@ unsafe fn navigate_to_menu_item(
         let mut current_element = menu_bar_ref;
         let mut current_element_retained = false; // Track if current_element needs release
 
-        log::info!("🔍 navigate: Starting menu path navigation ({} levels)...", menu_path.len());
+        log::info!(
+            "🔍 navigate: Starting menu path navigation ({} levels)...",
+            menu_path.len()
+        );
 
         // Navigate through the menu path
         for (i, &menu_title) in menu_path.iter().enumerate() {
@@ -275,11 +254,8 @@ unsafe fn navigate_to_menu_item(
             let children_key = create_cfstring("AXChildren");
             let mut children_value: *mut c_void = std::ptr::null_mut();
 
-            let result = AXUIElementCopyAttributeValue(
-                current_element,
-                children_key,
-                &mut children_value,
-            );
+            let result =
+                AXUIElementCopyAttributeValue(current_element, children_key, &mut children_value);
             CFRelease(children_key);
             log::info!("🔍 navigate: Got children, result: {}", result);
 
@@ -297,21 +273,25 @@ unsafe fn navigate_to_menu_item(
             }
 
             let children_array = CFArray::new(children_value);
-            log::info!("🔍 navigate: Found {} children at level {}", children_array.count(), i);
+            log::info!(
+                "🔍 navigate: Found {} children at level {}",
+                children_array.count(),
+                i
+            );
 
             // Find the menu item with matching title
             let mut found_element: Option<AXUIElementRef> = None;
             for j in 0..children_array.count() {
                 let child = children_array.get(j) as AXUIElementRef;
-                log::info!("🔍 navigate: Checking child {}/{}...", j + 1, children_array.count());
+                log::info!(
+                    "🔍 navigate: Checking child {}/{}...",
+                    j + 1,
+                    children_array.count()
+                );
                 let title_key = create_cfstring("AXTitle");
                 let mut title_value: *mut c_void = std::ptr::null_mut();
 
-                AXUIElementCopyAttributeValue(
-                    child,
-                    title_key,
-                    &mut title_value,
-                );
+                AXUIElementCopyAttributeValue(child, title_key, &mut title_value);
                 CFRelease(title_key);
                 log::info!("🔍 navigate: Got title for child {}", j + 1);
 
@@ -329,11 +309,7 @@ unsafe fn navigate_to_menu_item(
                             // Navigate deeper into submenu
                             let children_key2 = create_cfstring("AXChildren");
                             let mut submenu_value: *mut c_void = std::ptr::null_mut();
-                            AXUIElementCopyAttributeValue(
-                                child,
-                                children_key2,
-                                &mut submenu_value,
-                            );
+                            AXUIElementCopyAttributeValue(child, children_key2, &mut submenu_value);
                             CFRelease(children_key2);
 
                             if !submenu_value.is_null() {
@@ -341,7 +317,8 @@ unsafe fn navigate_to_menu_item(
                                 // submenu being released when array goes out of scope
                                 let count = CFArrayGetCount(submenu_value);
                                 if count > 0 {
-                                    let submenu = CFArrayGetValueAtIndex(submenu_value, 0) as AXUIElementRef;
+                                    let submenu =
+                                        CFArrayGetValueAtIndex(submenu_value, 0) as AXUIElementRef;
                                     // Retain the submenu element so it stays valid after we release the array
                                     CFRetain(submenu);
 
@@ -429,11 +406,8 @@ pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> bool {
                 let enabled_key = create_cfstring("AXEnabled");
                 let mut enabled_value: *mut c_void = std::ptr::null_mut();
 
-                let result = AXUIElementCopyAttributeValue(
-                    item_ref,
-                    enabled_key,
-                    &mut enabled_value,
-                );
+                let result =
+                    AXUIElementCopyAttributeValue(item_ref, enabled_key, &mut enabled_value);
                 CFRelease(enabled_key);
 
                 CFRelease(menu_bar_ref);
@@ -468,7 +442,11 @@ pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> bool {
 /// menu_item_run("pro tools", &["file", "save"])?; // Case-insensitive
 /// ```
 pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
-    log::info!("🔍 menu_item_run: Clicking menu item in {}: {:?}", app_name, menu_path);
+    log::info!(
+        "🔍 menu_item_run: Clicking menu item in {}: {:?}",
+        app_name,
+        menu_path
+    );
 
     // Clone data for the dispatched closure
     let app_name = app_name.to_string();
@@ -490,7 +468,8 @@ pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
         });
 
         log::info!("🔍 menu_item_run: Waiting for result...");
-        let result = rx.recv()
+        let result = rx
+            .recv()
             .map_err(|e| anyhow::anyhow!("Menu operation failed: {}", e))?;
         log::info!("🔍 menu_item_run: Got result, returning");
         result
@@ -510,12 +489,13 @@ unsafe fn menu_item_run_impl(app_name: &str, menu_path: &[&str]) -> Result<()> {
         // Check if item is enabled
         let enabled_key = create_cfstring("AXEnabled");
         let mut enabled_value: *mut c_void = std::ptr::null_mut();
-        let enabled_result = AXUIElementCopyAttributeValue(item_ref, enabled_key, &mut enabled_value);
+        let enabled_result =
+            AXUIElementCopyAttributeValue(item_ref, enabled_key, &mut enabled_value);
         CFRelease(enabled_key);
 
         if enabled_result == 0 && !enabled_value.is_null() {
             // Check if it's a CFBoolean
-            let cf_true = kCFBooleanTrue as *mut c_void;
+            let cf_true = kCFBooleanTrue;
             let is_enabled = enabled_value == cf_true;
             log::info!("🔍 menu_item_run_impl: Item is enabled: {}", is_enabled);
             CFRelease(enabled_value);
@@ -524,29 +504,39 @@ unsafe fn menu_item_run_impl(app_name: &str, menu_path: &[&str]) -> Result<()> {
                 bail!("Menu item is disabled");
             }
         } else {
-            log::warn!("🔍 menu_item_run_impl: Could not check enabled status (error: {})", enabled_result);
+            log::warn!(
+                "🔍 menu_item_run_impl: Could not check enabled status (error: {})",
+                enabled_result
+            );
         }
 
         // Get list of actions available on this element
         let actions_key = create_cfstring("AXActionNames");
         let mut actions_value: *mut c_void = std::ptr::null_mut();
-        let actions_result = AXUIElementCopyAttributeValue(item_ref, actions_key, &mut actions_value);
+        let actions_result =
+            AXUIElementCopyAttributeValue(item_ref, actions_key, &mut actions_value);
         CFRelease(actions_key);
 
         if actions_result == 0 && !actions_value.is_null() {
             let actions_count = CFArrayGetCount(actions_value);
-            log::info!("🔍 menu_item_run_impl: Item has {} available actions:", actions_count);
+            log::info!(
+                "🔍 menu_item_run_impl: Item has {} available actions:",
+                actions_count
+            );
             for i in 0..actions_count {
                 let action_cfstr = CFArrayGetValueAtIndex(actions_value, i);
-                if !action_cfstr.is_null() {
-                    if let Some(action_name) = cfstring_to_string(action_cfstr as CFStringRef) {
-                        log::info!("🔍   Action {}: {}", i, action_name);
-                    }
+                if !action_cfstr.is_null()
+                    && let Some(action_name) = cfstring_to_string(action_cfstr as CFStringRef)
+                {
+                    log::info!("🔍   Action {}: {}", i, action_name);
                 }
             }
             CFRelease(actions_value);
         } else {
-            log::warn!("🔍 menu_item_run_impl: Could not get action list (error: {})", actions_result);
+            log::warn!(
+                "🔍 menu_item_run_impl: Could not get action list (error: {})",
+                actions_result
+            );
         }
 
         // Click the item

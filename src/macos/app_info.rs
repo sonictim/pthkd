@@ -27,9 +27,9 @@ use std::ptr;
 /// println!("Current app: {}", app_name); // "Pro Tools"
 /// ```
 pub fn get_current_app() -> Result<String> {
-    use objc2::runtime::AnyObject;
-    use objc2::msg_send;
     use super::session::MacOSSession;
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
 
     unsafe {
         // Use building block to get frontmost app
@@ -71,9 +71,8 @@ pub fn get_app_window() -> Result<String> {
         }
 
         // Use building block to get frontmost app
-        use objc2::runtime::AnyObject;
-        use objc2::msg_send;
         use super::session::MacOSSession;
+        use objc2::msg_send;
 
         let os = MacOSSession::global();
         let app = os.get_frontmost_app()?;
@@ -266,9 +265,9 @@ pub fn has_accessibility_permission() -> bool {
 /// }
 /// ```
 pub fn get_all_running_applications() -> Result<Vec<String>> {
-    use objc2::runtime::AnyObject;
-    use objc2::msg_send;
     use super::session::MacOSSession;
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
 
     unsafe {
         // Use building block to get running apps
@@ -369,8 +368,7 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
 /// launch_application("Pro Tools")?;
 /// ```
 pub fn launch_application(app_name: &str) -> Result<()> {
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
+    use objc2::msg_send;
 
     log::warn!(
         "⚠️  launch_application called with app_name: '{}'",
@@ -392,7 +390,7 @@ pub fn launch_application(app_name: &str) -> Result<()> {
         // Launch the application
         let success: bool = msg_send![workspace, launchApplication: app_name_cfstring];
 
-        CFRelease(app_name_cfstring as *mut c_void);
+        CFRelease(app_name_cfstring);
 
         if success {
             log::info!("Successfully launched application: {}", app_name);

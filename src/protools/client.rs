@@ -79,9 +79,43 @@ impl ProtoolsSession {
         }
     }
 
+    pub async fn get_session_name(&mut self) -> Result<String> {
+        let response: serde_json::Value = self
+            .cmd(CommandId::GetSessionName, serde_json::json!({}))
+            .await?;
+
+        Ok(response["session_name"].to_string())
+    }
+    pub async fn get_session_path(&mut self) -> anyhow::Result<std::path::PathBuf> {
+        let response: serde_json::Value = self
+            .cmd(CommandId::GetSessionPath, serde_json::json!({}))
+            .await?;
+
+        let path = response
+            .get("session_path")
+            .and_then(|v| v.get("path"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Unable to obtain path"))?;
+
+        Ok(std::path::PathBuf::from(path))
+    }
     pub async fn save_session(&mut self) -> Result<()> {
         let _response: serde_json::Value = self
             .cmd(CommandId::SaveSession, serde_json::json!({}))
+            .await?;
+
+        println!("Session Saved");
+        Ok(())
+    }
+    pub async fn save_session_as(&mut self, name: &str, path: &str) -> Result<()> {
+        let _: serde_json::Value = self
+            .cmd(
+                CommandId::SaveSessionAs,
+                ptsl::SaveSessionAsRequestBody {
+                    session_name: name.into(),
+                    session_location: path.into(),
+                },
+            )
             .await?;
 
         println!("Session Saved");
@@ -520,4 +554,9 @@ impl MarkerLocation {
             MarkerLocation::MainRuler => "MarkerLocation_MainRuler",
         }
     }
+}
+pub async fn save_protools_session() -> Result<()> {
+    let mut pt = ProtoolsSession::new().await?;
+    pt.save_session().await?;
+    Ok(())
 }

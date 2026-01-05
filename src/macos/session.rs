@@ -8,7 +8,7 @@
 
 use anyhow::{Context, Result};
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{msg_send, Encode, Encoding};
+use objc2::{Encode, Encoding, msg_send};
 use std::sync::OnceLock;
 
 // ============================================================================
@@ -193,7 +193,12 @@ impl MacOSSession {
     /// Set alert title and message text
     ///
     /// **CROSSOVER:** Used by ALL alert functions (show_alert, password_prompt, permission_dialog)
-    pub unsafe fn set_alert_text(&self, alert: *mut AnyObject, title: &str, message: &str) -> Result<()> {
+    pub unsafe fn set_alert_text(
+        &self,
+        alert: *mut AnyObject,
+        title: &str,
+        message: &str,
+    ) -> Result<()> {
         unsafe {
             let title_str = self.create_nsstring(title)?;
             let msg_str = self.create_nsstring(message)?;
@@ -219,7 +224,11 @@ impl MacOSSession {
     /// Add an accessory view to an alert (for custom UI like text fields)
     ///
     /// **CROSSOVER:** Used by password_prompt (adds NSSecureTextField)
-    pub unsafe fn add_accessory_view(&self, alert: *mut AnyObject, view: *mut AnyObject) -> Result<()> {
+    pub unsafe fn add_accessory_view(
+        &self,
+        alert: *mut AnyObject,
+        view: *mut AnyObject,
+    ) -> Result<()> {
         let _: () = msg_send![alert, setAccessoryView: view];
         Ok(())
     }
@@ -267,7 +276,11 @@ impl MacOSSession {
     /// let role = os.get_ax_string_attr(element, "AXRole")?;
     /// let title = os.get_ax_string_attr(element, "AXTitle")?;
     /// ```
-    pub unsafe fn get_ax_string_attr(&self, element: *mut std::ffi::c_void, attr_name: &str) -> Result<String> {
+    pub unsafe fn get_ax_string_attr(
+        &self,
+        element: *mut std::ffi::c_void,
+        attr_name: &str,
+    ) -> Result<String> {
         use super::ffi::*;
         use std::ffi::c_void;
         use std::ptr;
@@ -276,8 +289,8 @@ impl MacOSSession {
             let attr = self.create_cfstring(attr_name)?;
             let mut value: *mut c_void = ptr::null_mut();
 
-            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr as *mut c_void, &mut value);
-            CFRelease(attr as *mut c_void);
+            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr, &mut value);
+            CFRelease(attr);
 
             if result != K_AX_ERROR_SUCCESS || value.is_null() {
                 anyhow::bail!("Failed to get attribute '{}'", attr_name);
@@ -306,7 +319,11 @@ impl MacOSSession {
     /// // ... use window ...
     /// CFRelease(window);
     /// ```
-    pub unsafe fn get_ax_element_attr(&self, element: *mut std::ffi::c_void, attr_name: &str) -> Result<*mut std::ffi::c_void> {
+    pub unsafe fn get_ax_element_attr(
+        &self,
+        element: *mut std::ffi::c_void,
+        attr_name: &str,
+    ) -> Result<*mut std::ffi::c_void> {
         use super::ffi::*;
         use std::ffi::c_void;
         use std::ptr;
@@ -315,8 +332,8 @@ impl MacOSSession {
             let attr = self.create_cfstring(attr_name)?;
             let mut value: *mut c_void = ptr::null_mut();
 
-            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr as *mut c_void, &mut value);
-            CFRelease(attr as *mut c_void);
+            let result = AXUIElementCopyAttributeValue(element as AXUIElementRef, attr, &mut value);
+            CFRelease(attr);
 
             if result != K_AX_ERROR_SUCCESS || value.is_null() {
                 anyhow::bail!("Failed to get element attribute '{}'", attr_name);
@@ -334,17 +351,25 @@ impl MacOSSession {
     /// ```ignore
     /// os.set_ax_attribute(checkbox, "AXValue", cf_number)?;
     /// ```
-    pub unsafe fn set_ax_attribute(&self, element: *mut std::ffi::c_void, attr_name: &str, value: *mut std::ffi::c_void) -> Result<()> {
+    pub unsafe fn set_ax_attribute(
+        &self,
+        element: *mut std::ffi::c_void,
+        attr_name: &str,
+        value: *mut std::ffi::c_void,
+    ) -> Result<()> {
         use super::ffi::*;
-        use std::ffi::c_void;
 
         unsafe {
             let attr = self.create_cfstring(attr_name)?;
-            let result = AXUIElementSetAttributeValue(element as AXUIElementRef, attr as *mut c_void, value);
-            CFRelease(attr as *mut c_void);
+            let result = AXUIElementSetAttributeValue(element as AXUIElementRef, attr, value);
+            CFRelease(attr);
 
             if result != K_AX_ERROR_SUCCESS {
-                anyhow::bail!("Failed to set attribute '{}' (error code: {})", attr_name, result);
+                anyhow::bail!(
+                    "Failed to set attribute '{}' (error code: {})",
+                    attr_name,
+                    result
+                );
             }
 
             Ok(())
@@ -360,17 +385,24 @@ impl MacOSSession {
     /// os.perform_ax_action(button, "AXPress")?;
     /// os.perform_ax_action(menu_item, "AXPick")?;
     /// ```
-    pub unsafe fn perform_ax_action(&self, element: *mut std::ffi::c_void, action: &str) -> Result<()> {
+    pub unsafe fn perform_ax_action(
+        &self,
+        element: *mut std::ffi::c_void,
+        action: &str,
+    ) -> Result<()> {
         use super::ffi::*;
-        use std::ffi::c_void;
 
         unsafe {
             let action_cf = self.create_cfstring(action)?;
-            let result = AXUIElementPerformAction(element as AXUIElementRef, action_cf as *mut c_void);
-            CFRelease(action_cf as *mut c_void);
+            let result = AXUIElementPerformAction(element as AXUIElementRef, action_cf);
+            CFRelease(action_cf);
 
             if result != K_AX_ERROR_SUCCESS {
-                anyhow::bail!("Failed to perform action '{}' (error code: {})", action, result);
+                anyhow::bail!(
+                    "Failed to perform action '{}' (error code: {})",
+                    action,
+                    result
+                );
             }
 
             Ok(())
@@ -490,18 +522,12 @@ impl ClassCache {
     /// Initialize the class cache with commonly-used Objective-C classes
     unsafe fn new() -> Result<Self> {
         Ok(Self {
-            ns_string: AnyClass::get("NSString")
-                .context("Failed to get NSString class")?,
-            ns_alert: AnyClass::get("NSAlert")
-                .context("Failed to get NSAlert class")?,
-            ns_window: AnyClass::get("NSWindow")
-                .context("Failed to get NSWindow class")?,
-            ns_menu: AnyClass::get("NSMenu")
-                .context("Failed to get NSMenu class")?,
-            ns_menu_item: AnyClass::get("NSMenuItem")
-                .context("Failed to get NSMenuItem class")?,
-            ns_image: AnyClass::get("NSImage")
-                .context("Failed to get NSImage class")?,
+            ns_string: AnyClass::get("NSString").context("Failed to get NSString class")?,
+            ns_alert: AnyClass::get("NSAlert").context("Failed to get NSAlert class")?,
+            ns_window: AnyClass::get("NSWindow").context("Failed to get NSWindow class")?,
+            ns_menu: AnyClass::get("NSMenu").context("Failed to get NSMenu class")?,
+            ns_menu_item: AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?,
+            ns_image: AnyClass::get("NSImage").context("Failed to get NSImage class")?,
         })
     }
 }

@@ -2,6 +2,9 @@
 //!
 //! Provides functions to find and interact with UI elements (buttons, etc.)
 //! in application windows using the macOS Accessibility API.
+//!
+//! **Thread Safety**: All public functions automatically dispatch to the main
+//! thread using Grand Central Dispatch, as required by the macOS Accessibility API.
 
 use super::app_info::get_pid_by_name;
 use super::ffi::*;
@@ -10,7 +13,36 @@ use anyhow::{Context, Result, bail};
 use libc::c_void;
 use std::ptr;
 
+// ============================================================================
+// Thread Safety Helper
+// ============================================================================
+
+/// Helper to dispatch a closure to the main thread and wait for result
+///
+/// All Accessibility API calls must run on the main thread. This helper
+/// uses Grand Central Dispatch to ensure thread safety.
+unsafe fn dispatch_to_main<F, R>(f: F) -> Result<R>
+where
+    F: FnOnce() -> Result<R> + Send + 'static,
+    R: Send + 'static,
+{
+    unsafe {
+        use std::sync::mpsc;
+        let (tx, rx) = mpsc::channel();
+
+        super::events::dispatch_to_main_queue(move || {
+            let result = f();
+            let _ = tx.send(result);
+        });
+
+        rx.recv()
+            .map_err(|e| anyhow::anyhow!("UI operation failed: {}", e))?
+    }
+}
+
 /// Get all buttons in a window
+///
+/// **Thread Safety**: Automatically dispatches to main thread.
 ///
 /// # Arguments
 /// * `app_name` - Name of the application (e.g., "Pro Tools")
@@ -25,9 +57,14 @@ use std::ptr;
 /// // Returns: ["Preview", "Render", "Cancel"]
 /// ```
 pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<String>> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            find_buttons_in_element(window)
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
+                find_buttons_in_element(window)
+            })
         })
     }
 }
@@ -48,83 +85,101 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 /// click_button("Pro Tools", "AudioSuite: Reverb", "OK")?;
 /// ```
 pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+    let button_name = button_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            use super::session::MacOSSession;
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
+                use super::session::MacOSSession;
 
-            // Find the button
-            let button_element = find_button_in_window(window, button_name)?;
+                // Find the button
+                let button_element = find_button_in_window(window, &button_name)?;
 
-            // Click it using building block
-            let os = MacOSSession::global();
-            if let Err(e) = os.perform_ax_action(button_element, "AXPress") {
-                CFRelease(button_element);
-                return Err(e);
-            }
-
-            CFRelease(button_element);
-
-            log::info!(
-                "✅ Clicked button '{}' in window '{}'",
-                button_name,
-                if window_name.is_empty() {
-                    "<focused>"
-                } else {
-                    window_name
+                // Click it using building block
+                let os = MacOSSession::global();
+                if let Err(e) = os.perform_ax_action(button_element, "AXPress") {
+                    CFRelease(button_element);
+                    return Err(e);
                 }
-            );
 
-            Ok(())
+                CFRelease(button_element);
+
+                log::info!(
+                    "✅ Clicked button '{}' in window '{}'",
+                    button_name,
+                    if window_name.is_empty() {
+                        "<focused>"
+                    } else {
+                        &window_name
+                    }
+                );
+
+                Ok(())
+            })
         })
     }
 }
 pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+    let checkbox_name = checkbox_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            use super::session::MacOSSession;
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
+                use super::session::MacOSSession;
 
-            // Find the checkbox
-            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+                // Find the checkbox
+                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
 
-            println!("Found checkbox '{}', attempting to click...", checkbox_name);
+                println!("Found checkbox '{}', attempting to click...", checkbox_name);
 
-            // Toggle it (same AXPress action as buttons)
-            let os = MacOSSession::global();
-            if let Err(e) = os.perform_ax_action(checkbox_element, "AXPress") {
+                // Toggle it (same AXPress action as buttons)
+                let os = MacOSSession::global();
+                if let Err(e) = os.perform_ax_action(checkbox_element, "AXPress") {
+                    CFRelease(checkbox_element);
+                    return Err(e);
+                }
+
                 CFRelease(checkbox_element);
-                return Err(e);
-            }
-
-            CFRelease(checkbox_element);
-            println!("✅ Clicked checkbox '{}'", checkbox_name);
-            Ok(())
+                println!("✅ Clicked checkbox '{}'", checkbox_name);
+                Ok(())
+            })
         })
     }
 }
 
 /// Check a checkbox (set to checked state)
 pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+    let checkbox_name = checkbox_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            use super::session::MacOSSession;
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
+                use super::session::MacOSSession;
 
-            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
 
-            println!("Found checkbox '{}', setting to CHECKED...", checkbox_name);
+                println!("Found checkbox '{}', setting to CHECKED...", checkbox_name);
 
-            // Create a CFNumber for value 1 (checked)
-            let cf_number = CFNumber::from_i32(1);
+                // Create a CFNumber for value 1 (checked)
+                let cf_number = CFNumber::from_i32(1);
 
-            // Set the value using building block
-            let os = MacOSSession::global();
-            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                // Set the value using building block
+                let os = MacOSSession::global();
+                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                    CFRelease(checkbox_element);
+                    return Err(e);
+                }
+
                 CFRelease(checkbox_element);
-                return Err(e);
-            }
-
-            CFRelease(checkbox_element);
-            println!("✅ Set checkbox '{}' to CHECKED", checkbox_name);
-            Ok(())
+                println!("✅ Set checkbox '{}' to CHECKED", checkbox_name);
+                Ok(())
+            })
         })
     }
 }
@@ -135,13 +190,18 @@ pub fn get_popup_menu_items(
     window_name: &str,
     popup_name: &str,
 ) -> Result<Vec<String>> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+    let popup_name = popup_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
             use super::session::MacOSSession;
             let os = MacOSSession::global();
 
             // Find the popup button
-            let popup_element = find_popup_in_window(window, popup_name)?;
+            let popup_element = find_popup_in_window(window, &popup_name)?;
 
             println!("Found popup '{}', opening menu...", popup_name);
 
@@ -209,6 +269,7 @@ pub fn get_popup_menu_items(
             }
 
             Ok(menu_items)
+            })
         })
     }
 }
@@ -289,30 +350,36 @@ unsafe fn find_popup_in_element(
 
 /// Uncheck a checkbox (set to unchecked state)
 pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+    let checkbox_name = checkbox_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            use super::session::MacOSSession;
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
+                use super::session::MacOSSession;
 
-            let checkbox_element = find_checkbox_in_window(window, checkbox_name)?;
+                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
 
-            println!(
-                "Found checkbox '{}', setting to UNCHECKED...",
-                checkbox_name
-            );
+                println!(
+                    "Found checkbox '{}', setting to UNCHECKED...",
+                    checkbox_name
+                );
 
-            // Create a CFNumber for value 0 (unchecked)
-            let cf_number = CFNumber::from_i32(0);
+                // Create a CFNumber for value 0 (unchecked)
+                let cf_number = CFNumber::from_i32(0);
 
-            // Set the value using building block
-            let os = MacOSSession::global();
-            if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                // Set the value using building block
+                let os = MacOSSession::global();
+                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr()) {
+                    CFRelease(checkbox_element);
+                    return Err(e);
+                }
+
                 CFRelease(checkbox_element);
-                return Err(e);
-            }
-
-            CFRelease(checkbox_element);
-            println!("✅ Set checkbox '{}' to UNCHECKED", checkbox_name);
-            Ok(())
+                println!("✅ Set checkbox '{}' to UNCHECKED", checkbox_name);
+                Ok(())
+            })
         })
     }
 }
@@ -546,10 +613,15 @@ unsafe fn find_checkbox_in_element(
 /// # Returns
 /// Ok(true) if window exists, Ok(false) if not found
 pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
+    let app_name = app_name.to_string();
+    let window_name = window_name.to_string();
+
     unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, _window| {
-            Ok(true)
-        }).or(Ok(false))
+        dispatch_to_main(move || {
+            super::helpers::with_app_window(&app_name, &window_name, |_app, _window| {
+                Ok(true)
+            }).or(Ok(false))
+        })
     }
 }
 

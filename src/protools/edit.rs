@@ -33,7 +33,6 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
     let fill = params.get_bool("fill_selection", false);
     let adjust = params.get_float("adjust_selection_frames", 0.0);
     let snap = params.get_bool("snap_to_grid", false);
-    println!("adjustment frames: {}", adjust);
     let mut sel = PtSelectionTimecode::new(pt).await?;
     if snap {
         let mut io = sel.get_io(pt).await?;
@@ -76,17 +75,9 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
         .await?;
     }
     if crossfade {
-        let mut sel = PtSelectionSamples::new(pt).await?;
-        let c = sel.get_io();
-        sel.set_io(pt, c.1, c.1).await?;
         call_menu(&["Edit", "Automation", "Write to All Enabled"])
             .await
             .ok();
-        sel.set_io(pt, c.0, c.0).await?;
-        call_menu(&["Edit", "Automation", "Write to All Enabled"])
-            .await
-            .ok();
-        sel.set_io(pt, c.0 + 10, c.1 - 10).await?;
 
         let _: serde_json::Value = pt
             .cmd(
@@ -96,12 +87,8 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> Result<()> 
                 },
             )
             .await?;
-
-        // sel.set_io(pt, c.0 - 48000, c.1 + 48000).await?;
-        // call_menu(&["Edit", "Automation", "Thin All"]).await?;
-        // keystroke(&["cmd", "option", "control", "t"]).await?;
-        sel.set_io(pt, c.0, c.1).await?;
     }
+    sel.set(pt).await?;
     Ok(())
 }
 pub async fn bg_paste_selection(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {

@@ -239,12 +239,14 @@ unsafe fn navigate_to_menu_item(
         }
 
         let pid = get_pid_for_app(app_name)?;
+        log::info!("🔍 navigate: Got PID {}, creating AXUIElement...", pid);
         let app_ref = AXUIElementCreateApplication(pid);
         if app_ref.is_null() {
             bail!("Failed to create AXUIElement for application");
         }
 
         // Get the menu bar
+        log::info!("🔍 navigate: Getting menu bar...");
         let menu_bar_key = create_cfstring("AXMenuBar");
         let mut menu_bar_value: *mut c_void = std::ptr::null_mut();
 
@@ -254,6 +256,7 @@ unsafe fn navigate_to_menu_item(
             &mut menu_bar_value,
         );
         CFRelease(menu_bar_key);
+        log::info!("🔍 navigate: Menu bar result: {}", result);
 
         if result != 0 || menu_bar_value.is_null() {
             CFRelease(app_ref);
@@ -262,9 +265,13 @@ unsafe fn navigate_to_menu_item(
 
         let menu_bar_ref = menu_bar_value;
         let mut current_element = menu_bar_ref;
+        let mut current_element_retained = false; // Track if current_element needs release
+
+        log::info!("🔍 navigate: Starting menu path navigation ({} levels)...", menu_path.len());
 
         // Navigate through the menu path
         for (i, &menu_title) in menu_path.iter().enumerate() {
+            log::info!("🔍 navigate: Level {} - looking for '{}'", i, menu_title);
             let children_key = create_cfstring("AXChildren");
             let mut children_value: *mut c_void = std::ptr::null_mut();
 
@@ -274,8 +281,12 @@ unsafe fn navigate_to_menu_item(
                 &mut children_value,
             );
             CFRelease(children_key);
+            log::info!("🔍 navigate: Got children, result: {}", result);
 
             if result != 0 || children_value.is_null() {
+                if current_element_retained {
+                    CFRelease(current_element);
+                }
                 CFRelease(menu_bar_ref);
                 CFRelease(app_ref);
                 bail!(
@@ -286,11 +297,13 @@ unsafe fn navigate_to_menu_item(
             }
 
             let children_array = CFArray::new(children_value);
+            log::info!("🔍 navigate: Found {} children at level {}", children_array.count(), i);
 
             // Find the menu item with matching title
             let mut found_element: Option<AXUIElementRef> = None;
             for j in 0..children_array.count() {
                 let child = children_array.get(j) as AXUIElementRef;
+                log::info!("🔍 navigate: Checking child {}/{}...", j + 1, children_array.count());
                 let title_key = create_cfstring("AXTitle");
                 let mut title_value: *mut c_void = std::ptr::null_mut();
 
@@ -300,6 +313,7 @@ unsafe fn navigate_to_menu_item(
                     &mut title_value,
                 );
                 CFRelease(title_key);
+                log::info!("🔍 navigate: Got title for child {}", j + 1);
 
                 if !title_value.is_null() {
                     let title = cfstring_to_string(title_value).unwrap_or_default();
@@ -307,7 +321,9 @@ unsafe fn navigate_to_menu_item(
                     if crate::normalize(&title) == crate::normalize(menu_title) {
                         // Found the item!
                         if i == menu_path.len() - 1 {
-                            // This is the final item - return it
+                            // This is the final item - retain it before returning
+                            // (otherwise it becomes invalid when children_array is dropped)
+                            CFRetain(child);
                             return Ok((child, menu_bar_ref, app_ref));
                         } else {
                             // Navigate deeper into submenu
@@ -321,13 +337,28 @@ unsafe fn navigate_to_menu_item(
                             CFRelease(children_key2);
 
                             if !submenu_value.is_null() {
-                                let submenu_array = CFArray::new(submenu_value);
-                                if submenu_array.count() > 0 {
-                                    let submenu = submenu_array.get(0);
-                                    current_element = submenu as AXUIElementRef;
+                                // Don't use CFArray RAII wrapper here - manually manage to avoid
+                                // submenu being released when array goes out of scope
+                                let count = CFArrayGetCount(submenu_value);
+                                if count > 0 {
+                                    let submenu = CFArrayGetValueAtIndex(submenu_value, 0) as AXUIElementRef;
+                                    // Retain the submenu element so it stays valid after we release the array
+                                    CFRetain(submenu);
+
+                                    // Release previous current_element if it was retained
+                                    if current_element_retained {
+                                        CFRelease(current_element);
+                                    }
+
+                                    current_element = submenu;
+                                    current_element_retained = true; // Mark that we retained this one
                                     found_element = Some(current_element);
+                                    // Now we can properly release the submenu array
+                                    CFRelease(submenu_value);
                                     break;
                                 }
+                                // If submenu array was empty, still release it
+                                CFRelease(submenu_value);
                             }
                         }
                     }
@@ -335,12 +366,19 @@ unsafe fn navigate_to_menu_item(
             }
 
             if found_element.is_none() {
+                if current_element_retained {
+                    CFRelease(current_element);
+                }
                 CFRelease(menu_bar_ref);
                 CFRelease(app_ref);
                 bail!("Could not find menu item: {} at level {}", menu_title, i);
             }
         }
 
+        // Should never get here (we return early when finding the final item)
+        if current_element_retained {
+            CFRelease(current_element);
+        }
         CFRelease(menu_bar_ref);
         CFRelease(app_ref);
         bail!("Menu navigation completed but target not found")
@@ -420,27 +458,111 @@ pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> bool {
 /// Navigates through menu hierarchy and clicks the final item.
 /// Supports case-insensitive matching for both app names and menu items.
 ///
+/// **IMPORTANT**: This function dispatches to the main thread using GCD because
+/// the Accessibility API must run on the main thread. Calling from background
+/// threads will cause segfaults.
+///
 /// # Example
 /// ```ignore
 /// menu_item_run("Pro Tools", &["File", "Save Session As"])?;
 /// menu_item_run("pro tools", &["file", "save"])?; // Case-insensitive
 /// ```
 pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
-    log::info!("Clicking menu item in {}: {:?}", app_name, menu_path);
+    log::info!("🔍 menu_item_run: Clicking menu item in {}: {:?}", app_name, menu_path);
+
+    // Clone data for the dispatched closure
+    let app_name = app_name.to_string();
+    let menu_path: Vec<String> = menu_path.iter().map(|s| s.to_string()).collect();
+
+    log::info!("🔍 menu_item_run: Dispatching to main queue...");
+
+    // Dispatch to main thread using GCD
+    unsafe {
+        use std::sync::mpsc;
+        let (tx, rx) = mpsc::channel();
+
+        super::dispatch_to_main_queue(move || {
+            log::info!("🔍 Main queue: Running menu_item_run_impl...");
+            let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
+            let result = menu_item_run_impl(&app_name, &menu_path_refs);
+            log::info!("🔍 Main queue: menu_item_run_impl completed, sending result...");
+            let _ = tx.send(result);
+        });
+
+        log::info!("🔍 menu_item_run: Waiting for result...");
+        let result = rx.recv()
+            .map_err(|e| anyhow::anyhow!("Menu operation failed: {}", e))?;
+        log::info!("🔍 menu_item_run: Got result, returning");
+        result
+    }
+}
+
+/// Internal implementation of menu item clicking (runs on main thread)
+unsafe fn menu_item_run_impl(app_name: &str, menu_path: &[&str]) -> Result<()> {
+    use std::ffi::c_void;
 
     unsafe {
+        log::info!("🔍 menu_item_run_impl: Navigating to menu item...");
         let (item_ref, menu_bar_ref, app_ref) = navigate_to_menu_item(app_name, menu_path)?;
 
+        log::info!("🔍 menu_item_run_impl: Navigation successful, inspecting item...");
+
+        // Check if item is enabled
+        let enabled_key = create_cfstring("AXEnabled");
+        let mut enabled_value: *mut c_void = std::ptr::null_mut();
+        let enabled_result = AXUIElementCopyAttributeValue(item_ref, enabled_key, &mut enabled_value);
+        CFRelease(enabled_key);
+
+        if enabled_result == 0 && !enabled_value.is_null() {
+            // Check if it's a CFBoolean
+            let cf_true = kCFBooleanTrue as *mut c_void;
+            let is_enabled = enabled_value == cf_true;
+            log::info!("🔍 menu_item_run_impl: Item is enabled: {}", is_enabled);
+            CFRelease(enabled_value);
+
+            if !is_enabled {
+                bail!("Menu item is disabled");
+            }
+        } else {
+            log::warn!("🔍 menu_item_run_impl: Could not check enabled status (error: {})", enabled_result);
+        }
+
+        // Get list of actions available on this element
+        let actions_key = create_cfstring("AXActionNames");
+        let mut actions_value: *mut c_void = std::ptr::null_mut();
+        let actions_result = AXUIElementCopyAttributeValue(item_ref, actions_key, &mut actions_value);
+        CFRelease(actions_key);
+
+        if actions_result == 0 && !actions_value.is_null() {
+            let actions_count = CFArrayGetCount(actions_value);
+            log::info!("🔍 menu_item_run_impl: Item has {} available actions:", actions_count);
+            for i in 0..actions_count {
+                let action_cfstr = CFArrayGetValueAtIndex(actions_value, i);
+                if !action_cfstr.is_null() {
+                    if let Some(action_name) = cfstring_to_string(action_cfstr as CFStringRef) {
+                        log::info!("🔍   Action {}: {}", i, action_name);
+                    }
+                }
+            }
+            CFRelease(actions_value);
+        } else {
+            log::warn!("🔍 menu_item_run_impl: Could not get action list (error: {})", actions_result);
+        }
+
         // Click the item
+        log::info!("🔍 menu_item_run_impl: Creating AXPress key...");
         let press_key = create_cfstring("AXPress");
-        let press_result =
-            AXUIElementPerformAction(item_ref, press_key);
+        log::info!("🔍 menu_item_run_impl: Performing AXPress action...");
+        let press_result = AXUIElementPerformAction(item_ref, press_key);
+        log::info!("🔍 menu_item_run_impl: AXPress result: {}", press_result);
         CFRelease(press_key);
 
-        // Note: item_ref is a borrowed reference from CFArray::get() in navigate_to_menu_item,
-        // so we should NOT CFRelease it. Only release the refs we created.
+        log::info!("🔍 menu_item_run_impl: Cleaning up references...");
+        // Note: item_ref was retained in navigate_to_menu_item, so we must release it
+        CFRelease(item_ref);
         CFRelease(menu_bar_ref);
         CFRelease(app_ref);
+        log::info!("🔍 menu_item_run_impl: Cleanup complete");
 
         if press_result == 0 {
             log::info!("✅ Successfully clicked menu item");

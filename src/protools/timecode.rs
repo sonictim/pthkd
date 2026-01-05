@@ -175,7 +175,7 @@ impl PtSelectionTimecode {
         println!("{:?}", self);
         Ok(())
     }
-    async fn set(&mut self, pt: &mut ProtoolsSession) -> Result<()> {
+    pub async fn set(&mut self, pt: &mut ProtoolsSession) -> Result<()> {
         let response: serde_json::Value = pt
             .cmd(
                 CommandId::SetTimelineSelection,

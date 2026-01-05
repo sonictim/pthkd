@@ -545,10 +545,19 @@ fn init_logging() -> anyhow::Result<String> {
         .filter_level(log::LevelFilter::Debug) // Default to Debug level if RUST_LOG not set
         .target(env_logger::Target::Pipe(target))
         .format(|buf, record| {
+            use std::time::{SystemTime, UNIX_EPOCH};
+
+            // Simple timestamp using std lib only - format as Unix timestamp for now
+            // This avoids the chrono dependency while still providing timing info
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
             writeln!(
                 buf,
                 "[{} {:5}] {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                timestamp,
                 record.level(),
                 record.args()
             )

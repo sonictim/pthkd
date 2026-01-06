@@ -269,7 +269,7 @@ action = "pt.session_save_as"
 target_application = "Pro Tools"
 [hotkey.params]
 name = "test"
-location = "~/Desktop/"
+location = "/Users/tfarrell/Desktop"
 
 # ============================================================================
 # Audiosuite Plugin Management (pt.* namespace)

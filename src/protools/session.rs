@@ -22,29 +22,36 @@ pub async fn save_as(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     Ok(())
 }
 pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    let mut tag = params.get_str("name_id", "");
+    let tag_param = params.get_str("name_id", "");
+
     let path = pt.get_session_path().await?;
     println!("source path: {}", path.display());
-    let source_name = path.file_stem().unwrap().to_str().unwrap();
-    let location = path.parent().unwrap().to_str().unwrap();
-    let mut v: Vec<&str> = source_name.split('_').collect();
-    let id = v.pop().unwrap_or_default();
-    let number = v.pop().unwrap_or_default().parse::<u8>().ok();
-    if let Some(mut num) = number {
-        if tag.is_empty() {
-            tag = id;
-        }
-        num += 1;
-        let mut n = String::new();
-        for s in v {
-            n.push_str(s);
-            n.push('_');
-        }
-        n.push_str(&format!("{:02}", num));
-        n.push('_');
-        n.push_str(tag);
-        pt.save_session_as(&n, location).await?;
-    }
+
+    let parent = path
+        .parent()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("Session path has no parent"))?;
+
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("Invalid session filename"))?;
+
+    let mut parts: Vec<&str> = stem.split('_').collect();
+
+    let id = parts.pop().unwrap_or_default();
+    let mut num: u8 = parts
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("Missing version number"))?
+        .parse()?;
+
+    let tag = if tag_param.is_empty() { id } else { tag_param };
+
+    num += 1;
+
+    let new_name = format!("{}_{:02}_{}", parts.join("_"), num, tag);
+
+    pt.save_session_as(&new_name, parent).await?;
 
     Ok(())
 }

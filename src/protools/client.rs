@@ -107,13 +107,13 @@ impl ProtoolsSession {
         println!("Session Saved");
         Ok(())
     }
-    pub async fn save_session_as(&mut self, name: &str, path: &str) -> Result<()> {
+    pub async fn save_session_as(&mut self, name: &str, location: &str) -> Result<()> {
         let _: serde_json::Value = self
             .cmd(
                 CommandId::SaveSessionAs,
                 ptsl::SaveSessionAsRequestBody {
                     session_name: name.into(),
-                    session_location: path.into(),
+                    session_location: location.into(),
                 },
             )
             .await?;

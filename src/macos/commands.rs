@@ -370,7 +370,11 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
         unsafe { MacOSSession::global().password_prompt(account) }
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
-        super::keystroke::type_text(&pw)?;
+
+        // Brief delay to ensure password field is ready to receive input
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        super::keystroke::type_text_slow(&pw)?;
         super::keystroke::send_keystroke(&["enter"])
     } else {
         unsafe { MacOSSession::global().password_prompt(account) }

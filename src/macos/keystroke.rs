@@ -15,6 +15,7 @@ use libc::c_void;
 
 const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
 const CG_HID_EVENT_TAP: u32 = 0;
+const CG_SESSION_EVENT_TAP: u32 = 1;
 
 // Modifier key flags
 const CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
@@ -375,6 +376,79 @@ pub fn type_text(text: &str) -> Result<()> {
 
         // Small delay between characters
         std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    Ok(())
+}
+
+/// Type text with slower timing for secure fields (like password inputs)
+///
+/// This variant uses session-level event posting and longer delays between
+/// keystrokes, which is more compatible with password fields that may have
+/// additional security processing.
+///
+/// # Arguments
+/// * `text` - The text string to type
+///
+/// # Example
+/// ```ignore
+/// type_text_slow("MyPassword123")?;
+/// ```
+pub fn type_text_slow(text: &str) -> Result<()> {
+    use crate::keycodes::key_name_to_codes;
+
+    for ch in text.chars() {
+        // Map character to key name and shift status
+        let (key_name, needs_shift) =
+            char_to_key(ch).ok_or_else(|| anyhow::anyhow!("Unsupported character: '{}'", ch))?;
+
+        let key_code = key_name_to_codes(key_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown key: {}", key_name))?[0];
+
+        unsafe {
+            use super::helpers::CGEvent;
+
+            // Create event source (RAII wrapper for auto-cleanup)
+            let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
+            if event_source.is_null() {
+                bail!("Failed to create event source");
+            }
+
+            const APP_MARKER: i64 = 0x5054484B44;
+            const EVENT_USER_DATA_FIELD: u32 = 127;
+
+            if needs_shift {
+                // Send shift down (keycode 56 = left shift)
+                let shift_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, true));
+                CGEventSetIntegerValueField(shift_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_SESSION_EVENT_TAP, shift_down.as_ptr()); // Use session-level posting
+                std::thread::sleep(std::time::Duration::from_millis(20)); // Longer delay
+            }
+
+            // Send key down
+            let key_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
+            CGEventSetIntegerValueField(key_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+            CGEventSetFlags(key_down.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_SESSION_EVENT_TAP, key_down.as_ptr()); // Use session-level posting
+            std::thread::sleep(std::time::Duration::from_millis(20)); // Longer delay
+
+            // Send key up
+            let key_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
+            CGEventSetIntegerValueField(key_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+            CGEventSetFlags(key_up.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
+            CGEventPost(CG_SESSION_EVENT_TAP, key_up.as_ptr()); // Use session-level posting
+            std::thread::sleep(std::time::Duration::from_millis(20)); // Longer delay
+
+            if needs_shift {
+                // Send shift up
+                let shift_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, false));
+                CGEventSetIntegerValueField(shift_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
+                CGEventPost(CG_SESSION_EVENT_TAP, shift_up.as_ptr()); // Use session-level posting
+            }
+        }
+
+        // Longer delay between characters for password field processing
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
     Ok(())

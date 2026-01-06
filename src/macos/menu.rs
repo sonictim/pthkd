@@ -146,7 +146,9 @@ unsafe fn get_menu_item_details(element: AXUIElementRef) -> Result<MenuItem> {
         CFRelease(title_key);
 
         let title = if !title_value.is_null() {
-            cfstring_to_string(title_value).unwrap_or_else(|| String::from("(no title)"))
+            let s = cfstring_to_string(title_value).unwrap_or_else(|| String::from("(no title)"));
+            CFRelease(title_value); // Release the retained title_value!
+            s
         } else {
             String::from("(no title)")
         };
@@ -297,6 +299,7 @@ unsafe fn navigate_to_menu_item(
 
                 if !title_value.is_null() {
                     let title = cfstring_to_string(title_value).unwrap_or_default();
+                    CFRelease(title_value); // Release the retained title!
 
                     if crate::normalize(&title) == crate::normalize(menu_title) {
                         // Found the item!
@@ -457,20 +460,34 @@ pub fn menu_item_run(app_name: &str, menu_path: &[&str]) -> Result<()> {
     // Dispatch to main thread using GCD
     unsafe {
         use std::sync::mpsc;
+        use std::time::Duration;
         let (tx, rx) = mpsc::channel();
 
         super::dispatch_to_main_queue(move || {
             log::info!("🔍 Main queue: Running menu_item_run_impl...");
-            let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
-            let result = menu_item_run_impl(&app_name, &menu_path_refs);
+
+            // Catch panics to prevent wedging the main queue
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let menu_path_refs: Vec<&str> = menu_path.iter().map(|s| s.as_str()).collect();
+                menu_item_run_impl(&app_name, &menu_path_refs)
+            }));
+
+            let final_result = match result {
+                Ok(r) => r,
+                Err(panic_info) => {
+                    log::error!("🔍 Main queue: menu_item_run_impl PANICKED: {:?}", panic_info);
+                    Err(anyhow::anyhow!("Menu operation panicked"))
+                }
+            };
+
             log::info!("🔍 Main queue: menu_item_run_impl completed, sending result...");
-            let _ = tx.send(result);
+            let _ = tx.send(final_result);
         });
 
         log::info!("🔍 menu_item_run: Waiting for result...");
         let result = rx
-            .recv()
-            .map_err(|e| anyhow::anyhow!("Menu operation failed: {}", e))?;
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|e| anyhow::anyhow!("Menu operation timed out or failed: {}. Main thread may be blocked.", e))?;
         log::info!("🔍 menu_item_run: Got result, returning");
         result
     }

@@ -28,15 +28,26 @@ where
 {
     unsafe {
         use std::sync::mpsc;
+        use std::time::Duration;
         let (tx, rx) = mpsc::channel();
 
         super::events::dispatch_to_main_queue(move || {
-            let result = f();
-            let _ = tx.send(result);
+            // Catch panics to prevent wedging the main queue
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f()));
+
+            let final_result = match result {
+                Ok(r) => r,
+                Err(panic_info) => {
+                    log::error!("UI operation PANICKED: {:?}", panic_info);
+                    Err(anyhow::anyhow!("UI operation panicked"))
+                }
+            };
+
+            let _ = tx.send(final_result);
         });
 
-        rx.recv()
-            .map_err(|e| anyhow::anyhow!("UI operation failed: {}", e))?
+        rx.recv_timeout(Duration::from_secs(5))
+            .map_err(|e| anyhow::anyhow!("UI operation timed out: {}. Main thread may be blocked.", e))?
     }
 }
 

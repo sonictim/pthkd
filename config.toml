@@ -324,35 +324,35 @@ close = true
 keys = ["ctrl", "pad_1"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["Altiverb 8", "ValhallaVintageVerb", "ValhallaSuperMassive", "Irid"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_2"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["ValhallaDelay", "Slapper", "GRM Delays"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_4"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["6060 Ultimate MC","Black Box Analog Design HG-2", "Analog Channel AC202"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_5"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["FilterBank F202 EQ", "FabFilter Pro-Q 4", ]
 
 [[hotkey]]
 keys = ["ctrl", "pad_6"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["TRAVELER (Stereo)", "Doppler Effect", "GRM Doppler", "Doppler Stereo" ]
 # button = "Analyze"
 
@@ -361,7 +361,7 @@ plugins = ["TRAVELER (Stereo)", "Doppler Effect", "GRM Doppler", "Doppler Stereo
 keys = ["ctrl", "pad_7"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["Pitch Shift Legacy","Pitch 'n Time Pro", "X-Form", "Vari-Fi"]
 # button = "Analyze"
 
@@ -369,14 +369,14 @@ plugins = ["Pitch Shift Legacy","Pitch 'n Time Pro", "X-Form", "Vari-Fi"]
 keys = ["ctrl", "pad_8"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["MCOMB", "GRM Warp", "Frequency Shifter", "FrqShift" ]
 
 [[hotkey]]
 keys = ["ctrl", "pad_9"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["Tremolator", "Envy", "PitchFunk",  ]
 # button = "Analyze"
 
@@ -384,14 +384,14 @@ plugins = ["Tremolator", "Envy", "PitchFunk",  ]
 keys = ["ctrl", "pad_0"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["Vitamin", "GRM Contrast", "Sugar", "Spectre"]
 
 [[hotkey]]
 keys = ["ctrl", "pad_period"]
 action = "pt.plugins_multitap_selector"
 [hotkey.params]
-timeout = 300
+timeout = 200
 plugins = ["RX 11 Spectral De-noise", "Brusfri", "Hush",  ]
 # button = "Analyze"
 

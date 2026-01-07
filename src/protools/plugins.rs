@@ -5,6 +5,7 @@ use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
 use anyhow::Result;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 actions_async!("pt", plugins, {
@@ -81,56 +82,116 @@ pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> Re
     Ok(())
 }
 
-/// Find the category for a plugin in the AudioSuite menu using the menu cache
-fn find_plugin_category(plugin_name: &str) -> Result<String> {
-    // Get menus from cache (menu_cache handles caching internally)
+// ============================================================================
+// Plugin Map Cache
+// ============================================================================
+
+lazy_static! {
+    /// Cache mapping plugin names to (category, exact_name)
+    static ref PLUGIN_MAP: Arc<Mutex<Option<HashMap<String, (String, String)>>>> =
+        Arc::new(Mutex::new(None));
+}
+
+/// Build the plugin map by traversing the AudioSuite menu tree once
+fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
     let menus = crate::macos::menu_cache::get_menus("Pro Tools", false)?;
 
-    // Find AudioSuite menu
     let audiosuite_menu = menus
         .iter()
         .find(|m| m.title == "AudioSuite")
         .ok_or_else(|| anyhow::anyhow!("AudioSuite menu not found"))?;
 
-    // Search for plugin in the menu structure
-    // Structure is: AudioSuite -> (container) -> Category -> (container) -> Plugin
-    if let Some(children) = &audiosuite_menu.children {
-        for middleman in children {
-            if let Some(categories) = &middleman.children {
-                for category in categories {
-                    if let Some(middleman2_items) = &category.children {
-                        for middleman2 in middleman2_items {
-                            if let Some(plugins) = &middleman2.children {
-                                for plugin in plugins {
-                                    if crate::soft_match(&plugin.title, plugin_name) {
-                                        return Ok(category.title.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    let Some(ref children) = audiosuite_menu.children else {
+        anyhow::bail!("AudioSuite menu has no children");
+    };
+
+    let mut map = HashMap::new();
+
+    // Recursively collect all plugins
+    fn collect_plugins(
+        items: &[crate::menu_item::MenuItem],
+        parent_category: &str,
+        map: &mut HashMap<String, (String, String)>,
+    ) {
+        for item in items {
+            // If we're at the top level (parent_category is empty), this item might be a category
+            let category = if parent_category.is_empty() {
+                &item.title
+            } else {
+                parent_category
+            };
+
+            // Add this item as a potential plugin
+            // Use lowercase key for case-insensitive lookups
+            let key = item.title.to_lowercase();
+            if !map.contains_key(&key) {
+                map.insert(key, (category.to_string(), item.title.clone()));
             }
+
+            // Recursively process children
+            if let Some(ref children) = item.children {
+                collect_plugins(children, category, map);
+            }
+        }
+    }
+
+    collect_plugins(children, "", &mut map);
+
+    Ok(map)
+}
+
+/// Get or build the plugin map
+fn get_plugin_map() -> Result<HashMap<String, (String, String)>> {
+    let mut cache = PLUGIN_MAP.lock().unwrap();
+
+    if cache.is_none() {
+        log::info!("Building AudioSuite plugin map cache...");
+        let map = build_plugin_map()?;
+        log::info!("Plugin map cached with {} entries", map.len());
+        *cache = Some(map);
+    }
+
+    Ok(cache.as_ref().unwrap().clone())
+}
+
+/// Find the category for a plugin in the AudioSuite menu using cached HashMap
+/// Returns (category_name, exact_plugin_name)
+fn find_plugin_category(plugin_name: &str) -> Result<(String, String)> {
+    let map = get_plugin_map()?;
+
+    // Try exact match first (case-insensitive)
+    let key = plugin_name.to_lowercase();
+    if let Some(result) = map.get(&key) {
+        return Ok(result.clone());
+    }
+
+    // Fall back to soft match (partial matching)
+    for (map_key, value) in &map {
+        if crate::soft_match(map_key, plugin_name) {
+            return Ok(value.clone());
         }
     }
 
     anyhow::bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
 }
 
-async fn activate_plugin(plugin_name: &str) -> Result<()> {
-    let window = format!("AudioSuite: {}", plugin_name);
+async fn activate_plugin_internal(category: &str, exact_name: &str) -> Result<()> {
+    let window = format!("AudioSuite: {}", exact_name);
 
     // Check if already open
     if crate::swift_bridge::window_exists("Pro Tools", &window)? {
-        println!("Plugin '{}' window already open", plugin_name);
+        println!("Plugin '{}' window already open", exact_name);
         return Ok(());
     }
 
-    // Find the category using menu cache
-    let category = find_plugin_category(plugin_name)?;
-
-    // Open it
-    crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", &category, plugin_name])?;
+    // Open it - build menu path based on whether there's a category
+    if category.is_empty() {
+        // No category - plugin is at root level
+        crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", exact_name])?;
+    } else {
+        // Has category
+        crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", category, exact_name])?;
+    }
 
     // Wait for window
     if !crate::swift_bridge::wait_for_window(
@@ -145,16 +206,27 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     Ok(())
 }
 
+async fn activate_plugin(plugin_name: &str) -> Result<()> {
+    let (category, exact_name) = find_plugin_category(plugin_name)?;
+    activate_plugin_internal(&category, &exact_name).await
+}
+
 pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> {
-    if !plugin.is_empty() {
-        activate_plugin(plugin).await?;
-    }
+    // Get the exact plugin name from the menu (search once)
+    let exact_name = if !plugin.is_empty() {
+        let (category, exact) = find_plugin_category(plugin)?;
+        activate_plugin_internal(&category, &exact).await?;
+        exact
+    } else {
+        plugin.to_string()
+    };
+
     if !button.is_empty() {
-        let window = format!("AudioSuite: {}", plugin);
+        let window = format!("AudioSuite: {}", exact_name);
         click_button(&window, button).await?;
     }
     if close {
-        let window = format!("AudioSuite: {}", plugin);
+        let window = format!("AudioSuite: {}", exact_name);
         crate::swift_bridge::close_window("Pro Tools", &window, Some(10000))?;
     }
 

@@ -16,38 +16,52 @@ pub fn test_notification(_params: &Params) -> Result<()> {
 
 pub fn test_swift_menus(params: &Params) -> Result<()> {
     let app_name = params.get_string("app", "");
+    let refresh = params.get_bool("refresh", false);
 
     if app_name.is_empty() {
         log::info!("Getting frontmost app menus via Swift...");
     } else {
-        log::info!("Getting menus for '{}' via Swift...", app_name);
+        log::info!(
+            "Getting menus for '{}' via Swift (refresh={})",
+            app_name,
+            refresh
+        );
     }
 
-    let json = crate::swift_bridge::get_app_menus(&app_name)?;
+    let menus = super::menu_cache::get_menus(&app_name, refresh)?;
 
-    println!("=== Menu Structure (from Swift) ===");
-    println!("{}", json);
+    println!("=== Menu Structure ===");
+    crate::menu_item::MenuItem::print_tree(&menus, 0);
 
     log::info!("✅ Swift bridge working!");
 
     Ok(())
 }
 
-pub fn test_swift_menu_click(params: &Params) -> Result<()> {
+pub fn execute_menu_item(params: &Params) -> Result<()> {
     let app_name = params.get_string("app", "");
     let menu_path = params.get_str_vec("menu");
 
     if menu_path.is_empty() {
-        anyhow::bail!("At least one menu parameter (menu1) is required");
+        anyhow::bail!("Menu path is required (e.g., menu = [\"File\", \"Save\"])");
     }
 
     log::info!("Testing Swift menu click: {} -> {:?}", app_name, menu_path);
 
-    crate::swift_bridge::menu_click(&app_name, &menu_path)?;
+    // Convert Vec<String> to Vec<&str>
+    let path_refs: Vec<&str> = menu_path.iter().map(|s| &s[..]).collect();
 
-    log::info!("✅ Menu click succeeded!");
-
-    Ok(())
+    // Use the menu cache to execute
+    match super::menu_cache::execute_menu(&app_name, &path_refs) {
+        Ok(_) => {
+            log::info!("✅ Menu click succeeded!");
+            Ok(())
+        }
+        Err(e) => {
+            log::error!("❌ Menu click failed: {}", e);
+            Err(e)
+        }
+    }
 }
 pub fn test_window(_params: &Params) -> Result<()> {
     log::info!("=== test_window: Dispatching to main queue ===");

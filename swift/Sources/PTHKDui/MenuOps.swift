@@ -32,7 +32,8 @@ class MenuOps {
             displayName = appName
         }
 
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let pid = app.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
 
         // Get menu bar
         var menuBarRef: AnyObject?
@@ -53,7 +54,7 @@ class MenuOps {
         AXUIElementCopyAttributeValue(menuBar, kAXChildrenAttribute as CFString, &childrenRef)
 
         guard let children = childrenRef else {
-            return "{\"app\": \"\(appName)\", \"menus\": []}"
+            return "{\"app\": \"\(displayName)\", \"menus\": []}"
         }
 
         let childrenArray = children as! CFArray
@@ -64,57 +65,28 @@ class MenuOps {
             elementArray.append(element)
         }
 
-        // Build menu structure
-        var menus: [[String: Any]] = []
-        for child in elementArray {
-            if let menuDict = getMenuItemInfo(child) {
-                menus.append(menuDict)
-            }
+        // Build menu structure using MenuItem
+        var menus: [MenuItem] = []
+        for element in elementArray {
+            let menuItem = MenuItem(element: element, pid: pid, path: [])
+            menus.append(menuItem)
         }
+
+        // Encode to JSON
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let menusData = try encoder.encode(menus)
 
         let resultDict: [String: Any] = [
             "app": displayName,
-            "menus": menus
+            "menus": try JSONSerialization.jsonObject(with: menusData) as! [[String: Any]]
         ]
 
         let jsonData = try JSONSerialization.data(withJSONObject: resultDict, options: .prettyPrinted)
         return String(data: jsonData, encoding: .utf8) ?? "{}"
     }
 
-    private static func getMenuItemInfo(_ element: AXUIElement) -> [String: Any]? {
-        var titleRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
-
-        let title = (titleRef as? String) ?? "(no title)"
-
-        var info: [String: Any] = ["title": title]
-
-        // Try to get children (submenu items)
-        var childrenRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-
-        if let childrenCF = childrenRef {
-            let childrenArray = childrenCF as! CFArray
-            let count = CFArrayGetCount(childrenArray)
-            if count > 0 {
-                var childMenus: [[String: Any]] = []
-                let limit = min(count, 5)  // Limit to first 5 for POC
-                for i in 0..<limit {
-                    let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenArray, i), to: AXUIElement.self)
-                    if let childInfo = getMenuItemInfo(child) {
-                        childMenus.append(childInfo)
-                    }
-                }
-                if !childMenus.isEmpty {
-                    info["children"] = childMenus
-                }
-            }
-        }
-
-        return info
-    }
-
-    // Click a menu item by traversing the menu path
+    // Click a menu item using keyboard shortcut if available, or direct AXUIElement action
     static func menuClick(appName: String, menuPath: [String]) throws {
         guard !menuPath.isEmpty else {
             throw MenuError.emptyMenuPath
@@ -123,13 +95,11 @@ class MenuOps {
         let app: NSRunningApplication
 
         if appName.isEmpty {
-            // Get frontmost app
             guard let frontmost = NSWorkspace.shared.frontmostApplication else {
                 throw MenuError.noFrontmostApp
             }
             app = frontmost
         } else {
-            // Find app by name
             let runningApps = NSWorkspace.shared.runningApplications
             guard let foundApp = runningApps.first(where: { $0.localizedName == appName }) else {
                 throw MenuError.appNotFound(appName)
@@ -137,93 +107,117 @@ class MenuOps {
             app = foundApp
         }
 
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let pid = app.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
 
         // Get menu bar
         var menuBarRef: AnyObject?
-        let result = AXUIElementCopyAttributeValue(
-            appElement,
-            kAXMenuBarAttribute as CFString,
-            &menuBarRef
-        )
-
-        guard result == .success, menuBarRef != nil else {
+        guard AXUIElementCopyAttributeValue(appElement, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+              menuBarRef != nil else {
             throw MenuError.menuBarNotFound
         }
 
         let menuBar = menuBarRef as! AXUIElement
 
-        // Get top-level menu items
-        var childrenRef: AnyObject?
-        AXUIElementCopyAttributeValue(menuBar, kAXChildrenAttribute as CFString, &childrenRef)
-
-        guard let children = childrenRef else {
-            throw MenuError.menuItemNotFound(menuPath[0])
-        }
-
-        let childrenArray = children as! CFArray
-        let count = CFArrayGetCount(childrenArray)
-        var elementArray: [AXUIElement] = []
-        for i in 0..<count {
-            let element = unsafeBitCast(CFArrayGetValueAtIndex(childrenArray, i), to: AXUIElement.self)
-            elementArray.append(element)
-        }
-
-        // Start traversing from the top level
-        var currentElement: AXUIElement?
-
+        // Traverse to find the menu item
+        var currentElement: AXUIElement = menuBar
         for (index, menuTitle) in menuPath.enumerated() {
-            let searchIn = currentElement == nil ? elementArray : getChildren(of: currentElement!)
-
-            // Find menu item by title
-            var found: AXUIElement?
-            for element in searchIn {
-                var titleRef: AnyObject?
-                AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
-                let title = (titleRef as? String) ?? ""
-
-                if title == menuTitle {
-                    found = element
-                    break
-                }
-            }
-
-            guard let menuItem = found else {
+            guard let found = findChildByTitle(currentElement, title: menuTitle) else {
                 throw MenuError.menuItemNotFound(menuTitle)
             }
 
-            // If this is the last item in the path, click it
+            // If this is the last item in the path, execute it
             if index == menuPath.count - 1 {
-                let pressResult = AXUIElementPerformAction(menuItem, kAXPressAction as CFString)
-                guard pressResult == .success else {
-                    throw MenuError.menuClickFailed
-                }
+                try executeMenuItem(found, appName: app.localizedName ?? appName)
                 return
             }
 
-            // Otherwise, continue traversing
-            currentElement = menuItem
+            currentElement = found
         }
     }
 
-    // Helper to get children of an element
-    private static func getChildren(of element: AXUIElement) -> [AXUIElement] {
+    /// Execute a menu item using AXPress (direct execution, no UI interaction)
+    private static func executeMenuItem(_ element: AXUIElement, appName: String) throws {
+        // Try AXPress (most common and fastest)
+        var pressResult = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        if pressResult == .success {
+            return
+        }
+
+        // Try AXPick as fallback (some apps use this)
+        pressResult = AXUIElementPerformAction(element, kAXPickAction as CFString)
+        if pressResult == .success {
+            return
+        }
+
+        // If both failed, log what actions are available for debugging
+        var actionsRef: CFArray?
+        if AXUIElementCopyActionNames(element, &actionsRef) == .success, let actionsCF = actionsRef {
+            let count = CFArrayGetCount(actionsCF)
+            NSLog("Menu item execute failed. Available actions (\(count)):")
+            for i in 0..<count {
+                let action = unsafeBitCast(CFArrayGetValueAtIndex(actionsCF, i), to: CFString.self) as String
+                NSLog("  \(action)")
+            }
+        }
+
+        throw MenuError.menuClickFailed
+    }
+
+    /// Find a child element by title, skipping through "(no title)" container layers
+    private static func findChildByTitle(_ element: AXUIElement, title: String) -> AXUIElement? {
         var childrenRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-
-        guard let childrenCF = childrenRef else {
-            return []
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              childrenRef != nil else {
+            return nil
         }
 
-        let childrenArray = childrenCF as! CFArray
-        let count = CFArrayGetCount(childrenArray)
-        var result: [AXUIElement] = []
+        let childrenCF = childrenRef as! CFArray
+        let count = CFArrayGetCount(childrenCF)
 
+        // Special case: if there's only one child with no title, it's likely the AXMenu container
+        // Skip through it to get the actual menu items
+        if count == 1 {
+            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, 0), to: AXUIElement.self)
+            var titleRef: AnyObject?
+            AXUIElementCopyAttributeValue(child, kAXTitleAttribute as CFString, &titleRef)
+            let childTitle = (titleRef as? String) ?? ""
+
+            if childTitle.isEmpty || childTitle == "(no title)" {
+                NSLog("Skipping container layer, searching in its children")
+                // Search in the container's children instead
+                var containerChildrenRef: AnyObject?
+                if AXUIElementCopyAttributeValue(child, kAXChildrenAttribute as CFString, &containerChildrenRef) == .success,
+                   containerChildrenRef != nil {
+                    let containerChildrenCF = containerChildrenRef as! CFArray
+                    let containerCount = CFArrayGetCount(containerChildrenCF)
+
+                    for i in 0..<containerCount {
+                        let grandchild = unsafeBitCast(CFArrayGetValueAtIndex(containerChildrenCF, i), to: AXUIElement.self)
+                        var grandchildTitleRef: AnyObject?
+                        if AXUIElementCopyAttributeValue(grandchild, kAXTitleAttribute as CFString, &grandchildTitleRef) == .success,
+                           let grandchildTitle = grandchildTitleRef as? String,
+                           grandchildTitle == title {
+                            return grandchild
+                        }
+                    }
+                }
+                return nil
+            }
+        }
+
+        // Normal case: search in direct children
         for i in 0..<count {
-            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenArray, i), to: AXUIElement.self)
-            result.append(child)
+            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
+
+            var titleRef: AnyObject?
+            if AXUIElementCopyAttributeValue(child, kAXTitleAttribute as CFString, &titleRef) == .success,
+               let childTitle = titleRef as? String,
+               childTitle == title {
+                return child
+            }
         }
 
-        return result
+        return nil
     }
 }

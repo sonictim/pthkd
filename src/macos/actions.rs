@@ -7,7 +7,7 @@ use crate::actions_sync;
 actions_sync!("os", {
     test_notification,
     test_swift_menus,
-    test_swift_menu_click,
+    execute_menu_item,
     test_app_info,
     reload_config,
     dump_app_menus,

@@ -45,7 +45,7 @@ pub(crate) async fn keystroke(keys: &[&str]) -> Result<()> {
     Ok(())
 }
 pub(crate) async fn call_menu(menu: &[&str]) -> Result<()> {
-    crate::macos::menu::menu_item_run("Pro Tools", menu)?;
+    crate::macos::menu_cache::execute_menu("Pro Tools", menu)?;
     std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }

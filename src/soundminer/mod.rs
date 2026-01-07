@@ -12,7 +12,7 @@ fn keystroke(keys: &[&str]) -> Result<()> {
 }
 
 fn menu(menu: &[&str]) -> Result<()> {
-    crate::macos::menu::menu_item_run("Soundminer_Intel", menu)?;
+    crate::macos::menu_cache::execute_menu("Soundminer_Intel", menu)?;
     // std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }

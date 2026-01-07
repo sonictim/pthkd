@@ -158,7 +158,8 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     }
 
     // Open it
-    call_menu(&["AudioSuite", &category, plugin_name]).await?;
+    crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", &category, plugin_name])?;
+    // call_menu(&["AudioSuite", &category, plugin_name]).await?;
 
     // Wait for window
     crate::macos::ui_elements::wait_for_window_exists("Pro Tools", &window, 5000)?;

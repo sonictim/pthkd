@@ -89,11 +89,10 @@ action = "os.list_running_apps"
 
 [[hotkey]]
 keys = ["cmd", "shift", "k"]
-action = "os.execute_menu_item"
-notify = true
+action = "pt.plugins_audiosuite"
+target_application = "Pro Tools"
 [hotkey.params]
-app = "Soundminer_Intel"
-menu = ["Transfer", "Spot To DAW"]
+button = "Analyze"
 
 
 #
@@ -355,7 +354,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 300
 plugins = ["TRAVELER (Stereo)", "Doppler Effect", "GRM Doppler", "Doppler Stereo" ]
-button = "Analyze"
+# button = "Analyze"
 
 
 [[hotkey]]
@@ -364,7 +363,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 300
 plugins = ["Pitch Shift Legacy","Pitch 'n Time Pro", "X-Form", "Vari-Fi"]
-button = "Analyze"
+# button = "Analyze"
 
 [[hotkey]]
 keys = ["ctrl", "pad_8"]
@@ -379,7 +378,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 300
 plugins = ["Tremolator", "Envy", "PitchFunk",  ]
-button = "Analyze"
+# button = "Analyze"
 
 [[hotkey]]
 keys = ["ctrl", "pad_0"]
@@ -394,7 +393,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 300
 plugins = ["RX 11 Spectral De-noise", "Brusfri", "Hush",  ]
-button = "Analyze"
+# button = "Analyze"
 
 # ============================================================================
 # Marker Navigation with Parameters

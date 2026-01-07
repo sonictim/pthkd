@@ -68,16 +68,8 @@ where
 /// // Returns: ["Preview", "Render", "Cancel"]
 /// ```
 pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<String>> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                find_buttons_in_element(window)
-            })
-        })
-    }
+    // Use Swift bridge instead of direct AX API to avoid crashes
+    crate::swift_bridge::get_window_buttons(app_name, window_name)
 }
 
 /// Click a button in a window
@@ -96,70 +88,46 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 /// click_button("Pro Tools", "AudioSuite: Reverb", "OK")?;
 /// ```
 pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-    let button_name = button_name.to_string();
+    // Use Swift bridge instead of direct AX API to avoid crashes
+    crate::swift_bridge::click_button(app_name, window_name, button_name)?;
 
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                use super::session::MacOSSession;
+    log::info!(
+        "✅ Clicked button '{}' in window '{}' of app '{}'",
+        button_name,
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            window_name
+        },
+        if app_name.is_empty() {
+            "<frontmost>"
+        } else {
+            app_name
+        }
+    );
 
-                // Find the button
-                let button_element = find_button_in_window(window, &button_name)?;
-
-                // Click it using building block
-                let os = MacOSSession::global();
-                if let Err(e) = os.perform_ax_action(button_element, "AXPress") {
-                    CFRelease(button_element);
-                    return Err(e);
-                }
-
-                CFRelease(button_element);
-
-                log::info!(
-                    "✅ Clicked button '{}' in window '{}'",
-                    button_name,
-                    if window_name.is_empty() {
-                        "<focused>"
-                    } else {
-                        &window_name
-                    }
-                );
-
-                Ok(())
-            })
-        })
-    }
+    Ok(())
 }
 pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-    let checkbox_name = checkbox_name.to_string();
+    // Use Swift bridge instead of direct AX API to avoid crashes
+    crate::swift_bridge::click_checkbox(app_name, window_name, checkbox_name)?;
 
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                use super::session::MacOSSession;
+    log::info!(
+        "✅ Clicked checkbox '{}' in window '{}' of app '{}'",
+        checkbox_name,
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            window_name
+        },
+        if app_name.is_empty() {
+            "<frontmost>"
+        } else {
+            app_name
+        }
+    );
 
-                // Find the checkbox
-                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
-
-                println!("Found checkbox '{}', attempting to click...", checkbox_name);
-
-                // Toggle it (same AXPress action as buttons)
-                let os = MacOSSession::global();
-                if let Err(e) = os.perform_ax_action(checkbox_element, "AXPress") {
-                    CFRelease(checkbox_element);
-                    return Err(e);
-                }
-
-                CFRelease(checkbox_element);
-                println!("✅ Clicked checkbox '{}'", checkbox_name);
-                Ok(())
-            })
-        })
-    }
+    Ok(())
 }
 
 /// Check a checkbox (set to checked state)
@@ -480,85 +448,13 @@ pub(crate) unsafe fn find_window_by_name(
     }
 }
 
-/// Find all buttons in a UI element (recursive)
-unsafe fn find_buttons_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        let mut buttons = Vec::new();
-
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
-            && role == "AXButton"
-            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
-            && !title.is_empty()
-        {
-            buttons.push(title);
-        }
-
-        // Recursively search children
-        if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-                if let Ok(mut child_buttons) = find_buttons_in_element(child) {
-                    buttons.append(&mut child_buttons);
-                }
-            }
-        }
-
-        Ok(buttons)
-    }
-}
-
-/// Find a button in a window by name (soft matched)
-unsafe fn find_button_in_window(
-    window: AXUIElementRef,
-    button_name: &str,
-) -> Result<AXUIElementRef> {
-    unsafe {
-        find_button_in_element(window, button_name)
-            .with_context(|| format!("Button '{}' not found in window", button_name))
-    }
-}
-
-/// Recursively find a button by name
-unsafe fn find_button_in_element(
-    element: AXUIElementRef,
-    button_name: &str,
-) -> Result<AXUIElementRef> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        // Check if this element is a button with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
-            && role == "AXButton"
-            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
-            && crate::soft_match(&title, button_name)
-        {
-            // Found it! Retain before returning so caller owns it
-            CFRetain(element);
-            return Ok(element);
-        }
-
-        // Search children recursively
-        if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-                if let Ok(button) = find_button_in_element(child, button_name) {
-                    // button is already retained by the recursive call
-                    return Ok(button);
-                }
-            }
-        }
-
-        bail!("Button not found")
-    }
-}
+// Old button finding functions removed - now using Swift bridge via:
+// - crate::swift_bridge::click_button()
+// - crate::swift_bridge::click_checkbox()
+// - crate::swift_bridge::get_window_buttons()
+//
+// Note: checkbox finding functions below are still used by check_box/uncheck_box
+// which set specific values (not just click/toggle)
 
 /// Find a checkbox in a window by name (soft matched)
 unsafe fn find_checkbox_in_window(

@@ -5,7 +5,6 @@ use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
 use anyhow::Result;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 actions_async!("pt", plugins, {
@@ -82,73 +81,43 @@ pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> Re
     Ok(())
 }
 
-lazy_static! {
-    static ref PLUGIN_MAP: Arc<Mutex<Option<HashMap<String, String>>>> = Arc::new(Mutex::new(None));
-}
-async fn get_audiosuite_map() -> Result<HashMap<String, String>> {
-    let menu_bar = crate::macos::menu::get_app_menus("Pro Tools")?;
-    let audiosuite_menu = menu_bar
-        .menus
+/// Find the category for a plugin in the AudioSuite menu using the menu cache
+fn find_plugin_category(plugin_name: &str) -> Result<String> {
+    // Get menus from cache (menu_cache handles caching internally)
+    let menus = crate::macos::menu_cache::get_menus("Pro Tools", false)?;
+
+    // Find AudioSuite menu
+    let audiosuite_menu = menus
         .iter()
         .find(|m| m.title == "AudioSuite")
         .ok_or_else(|| anyhow::anyhow!("AudioSuite menu not found"))?;
-    let mut map = HashMap::new();
 
-    for middleman in &audiosuite_menu.children {
-        for category in &middleman.children {
-            for middleman2 in &category.children {
-                for plugin in &middleman2.children {
-                    if !map.contains_key(&plugin.title) {
-                        map.insert(plugin.title.clone(), category.title.clone());
+    // Search for plugin in the menu structure
+    // Structure is: AudioSuite -> (container) -> Category -> (container) -> Plugin
+    if let Some(children) = &audiosuite_menu.children {
+        for middleman in children {
+            if let Some(categories) = &middleman.children {
+                for category in categories {
+                    if let Some(middleman2_items) = &category.children {
+                        for middleman2 in middleman2_items {
+                            if let Some(plugins) = &middleman2.children {
+                                for plugin in plugins {
+                                    if crate::soft_match(&plugin.title, plugin_name) {
+                                        return Ok(category.title.clone());
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-    Ok(map)
-}
 
-fn plugin_map_soft_search(key: &str, map: &HashMap<String, String>) -> Option<String> {
-    if map.contains_key(key) {
-        return map.get(key).cloned();
-    }
-    for k in map.keys() {
-        if crate::soft_match(k, key) {
-            return map.get(k).cloned();
-        }
-    }
-    None
+    anyhow::bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
 }
 
 async fn activate_plugin(plugin_name: &str) -> Result<()> {
-    // Check if we need to build the map
-    let needs_build = {
-        let map = PLUGIN_MAP.lock().unwrap();
-        map.is_none()
-    }; // lock dropped here
-
-    if needs_build {
-        let new_map = get_audiosuite_map().await?;
-        let mut map = PLUGIN_MAP.lock().unwrap();
-        if map.is_none() {
-            // double-check in case another thread built it
-            *map = Some(new_map);
-        }
-    }
-
-    // Now get the category we need
-    let category = {
-        let map = PLUGIN_MAP.lock().unwrap();
-        let Some(ref map_data) = *map else {
-            anyhow::bail!("Failed to load plugin map");
-        };
-        plugin_map_soft_search(plugin_name, map_data)
-    }; // lock dropped here
-
-    let Some(category) = category else {
-        anyhow::bail!("Plugin '{}' not found in AudioSuite menu", plugin_name);
-    };
-
     let window = format!("AudioSuite: {}", plugin_name);
 
     // Check if already open
@@ -157,9 +126,11 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
         return Ok(());
     }
 
+    // Find the category using menu cache
+    let category = find_plugin_category(plugin_name)?;
+
     // Open it
     crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", &category, plugin_name])?;
-    // call_menu(&["AudioSuite", &category, plugin_name]).await?;
 
     // Wait for window
     crate::macos::ui_elements::wait_for_window_exists("Pro Tools", &window, 5000)?;
@@ -194,17 +165,18 @@ pub async fn plugin_selector(
 ) -> Result<()> {
     let plugins = plugins.to_vec(); // Clone for closure
     let mut counter = PLUGIN_COUNTER.lock().unwrap();
-    let close = Box::new(close);
     log::info!("plugin_selector called with {} plugins", plugins.len());
-    counter.press(timeout_ms, plugins.len() as u32, |idx| async move {
+
+    // Move button, plugins, and close directly into the closure
+    counter.press(timeout_ms, plugins.len() as u32, move |idx| async move {
         log::info!(
             "Callback executing with idx={}, plugins.len()={}",
             idx,
             plugins.len()
         );
         if let Some(plugin) = plugins.get(idx as usize) {
-            log::info!("Opening plugin: {}", plugin);
-            call_plugin(plugin, &button, *close).await.ok();
+            log::info!("Opening plugin: {} with button: '{}'", plugin, button);
+            call_plugin(plugin, &button, close).await.ok();
         } else {
             log::error!("No plugin found at index {}", idx);
         }

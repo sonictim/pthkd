@@ -30,6 +30,7 @@ class WindowOps {
             guard pickResult == .success else {
                 throw WindowError.clickFailed
             }
+            return
         }
     }
 

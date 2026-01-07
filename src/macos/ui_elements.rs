@@ -389,32 +389,7 @@ pub(crate) unsafe fn get_focused_window(app_element: AXUIElementRef) -> Result<A
 /// // (2 windows with same title means render dialog is open)
 /// ```
 pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        let pid = get_pid_by_name(app_name)?;
-        let app_element = AXUIElementCreateApplication(pid);
-
-        // Get all windows using building block
-        let windows_value = os.get_ax_element_attr(app_element, "AXWindows");
-        CFRelease(app_element);
-
-        let windows_value = windows_value?;
-        let windows = CFArray::new(windows_value);
-        let mut titles = Vec::new();
-
-        // Collect all window titles
-        for i in 0..windows.count() {
-            let window = windows.get(i) as AXUIElementRef;
-
-            if let Ok(title) = os.get_ax_string_attr(window, "AXTitle") {
-                titles.push(title);
-            }
-        }
-
-        Ok(titles)
-    }
+    crate::swift_bridge::get_window_titles(app_name)
 }
 
 /// Find a window by name using soft matching
@@ -510,32 +485,18 @@ unsafe fn find_checkbox_in_element(
 /// # Returns
 /// Ok(true) if window exists, Ok(false) if not found
 pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, _window| Ok(true))
-                .or(Ok(false))
-        })
-    }
+    crate::swift_bridge::window_exists(app_name, window_name)
 }
 
 /// Wait for a window to appear
 ///
-/// Polls every 100ms until window is found or timeout is reached
+/// Polls every 50ms until window is found or timeout is reached
 ///
 /// # Arguments
 /// * `app_name` - Name of the application
 /// * `window_name` - Name of window to wait for (soft matched)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
 pub fn wait_for_window_exists(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
-    use std::time::{Duration, Instant};
-
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let poll_interval = Duration::from_millis(100);
-
     log::info!(
         "Waiting for window '{}' in '{}' (timeout: {}ms)",
         window_name,
@@ -543,21 +504,20 @@ pub fn wait_for_window_exists(app_name: &str, window_name: &str, timeout_ms: u64
         timeout_ms
     );
 
-    loop {
-        if window_exists(app_name, window_name)? {
-            log::info!("✅ Window '{}' appeared", window_name);
-            return Ok(());
-        }
-
-        if start.elapsed() >= timeout {
-            bail!(
-                "Timeout waiting for window '{}' ({}ms)",
-                window_name,
-                timeout_ms
-            );
-        }
-
-        std::thread::sleep(poll_interval);
+    if crate::swift_bridge::wait_for_window(
+        app_name,
+        window_name,
+        crate::swift_bridge::WindowCondition::Exists,
+        timeout_ms as i32,
+    )? {
+        log::info!("✅ Window '{}' appeared", window_name);
+        Ok(())
+    } else {
+        bail!(
+            "Timeout waiting for window '{}' ({}ms)",
+            window_name,
+            timeout_ms
+        )
     }
 }
 
@@ -570,16 +530,6 @@ pub fn wait_for_window_exists(app_name: &str, window_name: &str, timeout_ms: u64
 /// * `window_name` - Name of window to wait for to disappear (soft matched)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
 pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
-    use std::time::{Duration, Instant};
-
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let poll_interval = Duration::from_millis(50);
-
-    println!(
-        "⏳ Waiting for window '{}' in '{}' to close (timeout: {}ms)",
-        window_name, app_name, timeout_ms
-    );
     log::info!(
         "Waiting for window '{}' in '{}' to close (timeout: {}ms)",
         window_name,
@@ -587,35 +537,20 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
         timeout_ms
     );
 
-    loop {
-        // Check if window still exists
-        let exists = window_exists(app_name, window_name)?;
-        println!(
-            "🔍 Checking if window '{}' in '{}' still exists: {}",
-            window_name, app_name, exists
-        );
-
-        if !exists {
-            println!("✅ Window '{}' has closed", window_name);
-            log::info!("✅ Window '{}' has closed", window_name);
-            return Ok(());
-        } else {
-            println!("⏳ Window '{}' still exists, waiting...", window_name);
-        }
-
-        if start.elapsed() >= timeout {
-            println!(
-                "❌ Timeout waiting for window '{}' to close ({}ms)",
-                window_name, timeout_ms
-            );
-            bail!(
-                "Timeout waiting for window '{}' to close ({}ms)",
-                window_name,
-                timeout_ms
-            );
-        }
-
-        std::thread::sleep(poll_interval);
+    if crate::swift_bridge::wait_for_window(
+        app_name,
+        window_name,
+        crate::swift_bridge::WindowCondition::Closed,
+        timeout_ms as i32,
+    )? {
+        log::info!("✅ Window '{}' has closed", window_name);
+        Ok(())
+    } else {
+        bail!(
+            "Timeout waiting for window '{}' to close ({}ms)",
+            window_name,
+            timeout_ms
+        )
     }
 }
 
@@ -629,12 +564,6 @@ pub fn wait_for_window_closed(app_name: &str, window_name: &str, timeout_ms: u64
 ///   If empty string, just waits for the app to be focused (any window)
 /// * `timeout_ms` - Maximum time to wait in milliseconds
 pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
-    use std::time::{Duration, Instant};
-
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-    let poll_interval = Duration::from_millis(50);
-
     if window_name.is_empty() {
         log::info!(
             "Waiting for '{}' to be focused (timeout: {}ms)",
@@ -650,121 +579,46 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
         );
     }
 
-    // Try to focus the application first
-    println!("🎯 Attempting to focus '{}'...", app_name);
-    if let Err(e) = crate::macos::app_info::focus_application(app_name) {
-        println!("⚠️  Failed to focus app: {}", e);
-        log::warn!("Failed to focus app '{}': {}", app_name, e);
-    }
-
-    loop {
-        // Sleep first, then check
-        std::thread::sleep(poll_interval);
-
-        // Check if the specified app is the current app
-        if let Ok(current_app) = crate::macos::app_info::get_current_app() {
-            println!(
-                "🔍 Current app: '{}', looking for: '{}'",
-                current_app, app_name
-            );
-            log::debug!(
-                "Current app: '{}', looking for: '{}'",
-                current_app,
-                app_name
-            );
-
-            if crate::soft_match(&current_app, app_name) {
-                println!("✅ App matches!");
-                // App is focused
-                if window_name.is_empty() {
-                    // If no specific window requested, just app focus is enough
-                    println!(
-                        "✅ '{}' is now focused (no specific window required)",
-                        app_name
-                    );
-                    log::info!("✅ '{}' is now focused", app_name);
-                    return Ok(());
-                }
-
-                // Check if the right window is focused
-                if let Ok(current_window) = crate::macos::app_info::get_app_window() {
-                    println!(
-                        "🔍 Current window: '{}', looking for: '{}'",
-                        current_window, window_name
-                    );
-                    log::debug!(
-                        "Current window: '{}', looking for: '{}'",
-                        current_window,
-                        window_name
-                    );
-                    if crate::soft_match(&current_window, window_name) {
-                        println!("✅ Window '{}' is now focused", window_name);
-                        log::info!("✅ Window '{}' is now focused", window_name);
-                        return Ok(());
-                    } else {
-                        println!("❌ Window doesn't match");
-                    }
-                } else {
-                    println!("❌ Failed to get current window title");
-                    log::debug!("Failed to get current window title");
-                }
-            } else {
-                println!("❌ App doesn't match");
-            }
+    if crate::swift_bridge::wait_for_window(
+        app_name,
+        window_name,
+        crate::swift_bridge::WindowCondition::Focused,
+        timeout_ms as i32,
+    )? {
+        if window_name.is_empty() {
+            log::info!("✅ '{}' is now focused", app_name);
         } else {
-            println!("❌ Failed to get current app");
-            log::debug!("Failed to get current app");
+            log::info!("✅ Window '{}' is now focused", window_name);
         }
-
-        if start.elapsed() >= timeout {
-            if window_name.is_empty() {
-                bail!(
-                    "Timeout waiting for '{}' to be focused ({}ms)",
-                    app_name,
-                    timeout_ms
-                );
-            } else {
-                bail!(
-                    "Timeout waiting for window '{}' to be focused ({}ms)",
-                    window_name,
-                    timeout_ms
-                );
-            }
+        Ok(())
+    } else {
+        if window_name.is_empty() {
+            bail!(
+                "Timeout waiting for '{}' to be focused ({}ms)",
+                app_name,
+                timeout_ms
+            )
+        } else {
+            bail!(
+                "Timeout waiting for window '{}' to be focused ({}ms)",
+                window_name,
+                timeout_ms
+            )
         }
     }
 }
 
 pub fn close_window(app_name: &str, window_name: &str) -> Result<()> {
-    unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            use super::session::MacOSSession;
-            let os = MacOSSession::global();
-
-            // Get the close button (standard AXCloseButton) using building block
-            let close_button = os
-                .get_ax_element_attr(window, "AXCloseButton")
-                .context("Window does not have a close button")?;
-
-            // Click the close button using building block
-            let result = os.perform_ax_action(close_button, "AXPress");
-            CFRelease(close_button);
-
-            if result.is_err() {
-                bail!("Failed to click close button");
-            }
-
-            log::info!(
-                "✅ Closed window '{}'",
-                if window_name.is_empty() {
-                    "<focused>"
-                } else {
-                    window_name
-                }
-            );
-
-            Ok(())
-        })
-    }
+    crate::swift_bridge::close_window(app_name, window_name, None)?;
+    log::info!(
+        "✅ Closed window '{}'",
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            window_name
+        }
+    );
+    Ok(())
 }
 /// Close a window with retry - keeps trying until window disappears
 ///
@@ -772,32 +626,9 @@ pub fn close_window(app_name: &str, window_name: &str) -> Result<()> {
 /// Retries every 500ms until window is gone or timeout reached
 /// Close window with retry - keeps trying until window is gone
 pub fn close_window_with_retry(app_name: &str, window_name: &str, timeout_ms: u64) -> Result<()> {
-    use std::time::{Duration, Instant};
-
-    let start = Instant::now();
-    let timeout = Duration::from_millis(timeout_ms);
-
-    loop {
-        // Check if already closed
-        if !window_exists(app_name, window_name)? {
-            log::info!("✅ Window '{}' closed", window_name);
-            return Ok(());
-        }
-
-        // Try to close it
-        close_window(app_name, window_name).ok(); // Ignore errors, will retry
-
-        // Wait a bit before checking again
-        std::thread::sleep(Duration::from_millis(100));
-
-        if start.elapsed() >= timeout {
-            bail!(
-                "Timeout trying to close window '{}' ({}ms)",
-                window_name,
-                timeout_ms
-            );
-        }
-    }
+    crate::swift_bridge::close_window(app_name, window_name, Some(timeout_ms as i32))?;
+    log::info!("✅ Window '{}' closed", window_name);
+    Ok(())
 }
 
 /// Get all text content from a window

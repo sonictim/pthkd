@@ -8,6 +8,14 @@ enum WindowError: Error {
     case buttonNotFound(String)
     case checkboxNotFound(String)
     case clickFailed
+    case closeFailed
+    case timeout
+}
+
+enum WindowCondition {
+    case exists
+    case closed
+    case focused
 }
 
 class WindowOps {
@@ -198,5 +206,157 @@ class WindowOps {
         let normalizedHaystack = haystack.lowercased().filter { !$0.isWhitespace }
         let normalizedNeedle = needle.lowercased().filter { !$0.isWhitespace }
         return normalizedHaystack == normalizedNeedle || normalizedHaystack.contains(normalizedNeedle)
+    }
+
+    // MARK: - Consolidated Window Operations
+
+    /// Check if a window exists
+    static func windowExists(appName: String, windowName: String) -> Bool {
+        do {
+            let app = try getApp(appName: appName)
+            _ = try getWindow(app: app, windowName: windowName)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Get all window titles for an application
+    static func getWindowTitles(appName: String) -> [String] {
+        guard let app = (appName.isEmpty
+            ? NSWorkspace.shared.frontmostApplication
+            : NSWorkspace.shared.runningApplications.first {
+                softMatch($0.localizedName ?? "", appName)
+            })
+        else {
+            return []
+        }
+
+        let pid = app.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+
+        var windowsRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              windowsRef != nil else {
+            return []
+        }
+
+        let windowsCF = windowsRef as! CFArray
+        let count = CFArrayGetCount(windowsCF)
+        var titles: [String] = []
+
+        for i in 0..<count {
+            let window = unsafeBitCast(CFArrayGetValueAtIndex(windowsCF, i), to: AXUIElement.self)
+            var titleRef: AnyObject?
+            if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
+               let title = titleRef as? String {
+                titles.append(title)
+            }
+        }
+
+        return titles
+    }
+
+    /// Wait for a window to meet a specific condition
+    /// - Parameters:
+    ///   - appName: Name of the app (empty for frontmost)
+    ///   - windowName: Name of the window (empty for frontmost)
+    ///   - condition: Condition to wait for
+    ///   - timeout: Maximum time to wait in milliseconds
+    /// - Returns: true if condition was met, false if timeout
+    static func waitForWindow(
+        appName: String,
+        windowName: String,
+        condition: WindowCondition,
+        timeout: Int
+    ) -> Bool {
+        let startTime = Date()
+        let timeoutSeconds = Double(timeout) / 1000.0
+        let pollInterval = 0.05  // 50ms
+
+        while Date().timeIntervalSince(startTime) < timeoutSeconds {
+            let conditionMet: Bool
+
+            switch condition {
+            case .exists:
+                conditionMet = windowExists(appName: appName, windowName: windowName)
+
+            case .closed:
+                conditionMet = !windowExists(appName: appName, windowName: windowName)
+
+            case .focused:
+                if let info = try? AppOps.getFrontmostInfo() {
+                    let appMatches = appName.isEmpty || softMatch(info.appName, appName)
+                    let windowMatches = windowName.isEmpty || softMatch(info.windowName, windowName)
+                    conditionMet = appMatches && windowMatches
+                } else {
+                    conditionMet = false
+                }
+            }
+
+            if conditionMet {
+                return true
+            }
+
+            Thread.sleep(forTimeInterval: pollInterval)
+        }
+
+        return false
+    }
+
+    /// Close a window
+    /// - Parameters:
+    ///   - appName: Name of the app (empty for frontmost)
+    ///   - windowName: Name of the window (empty for frontmost)
+    ///   - retryTimeout: If provided, retry closing until window is gone or timeout (in milliseconds)
+    static func closeWindow(appName: String, windowName: String, retryTimeout: Int?) throws {
+        let closeOnce = {
+            let app = try self.getApp(appName: appName)
+            let window = try self.getWindow(app: app, windowName: windowName)
+
+            // Get close button
+            var closeButtonRef: AnyObject?
+            guard AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &closeButtonRef) == .success,
+                  closeButtonRef != nil else {
+                throw WindowError.closeFailed
+            }
+
+            let closeButton = closeButtonRef as! AXUIElement
+            let result = AXUIElementPerformAction(closeButton, kAXPressAction as CFString)
+
+            guard result == .success else {
+                throw WindowError.closeFailed
+            }
+        }
+
+        // If no retry, just close once
+        guard let timeout = retryTimeout else {
+            try closeOnce()
+            return
+        }
+
+        // Retry until closed or timeout
+        let startTime = Date()
+        let timeoutSeconds = Double(timeout) / 1000.0
+
+        while Date().timeIntervalSince(startTime) < timeoutSeconds {
+            // Check if already closed
+            if !windowExists(appName: appName, windowName: windowName) {
+                return
+            }
+
+            // Try to close
+            try? closeOnce()
+
+            // Wait a bit
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        // Final check
+        if !windowExists(appName: appName, windowName: windowName) {
+            return
+        }
+
+        throw WindowError.timeout
     }
 }

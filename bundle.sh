@@ -286,7 +286,7 @@ fi
 # Copy new version
 echo "   Copying to /Applications..."
 cp -r "$APP_PATH" /Applications/
-
+# cp -r target/universal/release/pthkd.app /Applications/
 echo "   ✓ Installed to $INSTALL_PATH"
 
 # Final summary

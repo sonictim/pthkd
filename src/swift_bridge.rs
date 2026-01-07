@@ -32,6 +32,33 @@ unsafe extern "C" {
         window_name: *const c_char,
     ) -> *const c_char;
     fn pthkd_free_string(ptr: *const c_char);
+
+    // App operations
+    fn pthkd_get_frontmost_info() -> *const c_char;
+    fn pthkd_get_running_apps() -> *const c_char;
+    fn pthkd_focus_app(
+        app_name: *const c_char,
+        window_name: *const c_char,
+        should_switch: bool,
+        should_launch: bool,
+        timeout: i32,
+    ) -> bool;
+    fn pthkd_launch_app(app_name: *const c_char) -> bool;
+
+    // Window operations
+    fn pthkd_window_exists(app_name: *const c_char, window_name: *const c_char) -> bool;
+    fn pthkd_get_window_titles(app_name: *const c_char) -> *const c_char;
+    fn pthkd_wait_for_window(
+        app_name: *const c_char,
+        window_name: *const c_char,
+        condition: i32,
+        timeout: i32,
+    ) -> bool;
+    fn pthkd_close_window(
+        app_name: *const c_char,
+        window_name: *const c_char,
+        retry_timeout: i32,
+    ) -> bool;
 }
 
 /// Get menu structure for an app
@@ -196,5 +223,206 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 
         let buttons: Vec<String> = serde_json::from_str(&json)?;
         Ok(buttons)
+    }
+}
+
+// MARK: - App Operations
+
+/// Information about the frontmost application and window
+#[derive(Debug, serde::Deserialize)]
+pub struct FrontmostInfo {
+    pub app: String,
+    pub window: String,
+}
+
+/// Get information about the frontmost application and window
+pub fn get_frontmost_info() -> Result<FrontmostInfo> {
+    unsafe {
+        let json_ptr = pthkd_get_frontmost_info();
+
+        if json_ptr.is_null() {
+            return Err(anyhow::anyhow!("Swift returned null"));
+        }
+
+        let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
+        pthkd_free_string(json_ptr);
+
+        let info: FrontmostInfo = serde_json::from_str(&json)?;
+        Ok(info)
+    }
+}
+
+/// Get list of all running application names
+pub fn get_running_apps() -> Result<Vec<String>> {
+    unsafe {
+        let json_ptr = pthkd_get_running_apps();
+
+        if json_ptr.is_null() {
+            return Err(anyhow::anyhow!("Swift returned null"));
+        }
+
+        let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
+        pthkd_free_string(json_ptr);
+
+        let apps: Vec<String> = serde_json::from_str(&json)?;
+        Ok(apps)
+    }
+}
+
+/// Focus/activate an application
+///
+/// # Arguments
+/// * `app_name` - Name of app to focus (empty string = no change)
+/// * `window_name` - Name of specific window to wait for (empty = any window)
+/// * `should_switch` - Whether to switch to the app
+/// * `should_launch` - Whether to launch if not running
+/// * `timeout` - Maximum time to wait in milliseconds
+pub fn focus_app(
+    app_name: &str,
+    window_name: &str,
+    should_switch: bool,
+    should_launch: bool,
+    timeout: i32,
+) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+
+        let success = pthkd_focus_app(
+            app_cstr.as_ptr(),
+            window_cstr.as_ptr(),
+            should_switch,
+            should_launch,
+            timeout,
+        );
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Focus app failed"))
+        }
+    }
+}
+
+/// Launch an application
+///
+/// # Arguments
+/// * `app_name` - Name of the application to launch
+pub fn launch_app(app_name: &str) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let success = pthkd_launch_app(app_cstr.as_ptr());
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Launch app failed"))
+        }
+    }
+}
+
+// MARK: - Window Operations
+
+/// Check if a window exists
+///
+/// # Arguments
+/// * `app_name` - Name of the app (empty for frontmost)
+/// * `window_name` - Name of the window (empty for frontmost)
+pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+
+        Ok(pthkd_window_exists(app_cstr.as_ptr(), window_cstr.as_ptr()))
+    }
+}
+
+/// Get all window titles for an application
+///
+/// # Arguments
+/// * `app_name` - Name of the app (empty for frontmost)
+pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let json_ptr = pthkd_get_window_titles(app_cstr.as_ptr());
+
+        if json_ptr.is_null() {
+            return Err(anyhow::anyhow!("Swift returned null"));
+        }
+
+        let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
+        pthkd_free_string(json_ptr);
+
+        let titles: Vec<String> = serde_json::from_str(&json)?;
+        Ok(titles)
+    }
+}
+
+/// Window condition to wait for
+pub enum WindowCondition {
+    Exists = 0,
+    Closed = 1,
+    Focused = 2,
+}
+
+/// Wait for a window to meet a specific condition
+///
+/// # Arguments
+/// * `app_name` - Name of the app (empty for frontmost)
+/// * `window_name` - Name of the window (empty for frontmost)
+/// * `condition` - Condition to wait for
+/// * `timeout` - Maximum time to wait in milliseconds
+///
+/// Returns true if condition was met, false if timeout
+pub fn wait_for_window(
+    app_name: &str,
+    window_name: &str,
+    condition: WindowCondition,
+    timeout: i32,
+) -> Result<bool> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+
+        Ok(pthkd_wait_for_window(
+            app_cstr.as_ptr(),
+            window_cstr.as_ptr(),
+            condition as i32,
+            timeout,
+        ))
+    }
+}
+
+/// Close a window
+///
+/// # Arguments
+/// * `app_name` - Name of the app (empty for frontmost)
+/// * `window_name` - Name of the window (empty for frontmost)
+/// * `retry_timeout` - If Some, retry closing until window is gone or timeout (in milliseconds)
+pub fn close_window(app_name: &str, window_name: &str, retry_timeout: Option<i32>) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+        let retry = retry_timeout.unwrap_or(-1);
+
+        let success = pthkd_close_window(app_cstr.as_ptr(), window_cstr.as_ptr(), retry);
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Close window failed"))
+        }
     }
 }

@@ -121,7 +121,7 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     let window = format!("AudioSuite: {}", plugin_name);
 
     // Check if already open
-    if crate::macos::ui_elements::window_exists("Pro Tools", &window)? {
+    if crate::swift_bridge::window_exists("Pro Tools", &window)? {
         println!("Plugin '{}' window already open", plugin_name);
         return Ok(());
     }
@@ -133,7 +133,14 @@ async fn activate_plugin(plugin_name: &str) -> Result<()> {
     crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", &category, plugin_name])?;
 
     // Wait for window
-    crate::macos::ui_elements::wait_for_window_exists("Pro Tools", &window, 5000)?;
+    if !crate::swift_bridge::wait_for_window(
+        "Pro Tools",
+        &window,
+        crate::swift_bridge::WindowCondition::Exists,
+        5000,
+    )? {
+        anyhow::bail!("Window '{}' did not appear within timeout", window);
+    }
 
     Ok(())
 }
@@ -148,7 +155,7 @@ pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> 
     }
     if close {
         let window = format!("AudioSuite: {}", plugin);
-        crate::macos::ui_elements::close_window_with_retry("Pro Tools", &window, 10000)?;
+        crate::swift_bridge::close_window("Pro Tools", &window, Some(10000))?;
     }
 
     Ok(())

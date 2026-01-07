@@ -129,6 +129,14 @@ impl Params {
             .unwrap_or_default()
     }
 
+    pub fn get_str_vec<'a>(&'a self, key: &'a str) -> Vec<&'a str> {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|array| array.iter().filter_map(|s| s.as_str()).collect())
+            .unwrap_or_default()
+    }
+
     /// Get a nested array of strings (array of arrays)
     ///
     /// # Example

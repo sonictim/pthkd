@@ -13,6 +13,42 @@ pub fn test_notification(_params: &Params) -> Result<()> {
     MacOSSession::global().show_notification("CMD+Shift+K pressed!");
     Ok(())
 }
+
+pub fn test_swift_menus(params: &Params) -> Result<()> {
+    let app_name = params.get_string("app", "");
+
+    if app_name.is_empty() {
+        log::info!("Getting frontmost app menus via Swift...");
+    } else {
+        log::info!("Getting menus for '{}' via Swift...", app_name);
+    }
+
+    let json = crate::swift_bridge::get_app_menus(&app_name)?;
+
+    println!("=== Menu Structure (from Swift) ===");
+    println!("{}", json);
+
+    log::info!("✅ Swift bridge working!");
+
+    Ok(())
+}
+
+pub fn test_swift_menu_click(params: &Params) -> Result<()> {
+    let app_name = params.get_string("app", "");
+    let menu_path = params.get_str_vec("menu");
+
+    if menu_path.is_empty() {
+        anyhow::bail!("At least one menu parameter (menu1) is required");
+    }
+
+    log::info!("Testing Swift menu click: {} -> {:?}", app_name, menu_path);
+
+    crate::swift_bridge::menu_click(&app_name, &menu_path)?;
+
+    log::info!("✅ Menu click succeeded!");
+
+    Ok(())
+}
 pub fn test_window(_params: &Params) -> Result<()> {
     log::info!("=== test_window: Dispatching to main queue ===");
 
@@ -370,11 +406,7 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
         unsafe { MacOSSession::global().password_prompt(account) }
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
-
-        // Brief delay to ensure password field is ready to receive input
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        super::keystroke::type_text_slow(&pw)?;
+        super::keystroke::type_text_for_password(&pw)?;
         super::keystroke::send_keystroke(&["enter"])
     } else {
         unsafe { MacOSSession::global().password_prompt(account) }

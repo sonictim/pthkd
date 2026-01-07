@@ -6,6 +6,8 @@ use crate::actions_sync;
 // Actions are automatically registered with the "os" namespace
 actions_sync!("os", {
     test_notification,
+    test_swift_menus,
+    test_swift_menu_click,
     test_app_info,
     reload_config,
     dump_app_menus,

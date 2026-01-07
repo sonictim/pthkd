@@ -1,4 +1,12 @@
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Generate protobuf code
+    tonic_prost_build::configure()
+        .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
+        .compile_protos(
+            &["proto/PTSL.proto"], // Files to compile
+            &["proto/"],           // Include directories
+        )?;
+
     // Determine architecture-specific paths
     let target = std::env::var("TARGET").unwrap_or_else(|_| String::from("unknown"));
 
@@ -20,4 +28,6 @@ fn main() {
     // Force rebuild if Swift library changes
     println!("cargo:rerun-if-changed={}/libPTHKDui.dylib", rust_target_dir);
     println!("cargo:rerun-if-changed=swift/.build/{}/release/libPTHKDui.dylib", swift_arch);
+
+    Ok(())
 }

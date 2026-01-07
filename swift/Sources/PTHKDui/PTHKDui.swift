@@ -199,6 +199,12 @@ public func launchApp(appName: UnsafePointer<CChar>) -> Bool {
     }
 }
 
+// C ABI: Check if currently focused element is a text field
+@_cdecl("pthkd_is_in_text_field")
+public func isInTextField() -> Bool {
+    return AppOps.isInTextField()
+}
+
 // MARK: - Window Operations
 
 // C ABI: Check if a window exists

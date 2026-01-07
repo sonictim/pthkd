@@ -141,4 +141,42 @@ class AppOps {
         let normalizedNeedle = needle.lowercased().filter { !$0.isWhitespace }
         return normalizedHaystack == normalizedNeedle || normalizedHaystack.contains(normalizedNeedle)
     }
+
+    /// Check if the currently focused UI element is a text input field
+    ///
+    /// Returns true if focused element is a text field, text area, combo box, or search field
+    static func isInTextField() -> Bool {
+        // Get system-wide focused element
+        let systemWide = AXUIElementCreateSystemWide()
+
+        var focusedElementRef: AnyObject?
+        let result = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedElementRef
+        )
+
+        // If no element is focused or error getting it, assume not in text field
+        guard result == .success, let focusedElement = focusedElementRef else {
+            return false
+        }
+
+        // Get the role of the focused element
+        var roleRef: AnyObject?
+        let roleResult = AXUIElementCopyAttributeValue(
+            focusedElement as! AXUIElement,
+            kAXRoleAttribute as CFString,
+            &roleRef
+        )
+
+        guard roleResult == .success, let role = roleRef as? String else {
+            return false
+        }
+
+        // Check if the role indicates a text input field
+        return role == kAXTextFieldRole as String
+            || role == kAXTextAreaRole as String
+            || role == kAXComboBoxRole as String
+            || role == "AXSearchField"  // kAXSearchFieldRole doesn't exist, use string
+    }
 }

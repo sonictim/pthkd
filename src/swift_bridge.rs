@@ -44,6 +44,7 @@ unsafe extern "C" {
         timeout: i32,
     ) -> bool;
     fn pthkd_launch_app(app_name: *const c_char) -> bool;
+    fn pthkd_is_in_text_field() -> bool;
 
     // Window operations
     fn pthkd_window_exists(app_name: *const c_char, window_name: *const c_char) -> bool;
@@ -323,6 +324,14 @@ pub fn launch_app(app_name: &str) -> Result<()> {
             Err(anyhow::anyhow!("Launch app failed"))
         }
     }
+}
+
+/// Check if the currently focused UI element is a text input field
+///
+/// Returns true if focused element is a text field, text area, combo box, or search field.
+/// This is useful for preventing hotkeys from triggering when the user is typing.
+pub fn is_in_text_field() -> bool {
+    unsafe { pthkd_is_in_text_field() }
 }
 
 // MARK: - Window Operations

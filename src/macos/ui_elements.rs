@@ -6,7 +6,6 @@
 //! **Thread Safety**: All public functions automatically dispatch to the main
 //! thread using Grand Central Dispatch, as required by the macOS Accessibility API.
 
-use super::app_info::get_pid_by_name;
 use super::ffi::*;
 use super::helpers::{CFArray, CFNumber};
 use anyhow::{Context, Result, bail};
@@ -33,7 +32,7 @@ where
 
         super::events::dispatch_to_main_queue(move || {
             // Catch panics to prevent wedging the main queue
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f()));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
 
             let final_result = match result {
                 Ok(r) => r,
@@ -46,8 +45,9 @@ where
             let _ = tx.send(final_result);
         });
 
-        rx.recv_timeout(Duration::from_secs(5))
-            .map_err(|e| anyhow::anyhow!("UI operation timed out: {}. Main thread may be blocked.", e))?
+        rx.recv_timeout(Duration::from_secs(5)).map_err(|e| {
+            anyhow::anyhow!("UI operation timed out: {}. Main thread may be blocked.", e)
+        })?
     }
 }
 
@@ -591,20 +591,18 @@ pub fn wait_for_window_focused(app_name: &str, window_name: &str, timeout_ms: u6
             log::info!("✅ Window '{}' is now focused", window_name);
         }
         Ok(())
+    } else if window_name.is_empty() {
+        bail!(
+            "Timeout waiting for '{}' to be focused ({}ms)",
+            app_name,
+            timeout_ms
+        )
     } else {
-        if window_name.is_empty() {
-            bail!(
-                "Timeout waiting for '{}' to be focused ({}ms)",
-                app_name,
-                timeout_ms
-            )
-        } else {
-            bail!(
-                "Timeout waiting for window '{}' to be focused ({}ms)",
-                window_name,
-                timeout_ms
-            )
-        }
+        bail!(
+            "Timeout waiting for window '{}' to be focused ({}ms)",
+            window_name,
+            timeout_ms
+        )
     }
 }
 

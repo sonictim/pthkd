@@ -49,6 +49,46 @@ public func menuClick(
     }
 }
 
+// C ABI: Check if a menu item exists
+@_cdecl("pthkd_menu_item_exists")
+public func menuItemExists(
+    appName: UnsafePointer<CChar>?,
+    menuPath: UnsafePointer<UnsafePointer<CChar>?>,
+    menuPathCount: Int32
+) -> Bool {
+    let app = appName != nil ? String(cString: appName!) : ""
+
+    // Convert menu path array to Swift [String]
+    var path: [String] = []
+    for i in 0..<Int(menuPathCount) {
+        if let itemPtr = menuPath[i] {
+            path.append(String(cString: itemPtr))
+        }
+    }
+
+    return MenuOps.menuItemExists(appName: app, menuPath: path)
+}
+
+// C ABI: Check if a menu item exists and is enabled
+@_cdecl("pthkd_menu_item_enabled")
+public func menuItemEnabled(
+    appName: UnsafePointer<CChar>?,
+    menuPath: UnsafePointer<UnsafePointer<CChar>?>,
+    menuPathCount: Int32
+) -> Bool {
+    let app = appName != nil ? String(cString: appName!) : ""
+
+    // Convert menu path array to Swift [String]
+    var path: [String] = []
+    for i in 0..<Int(menuPathCount) {
+        if let itemPtr = menuPath[i] {
+            path.append(String(cString: itemPtr))
+        }
+    }
+
+    return MenuOps.menuItemEnabled(appName: app, menuPath: path)
+}
+
 // C ABI: Send keystroke to application
 // modifiers: bit flags (shift=1, control=2, option=4, command=8)
 @_cdecl("pthkd_send_keystroke")

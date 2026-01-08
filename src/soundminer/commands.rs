@@ -8,6 +8,29 @@ use anyhow::Result as R;
 // ============================================================================
 
 pub fn send_to_daw(params: &Params) -> R<()> {
+    let daw = params.get_ostring("daw");
+    let command = params.get_str("command", "Bring into DAW");
+    let refo = params.get_obool("reference_original");
+    let orig = params.get_obool("original_sample_rate");
+    let sprn = params.get_obool("spot_as_region");
+    let launch = params.get_bool("launch", false);
+
+    if launch && let Some(ref d) = daw {
+        crate::macos::app_info::focus_app(d, "", false, true, 1000)?;
+    }
+    crate::macos::app_info::focus_app("Soundminer", "", true, true, 50).ok();
+    send_sm_event("refo", refo)?;
+    send_sm_event("orig", orig)?;
+    send_sm_event("sprn", sprn)?;
+    if let Some(ref d) = daw {
+        super::menu(&["DAW", d])?;
+    }
+    super::menu(&["Transfer", command])?;
+    log::info!("✅ Spot to DAW command sent");
+    Ok(())
+}
+
+pub fn send_to_daw_old(params: &Params) -> R<()> {
     let mut daw = params.get_ostring("daw");
     if daw == Some("current".to_string()) {
         let app = crate::macos::app_info::get_current_app()

@@ -12,6 +12,16 @@ unsafe extern "C" {
         menu_path: *const *const c_char,
         menu_path_count: i32,
     ) -> bool;
+    fn pthkd_menu_item_exists(
+        app_name: *const c_char,
+        menu_path: *const *const c_char,
+        menu_path_count: i32,
+    ) -> bool;
+    fn pthkd_menu_item_enabled(
+        app_name: *const c_char,
+        menu_path: *const *const c_char,
+        menu_path_count: i32,
+    ) -> bool;
     fn pthkd_send_keystroke(
         app_name: *const c_char,
         key_char: *const c_char,
@@ -115,6 +125,54 @@ pub fn menu_click(app_name: &str, menu_path: &[&str]) -> Result<()> {
         } else {
             Err(anyhow::anyhow!("Menu click failed"))
         }
+    }
+}
+
+/// Check if a menu item exists
+///
+/// # Arguments
+/// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
+/// * `menu_path` - Array of menu titles to traverse (e.g. &["File", "Save"])
+pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> Result<bool> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let path_cstrs: Vec<CString> = menu_path
+            .iter()
+            .map(|s| CString::new(*s))
+            .collect::<Result<Vec<_>, _>>()?;
+        let path_ptrs: Vec<*const c_char> = path_cstrs.iter().map(|cs| cs.as_ptr()).collect();
+
+        Ok(pthkd_menu_item_exists(
+            app_cstr.as_ptr(),
+            path_ptrs.as_ptr(),
+            menu_path.len() as i32,
+        ))
+    }
+}
+
+/// Check if a menu item exists and is enabled
+///
+/// # Arguments
+/// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
+/// * `menu_path` - Array of menu titles to traverse (e.g. &["File", "Save"])
+pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> Result<bool> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let path_cstrs: Vec<CString> = menu_path
+            .iter()
+            .map(|s| CString::new(*s))
+            .collect::<Result<Vec<_>, _>>()?;
+        let path_ptrs: Vec<*const c_char> = path_cstrs.iter().map(|cs| cs.as_ptr()).collect();
+
+        Ok(pthkd_menu_item_enabled(
+            app_cstr.as_ptr(),
+            path_ptrs.as_ptr(),
+            menu_path.len() as i32,
+        ))
     }
 }
 

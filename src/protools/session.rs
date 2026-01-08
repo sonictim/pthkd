@@ -1,5 +1,4 @@
 use super::client::*;
-use crate::macos::menu::*;
 use crate::macos::ui_elements::*;
 use crate::params::Params;
 use anyhow::Result;
@@ -56,10 +55,10 @@ pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()>
     Ok(())
 }
 pub async fn export_selection(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    if !menu_item_enabled("Pro Tools", &["Options", "Link Track and Edit Selection"]) {
-        menu_item_run("Pro Tools", &["Options", "Link Track and Edit Selection"])?;
+    if !crate::swift_bridge::menu_item_enabled("Pro Tools", &["Options", "Link Track and Edit Selection"])? {
+        crate::macos::menu_cache::execute_menu("Pro Tools", &["Options", "Link Track and Edit Selection"])?;
     }
-    menu_item_run("Pro Tools", &["File", "Save Session Copy In..."])?;
+    crate::macos::menu_cache::execute_menu("Pro Tools", &["File", "Save Session Copy In..."])?;
     wait_for_window_exists("Pro Tools", "Save Copy In...", 200)?;
     let audio_files = params.get_bool("copy_audio_files", false);
     if audio_files {

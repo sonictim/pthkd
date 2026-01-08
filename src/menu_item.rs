@@ -1,7 +1,7 @@
 //! MenuItem struct for macOS menu items
 
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MenuItem {
@@ -36,7 +36,11 @@ impl MenuItem {
             return None;
         }
 
-        log::debug!("find_by_path: searching for '{}' in {} menus", path[0], menus.len());
+        log::debug!(
+            "find_by_path: searching for '{}' in {} menus",
+            path[0],
+            menus.len()
+        );
 
         // Search top level using soft_match
         for menu in menus {
@@ -47,14 +51,16 @@ impl MenuItem {
                 }
                 // Search children
                 if let Some(ref children) = menu.children {
-                    log::debug!("'{}' has {} children, searching for '{}'",
-                               menu.title, children.len(), path[1]);
+                    log::debug!(
+                        "'{}' has {} children, searching for '{}'",
+                        menu.title,
+                        children.len(),
+                        path[1]
+                    );
                     // Log first few children for debugging
-                    if children.len() > 0 {
-                        let child_titles: Vec<&str> = children.iter()
-                            .take(10)
-                            .map(|c| c.title.as_str())
-                            .collect();
+                    if !children.is_empty() {
+                        let child_titles: Vec<&str> =
+                            children.iter().take(10).map(|c| c.title.as_str()).collect();
                         log::debug!("First {} children: {:?}", child_titles.len(), child_titles);
                     }
                     return Self::find_by_path(children, &path[1..]);

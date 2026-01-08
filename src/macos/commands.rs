@@ -1,6 +1,6 @@
 //! macOS system command implementations
 
-use super::{MacOSSession, app_info, keystroke, menu};
+use super::{MacOSSession, app_info, keystroke};
 use crate::params::Params;
 use anyhow::{Context, Result};
 use std::process::Command;
@@ -230,10 +230,9 @@ pub fn dump_app_menus(_params: &Params) -> Result<()> {
     let app_name = "Pro Tools";
     log::info!("Getting menu structure for {}...", app_name);
 
-    let menu_bar =
-        menu::get_app_menus(app_name).context(format!("Failed to get menus for {}", app_name))?;
+    let json = crate::swift_bridge::get_app_menus(app_name)
+        .context(format!("Failed to get menus for {}", app_name))?;
 
-    let json = serde_json::to_string_pretty(&menu_bar)?;
     let log = crate::MessageLog::new(&format!("Menu structure for {}:\n{}", app_name, json));
     log.display()
 }
@@ -242,10 +241,10 @@ pub fn test_menu_click(_params: &Params) -> Result<()> {
     log::info!("Testing menu click...");
 
     // Test with a simple menu item - adjust this to whatever you want to test
-    menu::menu_item_run("Soundminer_Intel", &["DAW", "Pro Tools"])?;
+    crate::macos::menu_cache::execute_menu("Soundminer_Intel", &["DAW", "Pro Tools"])?;
     log::info!("✅ Menu click 1 succeeded!");
 
-    menu::menu_item_run("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
+    crate::macos::menu_cache::execute_menu("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
     log::info!("✅ Menu click 2 succeeded!");
 
     Ok(())

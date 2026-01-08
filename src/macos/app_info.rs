@@ -5,10 +5,8 @@
 //!
 //! All functions now use the Swift bridge for native macOS integration.
 
-use anyhow::{Result, bail};
 use super::ffi::*;
-use libc::c_void;
-use std::ptr;
+use anyhow::Result;
 
 /// Get the name of the currently focused (frontmost) application
 ///

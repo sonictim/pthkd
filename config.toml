@@ -631,12 +631,37 @@ color = "magenta"
 [[hotkey]]
 keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
-target_application = ["Pro Tools", "Soundminer", "Reaper"]
+target_application = "Soundminer"
 notify = true
 trigger_on_release = true
 [hotkey.params]
-daw = "current"
 command = "Spot To DAW"
+
+[[hotkey]]
+keys = ["ctrl", "s"]
+action = "sm.send_to_daw"
+target_application = "Pro Tools"
+notify = true
+trigger_on_release = true
+[hotkey.params]
+command = "Spot To DAW"
+daw = "Pro Tools"
+reference_original = false
+original_sample_rate = false
+spot_as_region = true
+
+[[hotkey]]
+keys = ["ctrl", "s"]
+action = "sm.send_to_daw"
+target_application = "Reaper"
+notify = true
+trigger_on_release = true
+[hotkey.params]
+command = "Spot To DAW"
+daw = "Reaper"
+reference_original = false
+original_sample_rate = true
+spot_as_region = true
 
 [[hotkey]]
 keys = [ "F1"]
@@ -644,6 +669,9 @@ action = "sm.send_to_daw"
 target_application = ["Soundminer"]
 [hotkey.params]
 daw = "Pro Tools"
+reference_original = false
+original_sample_rate = false
+spot_as_region = true
 
 [[hotkey]]
 keys = ["cmd", "F1"]
@@ -651,7 +679,9 @@ action = "sm.send_to_daw"
 target_application = ["Soundminer"]
 [hotkey.params]
 daw = "Pro Tools"
-spot_as_region = false
+reference_original = false
+original_sample_rate = false
+spot_as_region = true
 
 [[hotkey]]
 keys = [ "F2"]
@@ -659,14 +689,18 @@ action = "sm.send_to_daw"
 target_application = ["Soundminer"]
 [hotkey.params]
 daw = "Reaper"
+reference_original = false
+original_sample_rate = true
+spot_as_region = true
 
 [[hotkey]]
 keys = [ "F3"]
 action = "sm.send_to_daw"
 target_application = ["Soundminer"]
 [hotkey.params]
-daw = "iZotope RX 11"
+daw = "iZotope RX 11 Audio Editor"
 command = "Send Files to DAW"
+launch = true
 
 [[hotkey]]
 keys = [ "F4"]
@@ -694,3 +728,4 @@ keys = ["control", "option", "command", "7"]
 action = "os.launch_application"
 [hotkey.params]
 app = "EmbedaData"
+

@@ -124,9 +124,8 @@ fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
             // Add this item as a potential plugin
             // Use lowercase key for case-insensitive lookups
             let key = item.title.to_lowercase();
-            if !map.contains_key(&key) {
-                map.insert(key, (category.to_string(), item.title.clone()));
-            }
+            map.entry(key)
+                .or_insert_with(|| (category.to_string(), item.title.clone()));
 
             // Recursively process children
             if let Some(ref children) = item.children {

@@ -220,4 +220,115 @@ class MenuOps {
 
         return nil
     }
+
+    /// Check if a menu item exists in the menu hierarchy
+    static func menuItemExists(appName: String, menuPath: [String]) -> Bool {
+        do {
+            _ = try navigateToMenuItem(appName: appName, menuPath: menuPath)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Check if a menu item exists AND is enabled
+    static func menuItemEnabled(appName: String, menuPath: [String]) -> Bool {
+        guard !menuPath.isEmpty else {
+            return false
+        }
+
+        let app: NSRunningApplication
+
+        if appName.isEmpty {
+            guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+                return false
+            }
+            app = frontmost
+        } else {
+            let runningApps = NSWorkspace.shared.runningApplications
+            guard let foundApp = runningApps.first(where: { $0.localizedName == appName }) else {
+                return false
+            }
+            app = foundApp
+        }
+
+        let pid = app.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+
+        // Get menu bar
+        var menuBarRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(appElement, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+              menuBarRef != nil else {
+            return false
+        }
+
+        let menuBar = menuBarRef as! AXUIElement
+
+        // Traverse to find the menu item
+        var currentElement: AXUIElement = menuBar
+        for (index, menuTitle) in menuPath.enumerated() {
+            guard let found = findChildByTitle(currentElement, title: menuTitle) else {
+                return false
+            }
+
+            // If this is the last item, check if it's enabled
+            if index == menuPath.count - 1 {
+                var enabledRef: AnyObject?
+                guard AXUIElementCopyAttributeValue(found, kAXEnabledAttribute as CFString, &enabledRef) == .success else {
+                    return false
+                }
+                return (enabledRef as? Bool) ?? false
+            }
+
+            currentElement = found
+        }
+
+        return false
+    }
+
+    /// Helper to navigate to a menu item and return the element
+    /// Used by menuItemExists to avoid code duplication
+    private static func navigateToMenuItem(appName: String, menuPath: [String]) throws -> AXUIElement {
+        guard !menuPath.isEmpty else {
+            throw MenuError.emptyMenuPath
+        }
+
+        let app: NSRunningApplication
+
+        if appName.isEmpty {
+            guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+                throw MenuError.noFrontmostApp
+            }
+            app = frontmost
+        } else {
+            let runningApps = NSWorkspace.shared.runningApplications
+            guard let foundApp = runningApps.first(where: { $0.localizedName == appName }) else {
+                throw MenuError.appNotFound(appName)
+            }
+            app = foundApp
+        }
+
+        let pid = app.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+
+        // Get menu bar
+        var menuBarRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(appElement, kAXMenuBarAttribute as CFString, &menuBarRef) == .success,
+              menuBarRef != nil else {
+            throw MenuError.menuBarNotFound
+        }
+
+        let menuBar = menuBarRef as! AXUIElement
+
+        // Traverse to find the menu item
+        var currentElement: AXUIElement = menuBar
+        for menuTitle in menuPath {
+            guard let found = findChildByTitle(currentElement, title: menuTitle) else {
+                throw MenuError.menuItemNotFound(menuTitle)
+            }
+            currentElement = found
+        }
+
+        return currentElement
+    }
 }

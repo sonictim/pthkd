@@ -5,7 +5,7 @@
 //! - `events`: Core keyboard event tap (STABLE)
 //! - `notifications`: System notifications (STABLE)
 //! - `keystroke`: Sending keystrokes to apps (EXPERIMENTAL)
-//! - `menu`: Clicking menu items (EXPERIMENTAL)
+//! - `menu_cache`: Menu caching and execution (uses Swift bridge)
 //! - `app_info`: Application focus and window information (EXPERIMENTAL)
 //! - `actions`: macOS actions callable from config (namespace: "os")
 
@@ -26,7 +26,6 @@ pub mod app_info;
 pub mod input_dialog;
 pub mod keyring;
 pub mod keystroke;
-pub mod menu;
 pub mod menu_cache;
 pub mod menubar;
 pub mod ui_elements;

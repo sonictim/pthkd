@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# Check if Swift is installed, run setup if needed
+if ! command -v swift &> /dev/null; then
+    echo "❌ Swift not found!"
+    echo ""
+    echo "Running Swift setup..."
+    cd swift
+    ./setup-swift.sh
+    cd ..
+    exit 0
+fi
+
 echo "🔨 Building Swift UI library..."
 cd swift
 swift build -c release

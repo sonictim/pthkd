@@ -14,30 +14,6 @@ pub fn test_notification(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_swift_menus(params: &Params) -> Result<()> {
-    let app_name = params.get_string("app", "");
-    let refresh = params.get_bool("refresh", false);
-
-    if app_name.is_empty() {
-        log::info!("Getting frontmost app menus via Swift...");
-    } else {
-        log::info!(
-            "Getting menus for '{}' via Swift (refresh={})",
-            app_name,
-            refresh
-        );
-    }
-
-    let menus = super::menu_cache::get_menus(&app_name, refresh)?;
-
-    println!("=== Menu Structure ===");
-    crate::menu_item::MenuItem::print_tree(&menus, 0);
-
-    log::info!("✅ Swift bridge working!");
-
-    Ok(())
-}
-
 pub fn execute_menu_item(params: &Params) -> Result<()> {
     let app_name = params.get_string("app", "");
     let menu_path = params.get_str_vec("menu");

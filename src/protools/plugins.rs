@@ -5,6 +5,7 @@ use crate::hotkey::HotkeyCounter;
 use crate::params::Params;
 use anyhow::Result;
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -13,6 +14,28 @@ actions_async!("pt", plugins, {
     multitap_selector,
     send_receive_rx,
 });
+
+// ============================================================================
+// Minimal MenuItem for Plugin Discovery
+// ============================================================================
+
+/// Minimal MenuItem struct for parsing AudioSuite menu structure
+/// Only contains fields needed for plugin discovery
+#[derive(Debug, Deserialize)]
+struct MenuItem {
+    title: String,
+    children: Option<Vec<MenuItem>>,
+}
+
+/// Parse menu JSON from Swift
+fn parse_menus(json: &str) -> Result<Vec<MenuItem>> {
+    #[derive(Deserialize)]
+    struct MenuResponse {
+        menus: Vec<MenuItem>,
+    }
+    let response: MenuResponse = serde_json::from_str(json)?;
+    Ok(response.menus)
+}
 // ============================================================================
 // Command Implementations
 // ============================================================================
@@ -94,7 +117,9 @@ lazy_static! {
 
 /// Build the plugin map by traversing the AudioSuite menu tree once
 fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
-    let menus = crate::macos::menu_cache::get_menus("Pro Tools", false)?;
+    // Get menus directly from Swift
+    let json = crate::swift_bridge::get_app_menus("Pro Tools")?;
+    let menus = parse_menus(&json)?;
 
     let audiosuite_menu = menus
         .iter()
@@ -109,7 +134,7 @@ fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
 
     // Recursively collect all plugins
     fn collect_plugins(
-        items: &[crate::menu_item::MenuItem],
+        items: &[MenuItem],
         parent_category: &str,
         map: &mut HashMap<String, (String, String)>,
     ) {

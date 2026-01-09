@@ -3,7 +3,6 @@ mod config;
 mod hotkey;
 mod keycodes;
 mod macos;
-mod menu_item;
 mod params;
 mod protools;
 mod soundminer;

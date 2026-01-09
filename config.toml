@@ -642,6 +642,7 @@ keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = "Pro Tools"
 trigger_on_release = true
+notify = true
 [hotkey.params]
 command = "Spot To DAW"
 daw = "Pro Tools"

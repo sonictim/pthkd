@@ -178,10 +178,10 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     // Show notification if requested
                     if notify {
                         match result {
-                            Ok(Ok(_)) => macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
-                            Ok(Err(e)) => {
-                                macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e))
-                            }
+                            Ok(Ok(_)) => macos::MacOSSession::global()
+                                .show_notification(&format!("✅ {}", action_name)),
+                            Ok(Err(e)) => macos::MacOSSession::global()
+                                .show_notification(&format!("❌ {}: {}", action_name, e)),
                             Err(_) => {
                                 log::error!("Action '{}' panicked!", action_name);
                                 macos::MacOSSession::global().show_notification(&format!(
@@ -250,16 +250,14 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
                 // Show notification if requested
                 if notify {
                     match result {
-                        Ok(Ok(_)) => macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
-                        Ok(Err(e)) => {
-                            macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e))
-                        }
+                        Ok(Ok(_)) => macos::MacOSSession::global()
+                            .show_notification(&format!("✅ {}", action_name)),
+                        Ok(Err(e)) => macos::MacOSSession::global()
+                            .show_notification(&format!("❌ {}: {}", action_name, e)),
                         Err(_) => {
                             log::error!("Action '{}' panicked!", action_name);
-                            macos::MacOSSession::global().show_notification(&format!(
-                                "💥 {}: action panicked",
-                                action_name
-                            ))
+                            macos::MacOSSession::global()
+                                .show_notification(&format!("💥 {}: action panicked", action_name))
                         }
                     }
                 } else {
@@ -484,7 +482,8 @@ fn run() -> anyhow::Result<()> {
                 std::collections::HashMap::new(),
             )) {
                 log::error!("Failed to reload config: {}", e);
-                macos::MacOSSession::global().show_notification(&format!("❌ Failed to reload config: {}", e));
+                macos::MacOSSession::global()
+                    .show_notification(&format!("❌ Failed to reload config: {}", e));
             } else {
                 macos::MacOSSession::global().show_notification("✅ Config reloaded successfully!");
             }
@@ -586,6 +585,15 @@ pub fn soft_match(haystack: &str, needle: &str) -> bool {
     haystack == needle || haystack.contains(&needle)
 }
 
+pub fn soft_match_vec(needle: &str, haystack: &[String]) -> Option<String> {
+    for h in haystack {
+        if soft_match(h, needle) {
+            return Some(h.to_string());
+        }
+    }
+    None
+}
+
 #[derive(Default)]
 struct MessageLog {
     message: String,
@@ -605,8 +613,6 @@ impl MessageLog {
         self.message.push('\n');
     }
     pub fn display(&self) -> anyhow::Result<()> {
-        unsafe {
-            crate::macos::MacOSSession::global().show_text_window(&self.message)
-        }
+        unsafe { crate::macos::MacOSSession::global().show_text_window(&self.message) }
     }
 }

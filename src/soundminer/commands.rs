@@ -14,7 +14,12 @@ pub fn send_to_daw(params: &Params) -> R<()> {
     let orig = params.get_obool("original_sample_rate");
     let sprn = params.get_obool("spot_as_region");
     let launch = params.get_bool("launch", false);
-
+    // let sm = crate::soft_match_vec("Soundminer", &crate::swift_bridge::get_running_apps()?)
+    //     .unwrap_or("Soundminer".to_string());
+    // println!(
+    //     "Running Apps: {:?}",
+    //     crate::swift_bridge::get_running_apps()
+    // );
     if launch && let Some(ref d) = daw {
         crate::macos::app_info::focus_app(d, "", false, true, 1000)?;
     }

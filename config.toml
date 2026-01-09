@@ -229,6 +229,7 @@ action = "pt.edit_adjust_clip_to_match_selection"
 target_application = "Pro Tools"
 app_window = "Edit"
 
+
 [[hotkey]]
 keys = ["control", "option", "command", "b"]
 action = "pt.edit_bg_paste_selection"
@@ -632,7 +633,6 @@ color = "magenta"
 keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = "Soundminer"
-notify = true
 trigger_on_release = true
 [hotkey.params]
 command = "Spot To DAW"
@@ -641,7 +641,6 @@ command = "Spot To DAW"
 keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = "Pro Tools"
-notify = true
 trigger_on_release = true
 [hotkey.params]
 command = "Spot To DAW"
@@ -654,7 +653,6 @@ spot_as_region = true
 keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = "Reaper"
-notify = true
 trigger_on_release = true
 [hotkey.params]
 command = "Spot To DAW"
@@ -711,7 +709,6 @@ target_application = ["Soundminer"]
 keys = ["control", "command", "s", "u"]
 action = "os.shell_script"
 trigger_on_release = true
-notify = true
 [hotkey.params]
 script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh TF"
 
@@ -719,7 +716,6 @@ script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh
 keys = ["control", "command", "s", "k"]
 action = "os.shell_script"
 trigger_on_release = true
-notify = true
 [hotkey.params]
 script_path = "~/Library/Application\\ Support/SoundminerV6/launch_soundminer.sh Skysound"
 

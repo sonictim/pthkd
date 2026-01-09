@@ -149,16 +149,26 @@ pub async fn adjust_clip_to_match_selection(
     _pt: &mut ProtoolsSession,
     _params: &Params,
 ) -> Result<()> {
-    call_menu(&["Edit", "Trim Clip", "To Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "To Fill Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"]).await?;
-    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"]).await?;
+    call_menu(&["Edit", "Trim Clip", "To Selection"]).await.ok();
+    call_menu(&["Edit", "Trim Clip", "To Fill Selection"])
+        .await
+        .ok();
+    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"])
+        .await
+        .ok();
+    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"])
+        .await
+        .ok();
     Ok(())
 }
 pub async fn reset_clip(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    call_menu(&["Edit", "Fades", "Delete"]).await?;
-    call_menu(&["Edit", "Clear Special", "Clip Gain"]).await?;
-    call_menu(&["Edit", "Clear Special", "Clip Effects"]).await?;
+    call_menu(&["Edit", "Fades", "Delete"]).await.ok();
+    call_menu(&["Edit", "Clear Special", "Clip Gain"])
+        .await
+        .ok();
+    call_menu(&["Edit", "Clear Special", "Clip Effects"])
+        .await
+        .ok();
     let result: serde_json::Value = pt
         .cmd(
             CommandId::ClearSpecial,

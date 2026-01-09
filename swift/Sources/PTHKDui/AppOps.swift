@@ -40,38 +40,31 @@ class AppOps {
         let appName = app.localizedName ?? ""
         var windowName = ""
 
-        // Get frontmost window title using AX API
         let pid = app.processIdentifier
         let appElement = AXUIElementCreateApplication(pid)
 
-        var focusedWindowRef: AnyObject?
-        if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowRef) == .success,
-           focusedWindowRef != nil {
-            let window = focusedWindowRef as! AXUIElement
-            var titleRef: AnyObject?
-            if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
-               let title = titleRef as? String {
-                windowName = title
-            }
-        }
+var focusedWindowRef: AnyObject?
+if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowRef) == .success,
+   focusedWindowRef != nil {
+    let window = focusedWindowRef! as! AXUIElement  // <--- force cast
+    var titleRef: AnyObject?
+    if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
+       let title = titleRef as? String {
+        windowName = title
+    }
+}
 
         return FrontmostInfo(appName: appName, windowName: windowName)
     }
 
     /// Get list of all running application names
     static func getRunningApps() -> [String] {
-        return NSWorkspace.shared.runningApplications
+        NSWorkspace.shared.runningApplications
             .compactMap { $0.localizedName }
             .filter { !$0.isEmpty }
     }
 
     /// Focus (activate) an application
-    /// - Parameters:
-    ///   - appName: Name of app to focus (empty string = frontmost app)
-    ///   - windowName: Name of specific window to focus (empty = any window)
-    ///   - shouldSwitch: Whether to switch to the app
-    ///   - shouldLaunch: Whether to launch if not running
-    ///   - timeout: Maximum time to wait in milliseconds
     static func focusApp(
         appName: String,
         windowName: String = "",
@@ -79,23 +72,24 @@ class AppOps {
         shouldLaunch: Bool = false,
         timeout: Int = 1000
     ) throws {
-        // If appName is empty, nothing to do (already frontmost)
-        if appName.isEmpty {
-            return
+        if appName.isEmpty { return }
+
+        var app = NSWorkspace.shared.runningApplications.first {
+            $0.localizedName == appName && $0.activationPolicy == .regular
         }
 
-        // Find the app
-        let runningApps = NSWorkspace.shared.runningApplications
-        var app = runningApps.first { softMatch($0.localizedName ?? "", appName) }
-
-        // Launch if needed and not found
         if app == nil && shouldLaunch {
-            if NSWorkspace.shared.launchApplication(appName) {
-                // Wait a bit for app to launch
-                Thread.sleep(forTimeInterval: 0.5)
-                app = NSWorkspace.shared.runningApplications.first {
-                    softMatch($0.localizedName ?? "", appName)
-                }
+            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID(forAppName: appName)) else {
+                throw AppError.appNotFound(appName)
+            }
+
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false // activate later
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config)
+            Thread.sleep(forTimeInterval: 0.5)
+
+            app = NSWorkspace.shared.runningApplications.first {
+                $0.localizedName == appName && $0.activationPolicy == .regular
             }
         }
 
@@ -103,7 +97,6 @@ class AppOps {
             throw AppError.appNotFound(appName)
         }
 
-        // Activate the app if shouldSwitch
         if shouldSwitch {
             let success = targetApp.activate(options: [.activateIgnoringOtherApps])
             if !success {
@@ -111,15 +104,14 @@ class AppOps {
             }
         }
 
-        // If specific window requested, wait for it to be focused
         if !windowName.isEmpty && timeout > 0 {
             let startTime = Date()
             let timeoutSeconds = Double(timeout) / 1000.0
 
             while Date().timeIntervalSince(startTime) < timeoutSeconds {
                 if let info = try? getFrontmostInfo(),
-                   softMatch(info.appName, appName),
-                   softMatch(info.windowName, windowName) {
+                   info.appName == appName,
+                   info.windowName == windowName {
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.05)
@@ -127,44 +119,45 @@ class AppOps {
         }
     }
 
-    /// Launch an application
+    /// Launch an application by name
     static func launchApp(appName: String) throws {
-        let success = NSWorkspace.shared.launchApplication(appName)
-        if !success {
-            throw AppError.launchFailed
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID(forAppName: appName)) else {
+            throw AppError.appNotFound(appName)
         }
+
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true  // launch and bring to front
+        NSWorkspace.shared.openApplication(at: appURL, configuration: config)
     }
 
-    /// Soft match (case-insensitive, whitespace-insensitive, partial matching)
-    private static func softMatch(_ haystack: String, _ needle: String) -> Bool {
-        let normalizedHaystack = haystack.lowercased().filter { !$0.isWhitespace }
-        let normalizedNeedle = needle.lowercased().filter { !$0.isWhitespace }
-        return normalizedHaystack == normalizedNeedle || normalizedHaystack.contains(normalizedNeedle)
+    /// Map human-readable app name to bundle ID
+    private static func bundleID(forAppName name: String) -> String {
+        switch name {
+        case "TextEdit": return "com.apple.TextEdit"
+        case "Finder": return "com.apple.finder"
+        case "Soundminer_Intel": return "com.soundminer.Intel"
+        case "Soundminer_AppleSilicon": return "com.soundminer.AppleSilicon"
+        default: return name // fallback: assume user passed a bundle ID
+        }
     }
 
     /// Check if the currently focused UI element is a text input field
-    ///
-    /// Returns true if focused element is a text field, text area, combo box, or search field
     static func isInTextField() -> Bool {
-        // Get system-wide focused element
         let systemWide = AXUIElementCreateSystemWide()
 
-        var focusedElementRef: AnyObject?
-        let result = AXUIElementCopyAttributeValue(
-            systemWide,
-            kAXFocusedUIElementAttribute as CFString,
-            &focusedElementRef
-        )
+var focusedElementRef: AnyObject?
+let result = AXUIElementCopyAttributeValue(
+    systemWide,
+    kAXFocusedUIElementAttribute as CFString,
+    &focusedElementRef
+)
 
-        // If no element is focused or error getting it, assume not in text field
-        guard result == .success, let focusedElement = focusedElementRef else {
-            return false
-        }
+guard result == .success else { return false }
+let focusedElement = focusedElementRef as! AXUIElement
 
-        // Get the role of the focused element
         var roleRef: AnyObject?
         let roleResult = AXUIElementCopyAttributeValue(
-            focusedElement as! AXUIElement,
+            focusedElement,
             kAXRoleAttribute as CFString,
             &roleRef
         )
@@ -173,10 +166,9 @@ class AppOps {
             return false
         }
 
-        // Check if the role indicates a text input field
         return role == kAXTextFieldRole as String
             || role == kAXTextAreaRole as String
             || role == kAXComboBoxRole as String
-            || role == "AXSearchField"  // kAXSearchFieldRole doesn't exist, use string
+            || role == "AXSearchField"
     }
 }

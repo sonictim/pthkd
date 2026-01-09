@@ -433,9 +433,9 @@ public func closeWindow(
     do {
         let app = appName != nil ? String(cString: appName!) : ""
         let window = windowName != nil ? String(cString: windowName!) : ""
-        let retry = retryTimeout >= 0 ? Int(retryTimeout) : nil
+        // let retry = retryTimeout >= 0 ? Int(retryTimeout) : nil
 
-        try WindowOps.closeWindow(appName: app, windowName: window, retryTimeout: retry)
+        try WindowOps.closeWindow(appName: app, windowName: window)
         return true
     } catch {
         NSLog("pthkd_close_window error: \(error.localizedDescription)")

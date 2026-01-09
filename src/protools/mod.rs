@@ -41,35 +41,31 @@ where
 
 pub(crate) async fn keystroke(keys: &[&str]) -> Result<()> {
     crate::macos::keystroke::send_keystroke(keys)?;
-    std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
     Ok(())
 }
+
 pub(crate) async fn call_menu(menu: &[&str]) -> Result<()> {
     crate::swift_bridge::menu_click("Pro Tools", menu)?;
-    // std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }
+
 pub(crate) async fn click_button(window: &str, button: &str) -> Result<()> {
     crate::macos::ui_elements::click_button("Pro Tools", window, button)?;
-    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 50ms
     Ok(())
 }
 
 pub(crate) async fn click_checkbox(window: &str, checkbox: &str) -> Result<()> {
     crate::macos::ui_elements::click_checkbox("Pro Tools", window, checkbox)?;
-    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 20ms
     Ok(())
 }
 
 pub(crate) async fn check_box(window: &str, checkbox: &str) -> Result<()> {
     crate::macos::ui_elements::check_box("Pro Tools", window, checkbox)?;
-    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 20ms
     Ok(())
 }
 
 pub(crate) async fn uncheck_box(window: &str, checkbox: &str) -> Result<()> {
     crate::macos::ui_elements::uncheck_box("Pro Tools", window, checkbox)?;
-    std::thread::sleep(std::time::Duration::from_millis(20)); // Wait 20ms
     Ok(())
 }
 

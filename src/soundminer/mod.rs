@@ -7,12 +7,10 @@ use anyhow::Result;
 
 fn keystroke(keys: &[&str]) -> Result<()> {
     crate::macos::keystroke::send_keystroke(keys)?;
-    std::thread::sleep(std::time::Duration::from_millis(50)); // Wait 50ms
     Ok(())
 }
 
 fn menu(menu: &[&str]) -> Result<()> {
     crate::swift_bridge::menu_click("Soundminer_Intel", menu)?;
-    // std::thread::sleep(std::time::Duration::from_millis(10)); // Wait 50ms
     Ok(())
 }

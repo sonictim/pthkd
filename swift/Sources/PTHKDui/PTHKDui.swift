@@ -109,6 +109,64 @@ public func sendKeystroke(
     }
 }
 
+// C ABI: Send global keystroke with multiple keys
+@_cdecl("pthkd_send_global_keystroke")
+public func sendGlobalKeystroke(
+    keyCodes: UnsafePointer<UInt16>,
+    keyCodesCount: Int32,
+    modifierFlags: UInt64
+) -> Bool {
+    do {
+        var keyCodeArray: [CGKeyCode] = []
+        for i in 0..<Int(keyCodesCount) {
+            keyCodeArray.append(keyCodes[i])
+        }
+
+        var cgFlags: CGEventFlags = []
+        if (modifierFlags & 0x20000) != 0 { cgFlags.insert(.maskShift) }
+        if (modifierFlags & 0x40000) != 0 { cgFlags.insert(.maskControl) }
+        if (modifierFlags & 0x80000) != 0 { cgFlags.insert(.maskAlternate) }
+        if (modifierFlags & 0x100000) != 0 { cgFlags.insert(.maskCommand) }
+
+        try Keystroke.sendGlobalKeystroke(keyCodes: keyCodeArray, modifierFlags: cgFlags)
+        return true
+    } catch {
+        NSLog("pthkd_send_global_keystroke error: \(error.localizedDescription)")
+        return false
+    }
+}
+
+// C ABI: Type text character by character
+@_cdecl("pthkd_type_text")
+public func typeText(
+    text: UnsafePointer<CChar>,
+    markEvents: Bool
+) -> Bool {
+    do {
+        let textStr = String(cString: text)
+        try Keystroke.typeText(text: textStr, markEvents: markEvents)
+        return true
+    } catch {
+        NSLog("pthkd_type_text error: \(error.localizedDescription)")
+        return false
+    }
+}
+
+// C ABI: Paste text using clipboard and Cmd+V
+@_cdecl("pthkd_paste_text")
+public func pasteText(
+    text: UnsafePointer<CChar>
+) -> Bool {
+    do {
+        let textStr = String(cString: text)
+        try Keystroke.pasteText(text: textStr)
+        return true
+    } catch {
+        NSLog("pthkd_paste_text error: \(error.localizedDescription)")
+        return false
+    }
+}
+
 // C ABI: Click a button in a window
 @_cdecl("pthkd_click_button")
 public func clickButton(

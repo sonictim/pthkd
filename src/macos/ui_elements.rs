@@ -7,10 +7,8 @@
 //! thread using Grand Central Dispatch, as required by the macOS Accessibility API.
 
 use super::ffi::*;
-use super::helpers::{CFArray, CFNumber};
+use super::helpers::CFArray;
 use anyhow::{Context, Result, bail};
-use libc::c_void;
-use std::ptr;
 
 // ============================================================================
 // Thread Safety Helper

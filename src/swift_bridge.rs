@@ -27,6 +27,13 @@ unsafe extern "C" {
         key_char: *const c_char,
         modifiers: i32,
     ) -> bool;
+    fn pthkd_send_global_keystroke(
+        key_codes: *const u16,
+        key_codes_count: i32,
+        modifier_flags: u64,
+    ) -> bool;
+    fn pthkd_type_text(text: *const c_char, mark_events: bool) -> bool;
+    fn pthkd_paste_text(text: *const c_char) -> bool;
     fn pthkd_click_button(
         app_name: *const c_char,
         window_name: *const c_char,
@@ -214,6 +221,75 @@ pub fn send_keystroke(app_name: &str, key_char: &str, modifiers: i32) -> Result<
             Ok(())
         } else {
             Err(anyhow::anyhow!("Keystroke send failed"))
+        }
+    }
+}
+
+/// Send a global keystroke with multiple keys and modifiers
+///
+/// # Arguments
+/// * `key_codes` - Array of key codes to send
+/// * `modifier_flags` - CGEventFlags (shift=0x20000, control=0x40000, option=0x80000, command=0x100000)
+pub fn send_global_keystroke(key_codes: &[u16], modifier_flags: u64) -> Result<()> {
+    unsafe {
+        let success = pthkd_send_global_keystroke(
+            key_codes.as_ptr(),
+            key_codes.len() as i32,
+            modifier_flags,
+        );
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Global keystroke send failed"))
+        }
+    }
+}
+
+/// Type text character by character
+///
+/// # Arguments
+/// * `text` - The text string to type
+/// * `mark_events` - Whether to mark events with APP_MARKER (true = prevent event tap from catching them)
+pub fn type_text(text: &str, mark_events: bool) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let text_cstr = CString::new(text)?;
+
+        let success = pthkd_type_text(text_cstr.as_ptr(), mark_events);
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Type text failed"))
+        }
+    }
+}
+
+/// Paste text using clipboard and Cmd+V
+///
+/// This is useful for password fields that may filter out programmatic keystrokes.
+/// Works by:
+/// 1. Saving current clipboard
+/// 2. Setting clipboard to the text
+/// 3. Sending Cmd+V
+/// 4. Restoring previous clipboard
+///
+/// # Arguments
+/// * `text` - The text to paste
+pub fn paste_text(text: &str) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let text_cstr = CString::new(text)?;
+
+        let success = pthkd_paste_text(text_cstr.as_ptr());
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Paste text failed"))
         }
     }
 }

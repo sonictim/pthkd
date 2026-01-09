@@ -131,177 +131,8 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
         log::debug!("  Key '{}' -> keycode {}", key_name, keycode);
     }
 
-    unsafe {
-        use super::helpers::CGEvent;
-
-        // Create event source (RAII wrapper for auto-cleanup)
-        let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
-        if event_source.is_null() {
-            bail!("Failed to create event source");
-        }
-
-        // Send key-down events with modifier flags
-        for &key_code in &key_codes {
-            let key_down_event = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
-            if key_down_event.is_null() {
-                bail!("Failed to create key down event for keycode {}", key_code);
-            }
-
-            // Set modifier flags if any
-            if modifier_flags != 0 {
-                CGEventSetFlags(key_down_event.as_ptr(), modifier_flags);
-            }
-
-            CGEventPost(CG_HID_EVENT_TAP, key_down_event.as_ptr());
-            // key_down_event automatically released here
-        }
-
-        // Send key-up events in reverse order with modifier flags
-        for &key_code in key_codes.iter().rev() {
-            let key_up_event = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
-            if key_up_event.is_null() {
-                bail!("Failed to create key up event for keycode {}", key_code);
-            }
-
-            // Set modifier flags on key up as well
-            if modifier_flags != 0 {
-                CGEventSetFlags(key_up_event.as_ptr(), modifier_flags);
-            }
-
-            CGEventPost(CG_HID_EVENT_TAP, key_up_event.as_ptr());
-            // key_up_event automatically released here
-        }
-
-        // event_source automatically released here
-    }
-
-    Ok(())
-}
-
-/// Map a character to its key name and whether it needs shift
-fn char_to_key(ch: char) -> Option<(&'static str, bool)> {
-    match ch {
-        // Lowercase letters - no shift
-        'a'..='z' => Some((
-            match ch {
-                'a' => "a",
-                'b' => "b",
-                'c' => "c",
-                'd' => "d",
-                'e' => "e",
-                'f' => "f",
-                'g' => "g",
-                'h' => "h",
-                'i' => "i",
-                'j' => "j",
-                'k' => "k",
-                'l' => "l",
-                'm' => "m",
-                'n' => "n",
-                'o' => "o",
-                'p' => "p",
-                'q' => "q",
-                'r' => "r",
-                's' => "s",
-                't' => "t",
-                'u' => "u",
-                'v' => "v",
-                'w' => "w",
-                'x' => "x",
-                'y' => "y",
-                'z' => "z",
-                _ => unreachable!(),
-            },
-            false,
-        )),
-
-        // Uppercase letters - with shift
-        'A'..='Z' => Some((
-            match ch {
-                'A' => "a",
-                'B' => "b",
-                'C' => "c",
-                'D' => "d",
-                'E' => "e",
-                'F' => "f",
-                'G' => "g",
-                'H' => "h",
-                'I' => "i",
-                'J' => "j",
-                'K' => "k",
-                'L' => "l",
-                'M' => "m",
-                'N' => "n",
-                'O' => "o",
-                'P' => "p",
-                'Q' => "q",
-                'R' => "r",
-                'S' => "s",
-                'T' => "t",
-                'U' => "u",
-                'V' => "v",
-                'W' => "w",
-                'X' => "x",
-                'Y' => "y",
-                'Z' => "z",
-                _ => unreachable!(),
-            },
-            true,
-        )),
-
-        // Numbers - no shift
-        '0' => Some(("0", false)),
-        '1' => Some(("1", false)),
-        '2' => Some(("2", false)),
-        '3' => Some(("3", false)),
-        '4' => Some(("4", false)),
-        '5' => Some(("5", false)),
-        '6' => Some(("6", false)),
-        '7' => Some(("7", false)),
-        '8' => Some(("8", false)),
-        '9' => Some(("9", false)),
-
-        // Shifted number row
-        '!' => Some(("1", true)),
-        '@' => Some(("2", true)),
-        '#' => Some(("3", true)),
-        '$' => Some(("4", true)),
-        '%' => Some(("5", true)),
-        '^' => Some(("6", true)),
-        '&' => Some(("7", true)),
-        '*' => Some(("8", true)),
-        '(' => Some(("9", true)),
-        ')' => Some(("0", true)),
-
-        // Punctuation - no shift
-        ' ' => Some(("space", false)),
-        '-' => Some(("-", false)),
-        '=' => Some(("=", false)),
-        '[' => Some(("[", false)),
-        ']' => Some(("]", false)),
-        '\\' => Some(("\\", false)),
-        ';' => Some((";", false)),
-        '\'' => Some(("'", false)),
-        ',' => Some((",", false)),
-        '.' => Some((".", false)),
-        '/' => Some(("/", false)),
-        '`' => Some(("`", false)),
-
-        // Shifted punctuation
-        '_' => Some(("-", true)),
-        '+' => Some(("=", true)),
-        '{' => Some(("[", true)),
-        '}' => Some(("]", true)),
-        '|' => Some(("\\", true)),
-        ':' => Some((";", true)),
-        '"' => Some(("'", true)),
-        '<' => Some((",", true)),
-        '>' => Some((".", true)),
-        '?' => Some(("/", true)),
-        '~' => Some(("`", true)),
-
-        _ => None,
-    }
+    // Use Swift bridge to send keystroke
+    crate::swift_bridge::send_global_keystroke(&key_codes, modifier_flags)
 }
 
 /// Type text by sending individual keystrokes for each character
@@ -317,68 +148,8 @@ fn char_to_key(ch: char) -> Option<(&'static str, bool)> {
 /// type_text("Hello123!@#")?;
 /// ```
 pub fn type_text(text: &str) -> Result<()> {
-    use crate::keycodes::key_name_to_codes;
-
-    for ch in text.chars() {
-        // Map character to key name and shift status
-        let (key_name, needs_shift) =
-            char_to_key(ch).ok_or_else(|| anyhow::anyhow!("Unsupported character: '{}'", ch))?;
-
-        let key_code = key_name_to_codes(key_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown key: {}", key_name))?[0];
-
-        unsafe {
-            use super::helpers::CGEvent;
-
-            // Create event source (RAII wrapper for auto-cleanup)
-            let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
-            if event_source.is_null() {
-                bail!("Failed to create event source");
-            }
-
-            const APP_MARKER: i64 = 0x5054484B44;
-            const EVENT_USER_DATA_FIELD: u32 = 127;
-
-            if needs_shift {
-                // Send shift down (keycode 56 = left shift)
-                let shift_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, true));
-                CGEventSetIntegerValueField(shift_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
-                CGEventPost(CG_HID_EVENT_TAP, shift_down.as_ptr());
-                // shift_down automatically released here
-            }
-
-            // Send key down
-            let key_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
-            CGEventSetIntegerValueField(key_down.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
-            // Set shift flag on the key event (or explicitly clear it)
-            CGEventSetFlags(key_down.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_down.as_ptr());
-            // key_down automatically released here
-
-            // Send key up
-            let key_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
-            CGEventSetIntegerValueField(key_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
-            // Set shift flag on key up (or explicitly clear it)
-            CGEventSetFlags(key_up.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_up.as_ptr());
-            // key_up automatically released here
-
-            if needs_shift {
-                // Send shift up
-                let shift_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, false));
-                CGEventSetIntegerValueField(shift_up.as_ptr(), EVENT_USER_DATA_FIELD, APP_MARKER);
-                CGEventPost(CG_HID_EVENT_TAP, shift_up.as_ptr());
-                // shift_up automatically released here
-            }
-
-            // event_source automatically released here
-        }
-
-        // Small delay between characters
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-
-    Ok(())
+    // Use Swift bridge - mark_events=true to prevent event tap from catching
+    crate::swift_bridge::type_text(text, true)
 }
 
 /// Type text for password fields (without APP_MARKER)
@@ -400,63 +171,31 @@ pub fn type_text(text: &str) -> Result<()> {
 /// type_text_for_password("MyPassword123")?;
 /// ```
 pub fn type_text_for_password(text: &str) -> Result<()> {
-    use crate::keycodes::key_name_to_codes;
+    // Use Swift bridge - mark_events=false to appear as genuine keystrokes
+    crate::swift_bridge::type_text(text, false)
+}
 
-    for ch in text.chars() {
-        // Map character to key name and shift status
-        let (key_name, needs_shift) =
-            char_to_key(ch).ok_or_else(|| anyhow::anyhow!("Unsupported character: '{}'", ch))?;
-
-        let key_code = key_name_to_codes(key_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown key: {}", key_name))?[0];
-
-        unsafe {
-            use super::helpers::CGEvent;
-
-            // Create event source (RAII wrapper for auto-cleanup)
-            let event_source = CGEvent::new(CGEventSourceCreate(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
-            if event_source.is_null() {
-                bail!("Failed to create event source");
-            }
-
-            // NOTE: NO APP_MARKER - these events should look like real keystrokes
-
-            if needs_shift {
-                // Send shift down (keycode 56 = left shift)
-                let shift_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, true));
-                CGEventPost(CG_HID_EVENT_TAP, shift_down.as_ptr());
-                // shift_down automatically released here
-            }
-
-            // Send key down
-            let key_down = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, true));
-            // Set shift flag on the key event (or explicitly clear it)
-            CGEventSetFlags(key_down.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_down.as_ptr());
-            // key_down automatically released here
-
-            // Send key up
-            let key_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), key_code, false));
-            // Set shift flag on key up (or explicitly clear it)
-            CGEventSetFlags(key_up.as_ptr(), if needs_shift { CG_EVENT_FLAG_MASK_SHIFT } else { 0 });
-            CGEventPost(CG_HID_EVENT_TAP, key_up.as_ptr());
-            // key_up automatically released here
-
-            if needs_shift {
-                // Send shift up
-                let shift_up = CGEvent::new(CGEventCreateKeyboardEvent(event_source.as_ptr(), 56, false));
-                CGEventPost(CG_HID_EVENT_TAP, shift_up.as_ptr());
-                // shift_up automatically released here
-            }
-
-            // event_source automatically released here
-        }
-
-        // Small delay between characters
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-
-    Ok(())
+/// Paste text for password fields using clipboard and Cmd+V
+///
+/// This is the most reliable method for password fields that filter or reject
+/// programmatic keystrokes. Works by temporarily using the clipboard to paste.
+///
+/// Safe to use from hotkey callbacks because:
+/// - The hotkey that triggered this has already been consumed
+/// - User is no longer pressing those keys
+/// - No risk of infinite loops
+/// - Previous clipboard contents are restored automatically
+///
+/// # Arguments
+/// * `text` - The text string to paste
+///
+/// # Example
+/// ```ignore
+/// paste_text_for_password("MyPassword123")?;
+/// ```
+pub fn paste_text_for_password(text: &str) -> Result<()> {
+    // Use Swift bridge - uses clipboard to bypass password field restrictions
+    crate::swift_bridge::paste_text(text)
 }
 
 // ============================================================================

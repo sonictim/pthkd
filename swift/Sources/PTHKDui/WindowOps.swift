@@ -59,11 +59,97 @@ class WindowOps {
         }
     }
 
+    /// Set checkbox to a specific value (checked/unchecked)
+    /// - Parameters:
+    ///   - appName: Name of the app (empty string for frontmost app)
+    ///   - windowName: Name of the window (empty string for frontmost window)
+    ///   - checkboxName: Name of the checkbox
+    ///   - value: 0 for unchecked, 1 for checked
+    static func setCheckboxValue(appName: String, windowName: String, checkboxName: String, value: Int) throws {
+        let app = try getApp(appName: appName)
+        let window = try getWindow(app: app, windowName: windowName)
+        let checkbox = try findCheckbox(in: window, checkboxName: checkboxName)
+
+        // Set the AXValue attribute
+        let cfValue = value as CFNumber
+        let result = AXUIElementSetAttributeValue(checkbox, kAXValueAttribute as CFString, cfValue)
+        guard result == .success else {
+            throw WindowError.clickFailed
+        }
+    }
+
     /// Get list of button names in a window
     static func getWindowButtons(appName: String, windowName: String) throws -> [String] {
         let app = try getApp(appName: appName)
         let window = try getWindow(app: app, windowName: windowName)
         return getAllButtons(in: window)
+    }
+
+    /// Get items from a popup menu
+    /// - Parameters:
+    ///   - appName: Name of the app (empty string for frontmost app)
+    ///   - windowName: Name of the window (empty string for frontmost window)
+    ///   - popupName: Name of the popup button
+    /// - Returns: Array of menu item titles
+    static func getPopupMenuItems(appName: String, windowName: String, popupName: String) throws -> [String] {
+        let app = try getApp(appName: appName)
+        let window = try getWindow(app: app, windowName: windowName)
+
+        // Find the popup button
+        guard let popup = findElement(in: window, role: kAXPopUpButtonRole as String, name: popupName) else {
+            throw WindowError.buttonNotFound(popupName)
+        }
+
+        // Press the popup to open the menu
+        _ = AXUIElementPerformAction(popup, kAXPressAction as CFString)
+        // Note: Some apps return error even though popup opens, so we ignore the result
+
+        // Small delay for menu to appear (much shorter than Rust's 200ms)
+        Thread.sleep(forTimeInterval: 0.05)  // 50ms
+
+        var menuItems: [String] = []
+
+        // Try to get menu via AXMenu attribute
+        var menuRef: AnyObject?
+        if AXUIElementCopyAttributeValue(popup, "AXMenu" as CFString, &menuRef) == .success,
+           menuRef != nil {
+            let menu = menuRef as! AXUIElement
+            menuItems = getMenuItems(from: menu)
+        } else {
+            // Try to find menu in children
+            var childrenRef: AnyObject?
+            if AXUIElementCopyAttributeValue(popup, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               childrenRef != nil {
+                let childrenCF = childrenRef as! CFArray
+                let count = CFArrayGetCount(childrenCF)
+
+                for i in 0..<count {
+                    let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
+                    var roleRef: AnyObject?
+                    if AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
+                       let role = roleRef as? String,
+                       role == kAXMenuRole as String {
+                        menuItems = getMenuItems(from: child)
+                        break
+                    }
+                }
+            }
+        }
+
+        return menuItems
+    }
+
+    /// Get all text from a window
+    /// - Parameters:
+    ///   - appName: Name of the app (empty string for frontmost app)
+    ///   - windowName: Name of the window (empty string for frontmost window)
+    /// - Returns: Array of strings in format "[Role] Text"
+    static func getWindowText(appName: String, windowName: String) throws -> [String] {
+        let app = try getApp(appName: appName)
+        let window = try getWindow(app: app, windowName: windowName)
+        var textStrings: [String] = []
+        collectText(from: window, into: &textStrings)
+        return textStrings
     }
 
     // MARK: - Helper Methods
@@ -206,6 +292,81 @@ class WindowOps {
         let normalizedHaystack = haystack.lowercased().filter { !$0.isWhitespace }
         let normalizedNeedle = needle.lowercased().filter { !$0.isWhitespace }
         return normalizedHaystack == normalizedNeedle || normalizedHaystack.contains(normalizedNeedle)
+    }
+
+    /// Get menu item titles from a menu element
+    private static func getMenuItems(from menu: AXUIElement) -> [String] {
+        var items: [String] = []
+
+        var childrenRef: AnyObject?
+        guard AXUIElementCopyAttributeValue(menu, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              childrenRef != nil else {
+            return items
+        }
+
+        let childrenCF = childrenRef as! CFArray
+        let count = CFArrayGetCount(childrenCF)
+
+        for i in 0..<count {
+            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
+            var titleRef: AnyObject?
+            if AXUIElementCopyAttributeValue(child, kAXTitleAttribute as CFString, &titleRef) == .success,
+               let title = titleRef as? String,
+               !title.isEmpty {
+                items.append(title)
+            }
+        }
+
+        return items
+    }
+
+    /// Recursively collect all text from an element
+    private static func collectText(from element: AXUIElement, into results: inout [String]) {
+        // Get role
+        var roleRef: AnyObject?
+        let role = (AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success && roleRef != nil)
+            ? (roleRef as? String ?? "Unknown")
+            : "Unknown"
+
+        // Try to get AXValue
+        var valueRef: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
+           valueRef != nil,
+           let text = valueRef as? String,
+           !text.isEmpty {
+            results.append("[\(role)] \(text)")
+        }
+
+        // Try AXTitle
+        var titleRef: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef) == .success,
+           let title = titleRef as? String,
+           !title.isEmpty,
+           !results.contains(where: { $0.contains(title) }) {
+            results.append("[\(role) Title] \(title)")
+        }
+
+        // Try AXDescription
+        var descRef: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &descRef) == .success,
+           let desc = descRef as? String,
+           !desc.isEmpty,
+           !results.contains(where: { $0.contains(desc) }) {
+            results.append("[\(role) Description] \(desc)")
+        }
+
+        // Recursively search children
+        var childrenRef: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+           childrenRef != nil {
+            let childrenCF = childrenRef as! CFArray
+            let count = CFArrayGetCount(childrenCF)
+
+            for i in 0..<count {
+                let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
+                collectText(from: child, into: &results)
+            }
+        }
     }
 
     // MARK: - Consolidated Window Operations

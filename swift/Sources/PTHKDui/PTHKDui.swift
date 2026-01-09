@@ -169,6 +169,69 @@ public func getWindowButtons(
     }
 }
 
+// C ABI: Set checkbox value (0 = unchecked, 1 = checked)
+@_cdecl("pthkd_set_checkbox_value")
+public func setCheckboxValue(
+    appName: UnsafePointer<CChar>?,
+    windowName: UnsafePointer<CChar>?,
+    checkboxName: UnsafePointer<CChar>,
+    value: Int32
+) -> Bool {
+    do {
+        let app = appName != nil ? String(cString: appName!) : ""
+        let window = windowName != nil ? String(cString: windowName!) : ""
+        let checkbox = String(cString: checkboxName)
+
+        try WindowOps.setCheckboxValue(appName: app, windowName: window, checkboxName: checkbox, value: Int(value))
+        return true
+    } catch {
+        NSLog("pthkd_set_checkbox_value error: \(error.localizedDescription)")
+        return false
+    }
+}
+
+// C ABI: Get popup menu items (returns JSON array)
+@_cdecl("pthkd_get_popup_menu_items")
+public func getPopupMenuItems(
+    appName: UnsafePointer<CChar>?,
+    windowName: UnsafePointer<CChar>?,
+    popupName: UnsafePointer<CChar>
+) -> UnsafePointer<CChar>? {
+    do {
+        let app = appName != nil ? String(cString: appName!) : ""
+        let window = windowName != nil ? String(cString: windowName!) : ""
+        let popup = String(cString: popupName)
+
+        let items = try WindowOps.getPopupMenuItems(appName: app, windowName: window, popupName: popup)
+        let jsonData = try JSONSerialization.data(withJSONObject: items)
+        let json = String(data: jsonData, encoding: .utf8) ?? "[]"
+        return UnsafePointer(strdup(json))  // Rust must free this
+    } catch {
+        let errorJSON = "{\"error\": \"\(error.localizedDescription)\"}"
+        return UnsafePointer(strdup(errorJSON))
+    }
+}
+
+// C ABI: Get all text from a window (returns JSON array)
+@_cdecl("pthkd_get_window_text")
+public func getWindowText(
+    appName: UnsafePointer<CChar>?,
+    windowName: UnsafePointer<CChar>?
+) -> UnsafePointer<CChar>? {
+    do {
+        let app = appName != nil ? String(cString: appName!) : ""
+        let window = windowName != nil ? String(cString: windowName!) : ""
+
+        let text = try WindowOps.getWindowText(appName: app, windowName: window)
+        let jsonData = try JSONSerialization.data(withJSONObject: text)
+        let json = String(data: jsonData, encoding: .utf8) ?? "[]"
+        return UnsafePointer(strdup(json))  // Rust must free this
+    } catch {
+        let errorJSON = "{\"error\": \"\(error.localizedDescription)\"}"
+        return UnsafePointer(strdup(errorJSON))
+    }
+}
+
 // MARK: - App Operations
 
 // C ABI: Get frontmost app and window info (returns JSON: {app: "", window: ""})

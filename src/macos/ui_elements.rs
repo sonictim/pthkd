@@ -132,36 +132,17 @@ pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) ->
 
 /// Check a checkbox (set to checked state)
 pub fn check_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-    let checkbox_name = checkbox_name.to_string();
-
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                use super::session::MacOSSession;
-
-                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
-
-                println!("Found checkbox '{}', setting to CHECKED...", checkbox_name);
-
-                // Create a CFNumber for value 1 (checked)
-                let cf_number = CFNumber::from_i32(1);
-
-                // Set the value using building block
-                let os = MacOSSession::global();
-                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr())
-                {
-                    CFRelease(checkbox_element);
-                    return Err(e);
-                }
-
-                CFRelease(checkbox_element);
-                println!("✅ Set checkbox '{}' to CHECKED", checkbox_name);
-                Ok(())
-            })
-        })
-    }
+    crate::swift_bridge::set_checkbox_value(app_name, window_name, checkbox_name, 1)?;
+    log::info!(
+        "✅ Set checkbox '{}' in window '{}' to CHECKED",
+        checkbox_name,
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            window_name
+        }
+    );
+    Ok(())
 }
 
 /// Get menu items from a popup button
@@ -170,195 +151,22 @@ pub fn get_popup_menu_items(
     window_name: &str,
     popup_name: &str,
 ) -> Result<Vec<String>> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-    let popup_name = popup_name.to_string();
-
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                use super::session::MacOSSession;
-                let os = MacOSSession::global();
-
-                // Find the popup button
-                let popup_element = find_popup_in_window(window, &popup_name)?;
-
-                println!("Found popup '{}', opening menu...", popup_name);
-
-                // Click it to open the menu
-                let result = os.perform_ax_action(popup_element, "AXPress");
-
-                // Note: Some apps (like Pro Tools) return error codes even though the popup opens
-                // For example, Pro Tools returns -25204 (K_AX_ERROR_INVALID_UI_ELEMENT) but the popup still opens
-                if result.is_err() {
-                    println!("  ⚠️  AXPress returned error (but popup may still open)");
-                } else {
-                    println!("  ✅ AXPress succeeded");
-                }
-
-                println!("  Waiting for menu to appear...");
-
-                // Wait for menu to appear
-                std::thread::sleep(std::time::Duration::from_millis(200));
-
-                println!("  Wait complete, enumerating menu...");
-
-                let mut menu_items = Vec::new();
-
-                // Try method 1: Check for AXMenu attribute on the popup itself
-                println!("  Checking for AXMenu attribute...");
-                if let Ok(menu_value) = os.get_ax_element_attr(popup_element, "AXMenu") {
-                    println!("  Found menu via AXMenu attribute!");
-                    menu_items = get_menu_items_from_menu(menu_value)?;
-                    CFRelease(menu_value);
-                } else {
-                    println!("  No AXMenu attribute, checking children...");
-
-                    // Try method 2: Look in children
-                    if let Ok(children_value) = os.get_ax_element_attr(popup_element, "AXChildren")
-                    {
-                        let children = CFArray::new(children_value);
-                        println!("  Found {} children", children.count());
-
-                        for i in 0..children.count() {
-                            let child = children.get(i) as AXUIElementRef;
-
-                            // Get the role of this child
-                            if let Ok(role) = os.get_ax_string_attr(child, "AXRole") {
-                                println!("    Child {}: role = {}", i, role);
-
-                                // Look for menu items
-                                if role == "AXMenu" {
-                                    println!("  Found AXMenu child!");
-                                    menu_items = get_menu_items_from_menu(child)?;
-                                    break;
-                                }
-                            }
-                        }
-                    } else {
-                        println!("  No children found");
-                    }
-                }
-
-                CFRelease(popup_element);
-
-                println!("Found {} menu items", menu_items.len());
-                for (i, item) in menu_items.iter().enumerate() {
-                    println!("  {}. {}", i + 1, item);
-                }
-
-                Ok(menu_items)
-            })
-        })
-    }
-}
-
-/// Get menu item titles from a menu element
-unsafe fn get_menu_items_from_menu(menu: AXUIElementRef) -> Result<Vec<String>> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        let mut items = Vec::new();
-
-        if let Ok(children_value) = os.get_ax_element_attr(menu, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-
-                // Get the title of this menu item
-                if let Ok(title) = os.get_ax_string_attr(child, "AXTitle")
-                    && !title.is_empty()
-                {
-                    items.push(title);
-                }
-            }
-        }
-
-        Ok(items)
-    }
-}
-
-/// Find a popup button in a window
-unsafe fn find_popup_in_window(window: AXUIElementRef, popup_name: &str) -> Result<AXUIElementRef> {
-    unsafe {
-        find_popup_in_element(window, popup_name)
-            .with_context(|| format!("Popup '{}' not found in window", popup_name))
-    }
-}
-
-/// Recursively find a popup button by name
-unsafe fn find_popup_in_element(
-    element: AXUIElementRef,
-    popup_name: &str,
-) -> Result<AXUIElementRef> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        // Check if this element is a popup button with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
-            && role == "AXPopUpButton"
-            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
-            && crate::soft_match(&title, popup_name)
-        {
-            CFRetain(element);
-            return Ok(element);
-        }
-
-        // Search children recursively
-        if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-                if let Ok(popup) = find_popup_in_element(child, popup_name) {
-                    // popup is already retained by the recursive call
-                    return Ok(popup);
-                }
-            }
-        }
-
-        bail!("Popup not found")
-    }
+    crate::swift_bridge::get_popup_menu_items(app_name, window_name, popup_name)
 }
 
 /// Uncheck a checkbox (set to unchecked state)
 pub fn uncheck_box(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
-    let app_name = app_name.to_string();
-    let window_name = window_name.to_string();
-    let checkbox_name = checkbox_name.to_string();
-
-    unsafe {
-        dispatch_to_main(move || {
-            super::helpers::with_app_window(&app_name, &window_name, |_app, window| {
-                use super::session::MacOSSession;
-
-                let checkbox_element = find_checkbox_in_window(window, &checkbox_name)?;
-
-                println!(
-                    "Found checkbox '{}', setting to UNCHECKED...",
-                    checkbox_name
-                );
-
-                // Create a CFNumber for value 0 (unchecked)
-                let cf_number = CFNumber::from_i32(0);
-
-                // Set the value using building block
-                let os = MacOSSession::global();
-                if let Err(e) = os.set_ax_attribute(checkbox_element, "AXValue", cf_number.as_ptr())
-                {
-                    CFRelease(checkbox_element);
-                    return Err(e);
-                }
-
-                CFRelease(checkbox_element);
-                println!("✅ Set checkbox '{}' to UNCHECKED", checkbox_name);
-                Ok(())
-            })
-        })
-    }
+    crate::swift_bridge::set_checkbox_value(app_name, window_name, checkbox_name, 0)?;
+    log::info!(
+        "✅ Set checkbox '{}' in window '{}' to UNCHECKED",
+        checkbox_name,
+        if window_name.is_empty() {
+            "<focused>"
+        } else {
+            window_name
+        }
+    );
+    Ok(())
 }
 // ============================================================================
 // Helper Functions
@@ -423,61 +231,13 @@ pub(crate) unsafe fn find_window_by_name(
     }
 }
 
-// Old button finding functions removed - now using Swift bridge via:
+// All UI element operations now using Swift bridge:
 // - crate::swift_bridge::click_button()
 // - crate::swift_bridge::click_checkbox()
+// - crate::swift_bridge::set_checkbox_value()
 // - crate::swift_bridge::get_window_buttons()
-//
-// Note: checkbox finding functions below are still used by check_box/uncheck_box
-// which set specific values (not just click/toggle)
-
-/// Find a checkbox in a window by name (soft matched)
-unsafe fn find_checkbox_in_window(
-    window: AXUIElementRef,
-    checkbox_name: &str,
-) -> Result<AXUIElementRef> {
-    unsafe {
-        find_checkbox_in_element(window, checkbox_name)
-            .with_context(|| format!("Checkbox '{}' not found in window", checkbox_name))
-    }
-}
-
-/// Recursively find a checkbox by name
-unsafe fn find_checkbox_in_element(
-    element: AXUIElementRef,
-    checkbox_name: &str,
-) -> Result<AXUIElementRef> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        // Check if this element is a checkbox with matching name
-        if let Ok(role) = os.get_ax_string_attr(element, "AXRole")
-            && role == "AXCheckBox"
-            && let Ok(title) = os.get_ax_string_attr(element, "AXTitle")
-            && crate::soft_match(&title, checkbox_name)
-        {
-            // Found it! Retain before returning so caller owns it
-            CFRetain(element);
-            return Ok(element);
-        }
-
-        // Search children recursively
-        if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-                if let Ok(checkbox) = find_checkbox_in_element(child, checkbox_name) {
-                    // checkbox is already retained by the recursive call
-                    return Ok(checkbox);
-                }
-            }
-        }
-
-        bail!("Checkbox not found")
-    }
-}
+// - crate::swift_bridge::get_popup_menu_items()
+// - crate::swift_bridge::get_window_text()
 
 ///
 /// Check if a window exists right now
@@ -646,74 +406,5 @@ pub fn close_window_with_retry(app_name: &str, window_name: &str, timeout_ms: u6
 /// // Returns: ["Press RENDER to commit changes", "Render", "Cancel", ...]
 /// ```
 pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>> {
-    unsafe {
-        super::helpers::with_app_window(app_name, window_name, |_app, window| {
-            find_text_in_element(window)
-        })
-    }
-}
-
-/// Find all text-containing elements recursively
-/// Returns strings in format "Role: Text" so user can see what element type contains the text
-unsafe fn find_text_in_element(element: AXUIElementRef) -> Result<Vec<String>> {
-    use super::session::MacOSSession;
-    let os = MacOSSession::global();
-
-    unsafe {
-        let mut text_strings = Vec::new();
-
-        // Get role using building block
-        let role = os
-            .get_ax_string_attr(element, "AXRole")
-            .unwrap_or_else(|_| "Unknown".to_string());
-
-        // Try to get AXValue from ANY element (not just specific roles)
-        // Note: We can't use get_ax_string_attr here because AXValue might not be a CFString
-        // So we keep the manual approach for AXValue
-        let value_attr = create_cfstring("AXValue");
-        let mut value: *mut c_void = ptr::null_mut();
-        let value_result = AXUIElementCopyAttributeValue(element, value_attr, &mut value);
-        CFRelease(value_attr);
-
-        if value_result == K_AX_ERROR_SUCCESS && !value.is_null() {
-            // cfstring_to_string now safely checks if value is a CFString
-            if let Some(text) = cfstring_to_string(value)
-                && !text.is_empty()
-            {
-                // Include the role type so user can see what contains the text
-                text_strings.push(format!("[{}] {}", role, text));
-            }
-            CFRelease(value);
-        }
-
-        // Also try AXTitle attribute (some elements use this for text)
-        if let Ok(text) = os.get_ax_string_attr(element, "AXTitle")
-            && !text.is_empty()
-            && !text_strings.iter().any(|s| s.contains(&text))
-        {
-            text_strings.push(format!("[{} Title] {}", role, text));
-        }
-
-        // Also try AXDescription attribute
-        if let Ok(text) = os.get_ax_string_attr(element, "AXDescription")
-            && !text.is_empty()
-            && !text_strings.iter().any(|s| s.contains(&text))
-        {
-            text_strings.push(format!("[{} Description] {}", role, text));
-        }
-
-        // Recursively search children
-        if let Ok(children_value) = os.get_ax_element_attr(element, "AXChildren") {
-            let children = CFArray::new(children_value);
-
-            for i in 0..children.count() {
-                let child = children.get(i) as AXUIElementRef;
-                if let Ok(mut child_text) = find_text_in_element(child) {
-                    text_strings.append(&mut child_text);
-                }
-            }
-        }
-
-        Ok(text_strings)
-    }
+    crate::swift_bridge::get_window_text(app_name, window_name)
 }

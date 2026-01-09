@@ -41,6 +41,21 @@ unsafe extern "C" {
         app_name: *const c_char,
         window_name: *const c_char,
     ) -> *const c_char;
+    fn pthkd_set_checkbox_value(
+        app_name: *const c_char,
+        window_name: *const c_char,
+        checkbox_name: *const c_char,
+        value: i32,
+    ) -> bool;
+    fn pthkd_get_popup_menu_items(
+        app_name: *const c_char,
+        window_name: *const c_char,
+        popup_name: *const c_char,
+    ) -> *const c_char;
+    fn pthkd_get_window_text(
+        app_name: *const c_char,
+        window_name: *const c_char,
+    ) -> *const c_char;
     fn pthkd_free_string(ptr: *const c_char);
 
     // App operations
@@ -282,6 +297,94 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 
         let buttons: Vec<String> = serde_json::from_str(&json)?;
         Ok(buttons)
+    }
+}
+
+/// Set checkbox to specific value (checked/unchecked)
+///
+/// # Arguments
+/// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
+/// * `window_name` - Name of the window, or empty string for frontmost window
+/// * `checkbox_name` - Name of the checkbox
+/// * `value` - 0 for unchecked, 1 for checked
+pub fn set_checkbox_value(app_name: &str, window_name: &str, checkbox_name: &str, value: i32) -> Result<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+        let checkbox_cstr = CString::new(checkbox_name)?;
+
+        let success = pthkd_set_checkbox_value(
+            app_cstr.as_ptr(),
+            window_cstr.as_ptr(),
+            checkbox_cstr.as_ptr(),
+            value,
+        );
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Set checkbox value failed"))
+        }
+    }
+}
+
+/// Get items from a popup menu
+///
+/// # Arguments
+/// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
+/// * `window_name` - Name of the window, or empty string for frontmost window
+/// * `popup_name` - Name of the popup button
+pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+        let popup_cstr = CString::new(popup_name)?;
+
+        let json_ptr = pthkd_get_popup_menu_items(
+            app_cstr.as_ptr(),
+            window_cstr.as_ptr(),
+            popup_cstr.as_ptr(),
+        );
+
+        if json_ptr.is_null() {
+            return Err(anyhow::anyhow!("Swift returned null"));
+        }
+
+        let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
+        pthkd_free_string(json_ptr);
+
+        let items: Vec<String> = serde_json::from_str(&json)?;
+        Ok(items)
+    }
+}
+
+/// Get all text from a window
+///
+/// # Arguments
+/// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
+/// * `window_name` - Name of the window, or empty string for frontmost window
+pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>> {
+    unsafe {
+        use std::ffi::CString;
+
+        let app_cstr = CString::new(app_name)?;
+        let window_cstr = CString::new(window_name)?;
+
+        let json_ptr = pthkd_get_window_text(app_cstr.as_ptr(), window_cstr.as_ptr());
+
+        if json_ptr.is_null() {
+            return Err(anyhow::anyhow!("Swift returned null"));
+        }
+
+        let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
+        pthkd_free_string(json_ptr);
+
+        let text: Vec<String> = serde_json::from_str(&json)?;
+        Ok(text)
     }
 }
 

@@ -238,17 +238,20 @@ class Keystroke {
 
         // Lowercase letters - no shift
         if ch >= "a" && ch <= "z" {
-            return (keyCharToKeyCode(str), false)
+            guard let keyCode = keyCharToKeyCode(str) else { return nil }
+            return (keyCode, false)
         }
 
         // Uppercase letters - need shift
         if ch >= "A" && ch <= "Z" {
-            return (keyCharToKeyCode(str.lowercased()), true)
+            guard let keyCode = keyCharToKeyCode(str.lowercased()) else { return nil }
+            return (keyCode, true)
         }
 
         // Numbers - no shift
         if ch >= "0" && ch <= "9" {
-            return (keyCharToKeyCode(str), false)
+            guard let keyCode = keyCharToKeyCode(str) else { return nil }
+            return (keyCode, false)
         }
 
         // Special characters that need shift

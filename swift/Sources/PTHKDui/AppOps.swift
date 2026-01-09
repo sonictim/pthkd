@@ -86,7 +86,10 @@ class AppOps {
 
         // Find the app
         let runningApps = NSWorkspace.shared.runningApplications
-        var app = runningApps.first { softMatch($0.localizedName ?? "", appName) }
+var app = runningApps.first {
+    softMatch($0.localizedName ?? "", appName) &&
+    !$0.isHidden && $0.activationPolicy == .regular
+}
 
         // Launch if needed and not found
         if app == nil && shouldLaunch {

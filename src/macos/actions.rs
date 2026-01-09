@@ -11,7 +11,6 @@ actions_sync!("os", {
     test_app_info,
     reload_config,
     dump_app_menus,
-    test_menu_click,
     list_running_apps,
     focus_protools,
     launch_application,

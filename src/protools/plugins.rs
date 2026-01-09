@@ -186,10 +186,10 @@ async fn activate_plugin_internal(category: &str, exact_name: &str) -> Result<()
     // Open it - build menu path based on whether there's a category
     if category.is_empty() {
         // No category - plugin is at root level
-        crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", exact_name])?;
+        crate::swift_bridge::menu_click("Pro Tools", &["AudioSuite", exact_name])?;
     } else {
         // Has category
-        crate::macos::menu_cache::execute_menu("Pro Tools", &["AudioSuite", category, exact_name])?;
+        crate::swift_bridge::menu_click("Pro Tools", &["AudioSuite", category, exact_name])?;
     }
 
     // Wait for window

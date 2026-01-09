@@ -52,7 +52,7 @@ pub fn execute_menu_item(params: &Params) -> Result<()> {
     let path_refs: Vec<&str> = menu_path.iter().map(|s| &s[..]).collect();
 
     // Use the menu cache to execute
-    match super::menu_cache::execute_menu(&app_name, &path_refs) {
+    match crate::swift_bridge::menu_click(&app_name, &path_refs) {
         Ok(_) => {
             log::info!("✅ Menu click succeeded!");
             Ok(())
@@ -235,19 +235,6 @@ pub fn dump_app_menus(_params: &Params) -> Result<()> {
 
     let log = crate::MessageLog::new(&format!("Menu structure for {}:\n{}", app_name, json));
     log.display()
-}
-
-pub fn test_menu_click(_params: &Params) -> Result<()> {
-    log::info!("Testing menu click...");
-
-    // Test with a simple menu item - adjust this to whatever you want to test
-    crate::macos::menu_cache::execute_menu("Soundminer_Intel", &["DAW", "Pro Tools"])?;
-    log::info!("✅ Menu click 1 succeeded!");
-
-    crate::macos::menu_cache::execute_menu("Soundminer_Intel", &["Transfer", "Pro Tools"])?;
-    log::info!("✅ Menu click 2 succeeded!");
-
-    Ok(())
 }
 
 pub fn list_running_apps(_params: &Params) -> Result<()> {

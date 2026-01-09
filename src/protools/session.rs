@@ -55,10 +55,16 @@ pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()>
     Ok(())
 }
 pub async fn export_selection(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    if !crate::swift_bridge::menu_item_enabled("Pro Tools", &["Options", "Link Track and Edit Selection"])? {
-        crate::macos::menu_cache::execute_menu("Pro Tools", &["Options", "Link Track and Edit Selection"])?;
+    if !crate::swift_bridge::menu_item_enabled(
+        "Pro Tools",
+        &["Options", "Link Track and Edit Selection"],
+    )? {
+        crate::swift_bridge::menu_click(
+            "Pro Tools",
+            &["Options", "Link Track and Edit Selection"],
+        )?;
     }
-    crate::macos::menu_cache::execute_menu("Pro Tools", &["File", "Save Session Copy In..."])?;
+    crate::swift_bridge::menu_click("Pro Tools", &["File", "Save Session Copy In..."])?;
     wait_for_window_exists("Pro Tools", "Save Copy In...", 200)?;
     let audio_files = params.get_bool("copy_audio_files", false);
     if audio_files {
@@ -71,8 +77,7 @@ pub async fn export_selection(_pt: &mut ProtoolsSession, params: &Params) -> Res
         "Save Copy In...",
         "Selected Timeline Range Only",
     )?;
-    let close = params.get_bool("close", true);
-    if close {
+    if params.get_bool("close", true) {
         click_button("Pro Tools", "Save Copy In...", "Ok")?;
     }
     Ok(())

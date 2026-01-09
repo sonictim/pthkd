@@ -156,6 +156,9 @@ pub struct Hotkey {
     /// Whether to show notification on action completion
     pub notify: bool,
 
+    /// Whether to register as a Carbon hotkey (works during secure input)
+    pub carbon: bool,
+
     /// Target applications (hotkey only fires when one of these apps is focused)
     pub application: Option<Vec<String>>,
 

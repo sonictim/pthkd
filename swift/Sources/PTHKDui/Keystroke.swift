@@ -310,6 +310,8 @@ class Keystroke {
                          userInfo: [NSLocalizedDescriptionKey: "Failed to create Cmd+V key down"])
         }
         keyDown.flags = .maskCommand
+        // Mark event to prevent our event tap from catching it
+        keyDown.setIntegerValueField(EVENT_USER_DATA_FIELD, value: APP_EVENT_MARKER)
         keyDown.post(tap: .cghidEventTap)
 
         // Create Cmd+V key up
@@ -318,6 +320,8 @@ class Keystroke {
                          userInfo: [NSLocalizedDescriptionKey: "Failed to create Cmd+V key up"])
         }
         keyUp.flags = .maskCommand
+        // Mark event to prevent our event tap from catching it
+        keyUp.setIntegerValueField(EVENT_USER_DATA_FIELD, value: APP_EVENT_MARKER)
         keyUp.post(tap: .cghidEventTap)
 
         // Small delay before restoring clipboard

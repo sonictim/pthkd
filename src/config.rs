@@ -85,6 +85,8 @@ pub struct HotkeyConfig {
     pub trigger_on_release: bool,
     #[serde(default)]
     pub notify: bool,
+    #[serde(default)]
+    pub carbon: bool,
     target_application: Option<StringOrVec>,
     pub app_window: Option<String>,
 }
@@ -204,6 +206,7 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             params: Params::new(hk_config.params),
             trigger_on_release: hk_config.trigger_on_release,
             notify: hk_config.notify,
+            carbon: hk_config.carbon,
             application: hk_config.target_application.map(|app| app.into_vec()),
             app_window: hk_config.app_window,
         });

@@ -93,28 +93,28 @@ action = "pt.plugins_audiosuite"
 target_application = "Pro Tools"
 [hotkey.params]
 button = "Analyze"
-
-
 #
-[[hotkey]]
-keys = ["cmd", "shift", "t"]
-action = "os.test_keystroke"
-trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
-
-  # List all buttons in focused plugin window
-  [[hotkey]]
-  keys = ["cmd", "shift", "l", "b"]
-  action = "os.list_window_buttons"
-trigger_on_release = true
-
-  [[hotkey]]
-  keys = ["cmd", "shift", "w", "t"]
-  action = "os.display_window_text"
+# #
+# [[hotkey]]
+# keys = ["cmd", "shift", "t"]
+# action = "os.test_keystroke"
+# trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+#
+#   # List all buttons in focused plugin window
+#   [[hotkey]]
+#   keys = ["cmd", "shift", "l", "b"]
+#   action = "os.list_window_buttons"
+# trigger_on_release = true
+#
+#   [[hotkey]]
+#   keys = ["cmd", "shift", "w", "t"]
+#   action = "os.display_window_text"
 
 [[hotkey]]
 keys = ["control", "option", "command", "return"]
 action = "os.rapid_pw"
-trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+# trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+carbon = true
 notify = true
 
 [[hotkey]]
@@ -642,7 +642,7 @@ keys = ["ctrl", "s"]
 action = "sm.send_to_daw"
 target_application = "Pro Tools"
 trigger_on_release = true
-notify = true
+# notify = true
 [hotkey.params]
 command = "Spot To DAW"
 daw = "Pro Tools"

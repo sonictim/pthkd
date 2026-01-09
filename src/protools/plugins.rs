@@ -247,7 +247,8 @@ pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> 
 
     if !button.is_empty() {
         let window = format!("AudioSuite: {}", exact_name);
-        click_button(&window, button).await?;
+        crate::swift_bridge::click_button("Pro Tools", &window, button)?;
+        std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     }
     if close {
         let window = format!("AudioSuite: {}", exact_name);

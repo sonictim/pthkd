@@ -143,6 +143,89 @@ macro_rules! actions_async {
 // Hotkey Checking Helpers
 // ============================================================================
 
+/// Triggers a hotkey by its index in the global HOTKEYS array
+///
+/// This is used by both the CGEventTap callback (indirectly) and the Carbon hotkey callback.
+/// It performs app/window filtering and executes the action with proper error handling.
+pub fn trigger_hotkey_by_index(index: usize) {
+    if let Some(hotkeys_mutex) = HOTKEYS.get() {
+        let hotkeys = hotkeys_mutex.lock().unwrap();
+
+        if let Some(hotkey) = hotkeys.get(index) {
+            // Check app/window filters
+            if let Some(config_apps) = &hotkey.application {
+                if let Ok(current_app) = macos::app_info::get_current_app() {
+                    if !config_apps.iter().any(|app| soft_match(&current_app, app)) {
+                        log::debug!(
+                            "Hotkey '{}' not triggered - app filter doesn't match",
+                            hotkey.action_name
+                        );
+                        return;
+                    }
+                } else {
+                    log::debug!(
+                        "Hotkey '{}' not triggered - couldn't get current app",
+                        hotkey.action_name
+                    );
+                    return;
+                }
+            }
+
+            if let Some(config_window) = &hotkey.app_window {
+                if let Ok(app_window) = macos::app_info::get_app_window() {
+                    if !soft_match(&app_window, config_window) {
+                        log::debug!(
+                            "Hotkey '{}' not triggered - window filter doesn't match",
+                            hotkey.action_name
+                        );
+                        return;
+                    }
+                } else {
+                    log::debug!(
+                        "Hotkey '{}' not triggered - couldn't get app window",
+                        hotkey.action_name
+                    );
+                    return;
+                }
+            }
+
+            // Clone action data before dropping lock
+            let action = hotkey.action;
+            let params = hotkey.params.clone();
+            let notify = hotkey.notify;
+            let action_name = hotkey.action_name.clone();
+            drop(hotkeys);
+
+            log::info!("Triggering hotkey '{}' by index {}", action_name, index);
+
+            // Execute action with panic protection
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(&params)));
+
+            // Show notification if requested
+            if notify {
+                match result {
+                    Ok(Ok(_)) => macos::MacOSSession::global()
+                        .show_notification(&format!("✅ {}", action_name)),
+                    Ok(Err(e)) => macos::MacOSSession::global()
+                        .show_notification(&format!("❌ {}: {}", action_name, e)),
+                    Err(_) => {
+                        log::error!("Action '{}' panicked!", action_name);
+                        macos::MacOSSession::global()
+                            .show_notification(&format!("💥 {}: action panicked", action_name))
+                    }
+                }
+            } else {
+                // Log panics even if notify is false
+                if result.is_err() {
+                    log::error!("Action '{}' panicked!", action_name);
+                }
+            }
+        } else {
+            log::error!("Hotkey index {} out of bounds", index);
+        }
+    }
+}
+
 /// Check if any registered hotkey matches the current pressed keys and trigger/queue it
 ///
 /// Returns true if a hotkey was matched and the event should be consumed
@@ -446,6 +529,14 @@ fn run() -> anyhow::Result<()> {
     HOTKEYS
         .set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
+
+    // Register Carbon hotkeys for those marked with carbon=true
+    // These will work during secure input when CGEventTap is disabled
+    log::info!("Registering Carbon hotkeys...");
+    if let Err(e) = macos::carbon_hotkeys::register_carbon_hotkeys() {
+        log::error!("Failed to register Carbon hotkeys: {:#}", e);
+        log::warn!("Carbon hotkeys will not be available during secure input");
+    }
 
     // Initialize NSApplication for menu bar (must be done before event loop)
     // Create and install event tap for keyboard events

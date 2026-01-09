@@ -375,16 +375,71 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
     Ok(())
 }
 
+/// Wait for all keys to be released before proceeding
+/// This is critical for Carbon hotkeys which fire on keydown while keys are still pressed
+fn wait_for_all_keys_released(max_wait_ms: u64) -> Result<()> {
+    use crate::hotkey::KEY_STATE;
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_millis(max_wait_ms);
+
+    eprintln!("Waiting for all keys to be released (timeout: {}ms)...", max_wait_ms);
+
+    loop {
+        if let Some(key_state) = KEY_STATE.get() {
+            let state = key_state.lock().unwrap();
+            let pressed_keys = state.get_pressed_keys();
+            let num_pressed = pressed_keys.len();
+
+            if num_pressed == 0 {
+                eprintln!("✓ All keys released!");
+                return Ok(());
+            }
+
+            if start.elapsed() > timeout {
+                eprintln!("⚠️ Timeout waiting for keys to be released ({} keys still pressed)", num_pressed);
+                return Ok(()); // Proceed anyway rather than failing
+            }
+
+            // Log which keys are still pressed (for debugging)
+            if start.elapsed().as_millis() % 100 == 0 {
+                eprintln!("  Still waiting... ({} keys pressed)", num_pressed);
+            }
+
+            drop(state); // Release lock before sleeping
+        }
+
+        // Check every 10ms
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 pub fn rapid_pw(params: &Params) -> Result<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
     let result = if set {
         unsafe { MacOSSession::global().password_prompt(account) }
     } else if let Ok(pw) = super::keyring::password_get(account) {
-        println!("typing password: {}", pw);
-        super::keystroke::type_text_for_password(&pw)?;
-        super::keystroke::send_keystroke(&["enter"])
+        log::info!("Pasting password from keychain for account: {} (length: {} chars)", account, pw.len());
+
+        // CRITICAL: Wait for user to release ALL keys before pasting
+        // Carbon hotkeys fire on keydown, so modifier keys are still pressed
+        // We need to wait until they're released or the paste will have wrong modifiers
+        wait_for_all_keys_released(500)?;
+
+        eprintln!("All keys released, pasting password...");
+
+        // Use paste instead of typing - much faster and more reliable
+        super::keystroke::paste_text_for_password(&pw)?;
+
+        // Small delay to ensure paste completes before Enter
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        log::info!("Sending Enter key");
+        super::keystroke::send_keystroke(&["return"])
     } else {
+        log::warn!("Password not found in keychain for account: {}", account);
         unsafe { MacOSSession::global().password_prompt(account) }
     };
 

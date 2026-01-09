@@ -22,6 +22,7 @@ pub mod session;
 
 // Experimental modules (work in progress)
 pub mod app_info;
+pub mod carbon_hotkeys;
 pub mod input_dialog;
 pub mod keyring;
 pub mod keystroke;

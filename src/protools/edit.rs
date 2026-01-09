@@ -202,6 +202,7 @@ pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> Resul
         flag = true;
     }
     let _: serde_json::Value = pt.cmd(CommandId::Clear, serde_json::json!({})).await?;
+    // std::thread::sleep(std::time::Duration::from_millis(25)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
     if flag {
         keystroke(&["cmd", "f1"]).await?;
@@ -220,9 +221,9 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> Resul
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
-    call_menu(&["Edit", "Insert Silence"]).await?;
+    crate::swift_bridge::menu_click("Pro Tools", &["Edit", "Insert Silence"])?;
     // keystroke(&["cmd", "shift", "e"]).await?;
-    // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
+    std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
     if flag {
         keystroke(&["cmd", "f1"]).await?;

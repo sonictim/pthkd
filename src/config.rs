@@ -87,6 +87,8 @@ pub struct HotkeyConfig {
     pub notify: bool,
     #[serde(default)]
     pub carbon: bool,
+    #[serde(default)]
+    pub check_for_text_field: bool,
     target_application: Option<StringOrVec>,
     pub app_window: Option<String>,
 }
@@ -207,6 +209,7 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             trigger_on_release: hk_config.trigger_on_release,
             notify: hk_config.notify,
             carbon: hk_config.carbon,
+            check_for_text_field: hk_config.check_for_text_field,
             application: hk_config.target_application.map(|app| app.into_vec()),
             app_window: hk_config.app_window,
         });

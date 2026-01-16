@@ -159,6 +159,9 @@ pub struct Hotkey {
     /// Whether to register as a Carbon hotkey (works during secure input)
     pub carbon: bool,
 
+    /// Whether to check if user is in a text field before triggering (prevents accidental triggers while typing)
+    pub check_for_text_field: bool,
+
     /// Target applications (hotkey only fires when one of these apps is focused)
     pub application: Option<Vec<String>>,
 

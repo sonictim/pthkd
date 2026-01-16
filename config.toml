@@ -218,6 +218,7 @@ keys = ["f"]
 action = "pt.edit_crossfade"
 target_application = "Pro Tools"
 app_window = "Edit"
+check_for_text_field = true
 [hotkey.params]
 preset = "TF Default"
 crossfade_automation = true

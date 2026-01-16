@@ -7,7 +7,7 @@
 //! Hotkeys marked with `carbon = true` in config.toml will be registered
 //! using Carbon in addition to (or instead of) CGEventTap.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use libc::c_void;
 use std::collections::HashMap;
 use std::ptr;
@@ -112,7 +112,7 @@ unsafe extern "C" fn carbon_hotkey_handler(
     _user_data: *mut c_void,
 ) -> i32 {
     // Wrap entire callback in catch_unwind to prevent panics from crossing FFI boundary
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         // Extract the hotkey ID from the event
         let mut hotkey_id = EventHotKeyID {
             signature: 0,

@@ -80,7 +80,7 @@ macro_rules! actions_async {
                     let params = params.clone();
                     let action_name = concat!(stringify!($module_id), "_", stringify!($action_name));
                     let notify = params.get_bool("notify", false);
-                    let timeout_ms = params.get_int("timeout_ms", 500).max(100) as u64;
+                    let _timeout_ms = params.get_int("timeout_ms", 500).max(100) as u64;
 
                     // Create a shared error container (None = success, Some(msg) = error)
                     let error = Arc::new(Mutex::new(None::<String>));
@@ -189,6 +189,19 @@ pub fn trigger_hotkey_by_index(index: usize) {
                 }
             }
 
+            // Check if in text field (if enabled for this hotkey)
+            if hotkey.check_for_text_field {
+                if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
+                    if is_in_text {
+                        log::debug!(
+                            "Hotkey '{}' not triggered - cursor is in a text field",
+                            hotkey.action_name
+                        );
+                        return;
+                    }
+                }
+            }
+
             // Clone action data before dropping lock
             let action = hotkey.action;
             let params = hotkey.params.clone();
@@ -235,6 +248,19 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
 
         for (index, hotkey) in hotkeys.iter().enumerate() {
             if hotkey.matches(pressed_keys) {
+                // Check if in text field (if enabled for this hotkey)
+                if hotkey.check_for_text_field {
+                    if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
+                        if is_in_text {
+                            log::debug!(
+                                "Hotkey '{}' not triggered - cursor is in a text field",
+                                hotkey.action_name
+                            );
+                            return false; // Don't consume event - let it pass through
+                        }
+                    }
+                }
+
                 if hotkey.trigger_on_release {
                     // Mark as pending, trigger on key release
                     let pending = PENDING_HOTKEY
@@ -306,16 +332,29 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
             // Small delay to let the system fully process key releases
             std::thread::sleep(std::time::Duration::from_millis(50));
 
-            // Clone action data before dropping lock to avoid deadlock
+            // Clone action data and check text field before dropping lock to avoid deadlock
             let action_data = if let Some(hotkeys_mutex) = HOTKEYS.get() {
                 let hotkeys = hotkeys_mutex.lock().unwrap();
-                hotkeys.get(pending.hotkey_index).map(|hotkey| {
-                    (
+                hotkeys.get(pending.hotkey_index).and_then(|hotkey| {
+                    // Check if in text field (if enabled for this hotkey)
+                    if hotkey.check_for_text_field {
+                        if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
+                            if is_in_text {
+                                log::debug!(
+                                    "Pending hotkey '{}' not triggered - cursor is in a text field",
+                                    hotkey.action_name
+                                );
+                                return None; // Skip triggering
+                            }
+                        }
+                    }
+
+                    Some((
                         hotkey.action,
                         hotkey.params.clone(),
                         hotkey.notify,
                         hotkey.action_name.clone(),
-                    )
+                    ))
                 })
             } else {
                 None

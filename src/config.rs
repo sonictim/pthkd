@@ -171,7 +171,8 @@ pub fn create_default_config() -> Result<()> {
         "Creating Default config file at {}",
         &default_path.display()
     );
-    fs::write(&default_path, DEFAULT_CONFIG).context("Failed to write default config file")
+    fs::write(&default_path, DEFAULT_CONFIG).context("Failed to write default config file")?;
+    crate::macos::commands::reload_config(&crate::params::Params::empty())
 }
 
 /// Convert config hotkeys to runtime Hotkey structs

@@ -1,9 +1,6 @@
 use super::client::*;
-use crate::macos::ui_elements::*;
-use crate::params::Params;
-use anyhow::Result;
-
 use crate::actions_async;
+use crate::prelude::*;
 
 actions_async!("pt", session, {
      export_selection,
@@ -11,7 +8,7 @@ actions_async!("pt", session, {
     version_up,
     save_as,
 });
-pub async fn save_as(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn save_as(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let name = params.get_str("name", "");
     let location = params.get_str("location", "");
 
@@ -20,7 +17,7 @@ pub async fn save_as(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     }
     Ok(())
 }
-pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let tag_param = params.get_str("name_id", "");
     let move_old_session = params.get_ostr("move_old_session");
 
@@ -69,37 +66,36 @@ pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()>
 
     Ok(())
 }
-pub async fn export_selection(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
-    if !crate::swift_bridge::menu_item_enabled(
-        "Pro Tools",
-        &["Options", "Link Track and Edit Selection"],
-    )? {
-        crate::swift_bridge::menu_click(
-            "Pro Tools",
-            &["Options", "Link Track and Edit Selection"],
-        )?;
+pub async fn export_selection(_pt: &mut ProtoolsSession, params: &Params) -> R<()> {
+    if !OS::menu_item_enabled("Pro Tools", &["Options", "Link Track and Edit Selection"])? {
+        OS::menu_click("Pro Tools", &["Options", "Link Track and Edit Selection"])?;
     }
-    crate::swift_bridge::menu_click("Pro Tools", &["File", "Save Session Copy In..."])?;
-    wait_for_window_exists("Pro Tools", "Save Copy In...", 200)?;
+    OS::menu_click("Pro Tools", &["File", "Save Session Copy In..."])?;
+    OS::wait_for_window(
+        "Pro Tools",
+        "Save Copy In...",
+        OS::WindowCondition::Exists,
+        200,
+    )?;
     let audio_files = params.get_bool("copy_audio_files", false);
     if audio_files {
-        click_checkbox("Pro Tools", "Save Copy In..", "Audio Files")?;
+        OS::click_checkbox("Pro Tools", "Save Copy In..", "Audio Files")?;
     }
-    click_checkbox("Pro Tools", "Save Copy In...", "Main Playlist Only")?;
-    click_checkbox("Pro Tools", "Save Copy In...", "Selected Tracks Only")?;
-    click_checkbox(
+    OS::click_checkbox("Pro Tools", "Save Copy In...", "Main Playlist Only")?;
+    OS::click_checkbox("Pro Tools", "Save Copy In...", "Selected Tracks Only")?;
+    OS::click_checkbox(
         "Pro Tools",
         "Save Copy In...",
         "Selected Timeline Range Only",
     )?;
     if params.get_bool("close", true) {
-        click_button("Pro Tools", "Save Copy In...", "Ok")?;
+        OS::click_button("Pro Tools", "Save Copy In...", "Ok")?;
     }
     Ok(())
 }
 
-pub async fn popups(_pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
-    match crate::macos::ui_elements::get_popup_menu_items(
+pub async fn popups(_pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
+    match OS::get_popup_menu_items(
         "Pro Tools",
         "", // Empty string = focused window
         "Grid Value",

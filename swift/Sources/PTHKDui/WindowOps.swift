@@ -1,7 +1,7 @@
 import Cocoa
 import ApplicationServices
 
-enum WindowError: Error {
+enum WindowError: Error, LocalizedError {
     case noFrontmostApp
     case appNotFound(String)
     case windowNotFound(String)
@@ -10,6 +10,27 @@ enum WindowError: Error {
     case clickFailed
     case closeFailed
     case timeout
+
+    var errorDescription: String? {
+        switch self {
+        case .noFrontmostApp:
+            return "No frontmost application"
+        case .appNotFound(let name):
+            return "Application '\(name)' not found. Check if the app is running."
+        case .windowNotFound(let name):
+            return "Window '\(name)' not found. Check if the window exists and is visible."
+        case .buttonNotFound(let name):
+            return "Button '\(name)' not found in window"
+        case .checkboxNotFound(let name):
+            return "Checkbox '\(name)' not found in window"
+        case .clickFailed:
+            return "Failed to perform click action"
+        case .closeFailed:
+            return "Failed to close window"
+        case .timeout:
+            return "Operation timed out"
+        }
+    }
 }
 
 enum WindowCondition {
@@ -28,6 +49,7 @@ class WindowOps {
     static func clickButton(appName: String, windowName: String, buttonName: String) throws {
         let app = try getApp(appName: appName)
         let window = try getWindow(app: app, windowName: windowName)
+
         let button = try findButton(in: window, buttonName: buttonName)
 
         // Perform AXPress action
@@ -50,6 +72,7 @@ class WindowOps {
     static func clickCheckbox(appName: String, windowName: String, checkboxName: String) throws {
         let app = try getApp(appName: appName)
         let window = try getWindow(app: app, windowName: windowName)
+
         let checkbox = try findCheckbox(in: window, checkboxName: checkboxName)
 
         // Perform AXPress action
@@ -68,6 +91,7 @@ class WindowOps {
     static func setCheckboxValue(appName: String, windowName: String, checkboxName: String, value: Int) throws {
         let app = try getApp(appName: appName)
         let window = try getWindow(app: app, windowName: windowName)
+
         let checkbox = try findCheckbox(in: window, checkboxName: checkboxName)
 
         // Set the AXValue attribute
@@ -80,9 +104,27 @@ class WindowOps {
 
     /// Get list of button names in a window
     static func getWindowButtons(appName: String, windowName: String) throws -> [String] {
+        NSLog("getWindowButtons called: app=\(appName), window=\(windowName)")
+
         let app = try getApp(appName: appName)
-        let window = try getWindow(app: app, windowName: windowName)
-        return getAllButtons(in: window)
+        NSLog("Got app: \(app.localizedName ?? "unknown")")
+
+        NSLog("About to call getWindow...")
+        let window: AXUIElement
+        do {
+            window = try getWindow(app: app, windowName: windowName)
+            NSLog("Successfully got window")
+        } catch {
+            NSLog("getWindow threw error: \(error)")
+            throw error
+        }
+
+        NSLog("Got window, collecting buttons...")
+
+        let buttons = getAllButtons(in: window)
+        NSLog("Found \(buttons.count) buttons")
+
+        return buttons
     }
 
     /// Get items from a popup menu
@@ -122,15 +164,17 @@ class WindowOps {
                childrenRef != nil {
                 let childrenCF = childrenRef as! CFArray
                 let count = CFArrayGetCount(childrenCF)
-
-                for i in 0..<count {
-                    let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
-                    var roleRef: AnyObject?
-                    if AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
-                       let role = roleRef as? String,
-                       role == kAXMenuRole as String {
-                        menuItems = getMenuItems(from: child)
-                        break
+                if count > 0 && count < 10000 {
+                    for i in 0..<count {
+                        guard let childPtr = CFArrayGetValueAtIndex(childrenCF, i) else { continue }
+                        let child = unsafeBitCast(childPtr, to: AXUIElement.self)
+                        var roleRef: AnyObject?
+                        if AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
+                           let role = roleRef as? String,
+                           role == kAXMenuRole as String {
+                            menuItems = getMenuItems(from: child)
+                            break
+                        }
                     }
                 }
             }
@@ -147,6 +191,7 @@ class WindowOps {
     static func getWindowText(appName: String, windowName: String) throws -> [String] {
         let app = try getApp(appName: appName)
         let window = try getWindow(app: app, windowName: windowName)
+
         var textStrings: [String] = []
         collectText(from: window, into: &textStrings)
         return textStrings
@@ -162,7 +207,12 @@ class WindowOps {
             return app
         } else {
             let runningApps = NSWorkspace.shared.runningApplications
-            guard let app = runningApps.first(where: { $0.localizedName == appName }) else {
+            // Try exact match first
+            if let app = runningApps.first(where: { $0.localizedName == appName }) {
+                return app
+            }
+            // Fall back to soft match
+            guard let app = runningApps.first(where: { softMatch($0.localizedName ?? "", appName) }) else {
                 throw WindowError.appNotFound(appName)
             }
             return app
@@ -170,35 +220,69 @@ class WindowOps {
     }
 
     private static func getWindow(app: NSRunningApplication, windowName: String) throws -> AXUIElement {
+        NSLog("getWindow: Getting windows for app with PID \(app.processIdentifier)")
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
 
         // Get all windows
+        NSLog("getWindow: Calling AXUIElementCopyAttributeValue for kAXWindowsAttribute")
         var windowsRef: AnyObject?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              windowsRef != nil else {
+        let result = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
+
+        NSLog("getWindow: AXUIElementCopyAttributeValue result = \(result.rawValue)")
+
+        guard result == .success else {
+            NSLog("getWindow: Failed to get windows attribute, result = \(result)")
             throw WindowError.windowNotFound(windowName.isEmpty ? "<focused>" : windowName)
         }
 
+        guard windowsRef != nil else {
+            NSLog("getWindow: windowsRef is nil")
+            throw WindowError.windowNotFound(windowName.isEmpty ? "<focused>" : windowName)
+        }
+
+        NSLog("getWindow: Got windowsRef, casting to CFArray")
         let windowsCF = windowsRef as! CFArray
+
+        NSLog("getWindow: Getting array count")
         let count = CFArrayGetCount(windowsCF)
+        NSLog("getWindow: Found \(count) windows")
+
+        guard count > 0 else {
+            NSLog("getWindow: No windows found")
+            throw WindowError.windowNotFound(windowName.isEmpty ? "<focused>" : windowName)
+        }
 
         if windowName.isEmpty {
             // Return the first (frontmost) window
-            guard count > 0 else {
+            NSLog("getWindow: Getting first window (focused)")
+            guard let windowPtr = CFArrayGetValueAtIndex(windowsCF, 0) else {
+                NSLog("getWindow: First window pointer is nil")
                 throw WindowError.windowNotFound("<focused>")
             }
-            return unsafeBitCast(CFArrayGetValueAtIndex(windowsCF, 0), to: AXUIElement.self)
+            NSLog("getWindow: Using Unmanaged to get window reference")
+            // Properly bridge from CF to Swift with retain
+            let window = Unmanaged<AXUIElement>.fromOpaque(windowPtr).takeUnretainedValue()
+            NSLog("getWindow: Returning first window")
+            return window
         } else {
             // Find window by name
+            NSLog("getWindow: Searching for window named '\(windowName)'")
             for i in 0..<count {
-                let window = unsafeBitCast(CFArrayGetValueAtIndex(windowsCF, i), to: AXUIElement.self)
+                guard let windowPtr = CFArrayGetValueAtIndex(windowsCF, i) else {
+                    NSLog("getWindow: Window \(i) pointer is nil, skipping")
+                    continue
+                }
+                // Properly bridge from CF to Swift
+                let window = Unmanaged<AXUIElement>.fromOpaque(windowPtr).takeUnretainedValue()
                 var titleRef: AnyObject?
                 if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
                    let title = titleRef as? String,
                    softMatch(title, windowName) {
+                    NSLog("getWindow: Found matching window '\(title)'")
                     return window
                 }
             }
+            NSLog("getWindow: No matching window found for '\(windowName)'")
             throw WindowError.windowNotFound(windowName)
         }
     }
@@ -218,13 +302,19 @@ class WindowOps {
     }
 
     private static func getAllButtons(in window: AXUIElement) -> [String] {
+        NSLog("getAllButtons: Starting collection")
         var buttons: [String] = []
+        NSLog("getAllButtons: Calling collectElements")
         collectElements(in: window, role: kAXButtonRole as String, into: &buttons)
+        NSLog("getAllButtons: Collection complete, found \(buttons.count) buttons")
         return buttons
     }
 
     /// Recursively find an element by role and name
-    private static func findElement(in element: AXUIElement, role: String, name: String) -> AXUIElement? {
+    private static func findElement(in element: AXUIElement, role: String, name: String, depth: Int = 0) -> AXUIElement? {
+        // Prevent excessive recursion
+        guard depth < 50 else { return nil }
+
         // Check if this element matches
         var roleRef: AnyObject?
         if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
@@ -247,10 +337,12 @@ class WindowOps {
 
         let childrenCF = childrenRef as! CFArray
         let count = CFArrayGetCount(childrenCF)
+        guard count > 0 && count < 10000 else { return nil } // Sanity check
 
         for i in 0..<count {
-            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
-            if let found = findElement(in: child, role: role, name: name) {
+            guard let childPtr = CFArrayGetValueAtIndex(childrenCF, i) else { continue }
+            let child = unsafeBitCast(childPtr, to: AXUIElement.self)
+            if let found = findElement(in: child, role: role, name: name, depth: depth + 1) {
                 return found
             }
         }
@@ -259,7 +351,17 @@ class WindowOps {
     }
 
     /// Recursively collect element names by role
-    private static func collectElements(in element: AXUIElement, role: String, into results: inout [String]) {
+    private static func collectElements(in element: AXUIElement, role: String, into results: inout [String], depth: Int = 0) {
+        // Limit recursion depth to prevent stack overflow
+        guard depth < 50 else {
+            NSLog("collectElements: Hit max recursion depth")
+            return
+        }
+        guard results.count < 1000 else {
+            NSLog("collectElements: Hit max results count")
+            return
+        }
+
         // Check if this element matches the role
         var roleRef: AnyObject?
         if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
@@ -269,21 +371,33 @@ class WindowOps {
             if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef) == .success,
                let title = titleRef as? String,
                !title.isEmpty {
+                NSLog("collectElements: Found button '\(title)'")
                 results.append(title)
             }
         }
 
         // Recursively search children
         var childrenRef: AnyObject?
-        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-           childrenRef != nil {
-            let childrenCF = childrenRef as! CFArray
-            let count = CFArrayGetCount(childrenCF)
+        let childResult = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
 
-            for i in 0..<count {
-                let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
-                collectElements(in: child, role: role, into: &results)
-            }
+        guard childResult == .success else {
+            // Element has no children or error - not a problem
+            return
+        }
+
+        guard childrenRef != nil else {
+            return
+        }
+
+        let childrenCF = childrenRef as! CFArray
+        let count = CFArrayGetCount(childrenCF)
+
+        guard count > 0 && count < 10000 else { return } // Sanity check
+
+        for i in 0..<count {
+            guard let childPtr = CFArrayGetValueAtIndex(childrenCF, i) else { continue }
+            let child = unsafeBitCast(childPtr, to: AXUIElement.self)
+            collectElements(in: child, role: role, into: &results, depth: depth + 1)
         }
     }
 
@@ -306,9 +420,11 @@ class WindowOps {
 
         let childrenCF = childrenRef as! CFArray
         let count = CFArrayGetCount(childrenCF)
+        guard count > 0 && count < 10000 else { return items } // Sanity check
 
         for i in 0..<count {
-            let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
+            guard let childPtr = CFArrayGetValueAtIndex(childrenCF, i) else { continue }
+            let child = unsafeBitCast(childPtr, to: AXUIElement.self)
             var titleRef: AnyObject?
             if AXUIElementCopyAttributeValue(child, kAXTitleAttribute as CFString, &titleRef) == .success,
                let title = titleRef as? String,
@@ -321,7 +437,10 @@ class WindowOps {
     }
 
     /// Recursively collect all text from an element
-    private static func collectText(from element: AXUIElement, into results: inout [String]) {
+    private static func collectText(from element: AXUIElement, into results: inout [String], depth: Int = 0) {
+        // Prevent excessive recursion and limit results
+        guard depth < 50 && results.count < 1000 else { return }
+
         // Get role
         var roleRef: AnyObject?
         let role = (AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success && roleRef != nil)
@@ -357,15 +476,19 @@ class WindowOps {
 
         // Recursively search children
         var childrenRef: AnyObject?
-        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-           childrenRef != nil {
-            let childrenCF = childrenRef as! CFArray
-            let count = CFArrayGetCount(childrenCF)
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+              childrenRef != nil else {
+            return
+        }
 
-            for i in 0..<count {
-                let child = unsafeBitCast(CFArrayGetValueAtIndex(childrenCF, i), to: AXUIElement.self)
-                collectText(from: child, into: &results)
-            }
+        let childrenCF = childrenRef as! CFArray
+        let count = CFArrayGetCount(childrenCF)
+        guard count > 0 && count < 10000 else { return } // Sanity check
+
+        for i in 0..<count {
+            guard let childPtr = CFArrayGetValueAtIndex(childrenCF, i) else { continue }
+            let child = unsafeBitCast(childPtr, to: AXUIElement.self)
+            collectText(from: child, into: &results, depth: depth + 1)
         }
     }
 
@@ -402,12 +525,16 @@ class WindowOps {
             return []
         }
 
+        guard windowsRef != nil else { return [] }
         let windowsCF = windowsRef as! CFArray
         let count = CFArrayGetCount(windowsCF)
+        guard count > 0 && count < 10000 else { return [] }
+
         var titles: [String] = []
 
         for i in 0..<count {
-            let window = unsafeBitCast(CFArrayGetValueAtIndex(windowsCF, i), to: AXUIElement.self)
+            guard let windowPtr = CFArrayGetValueAtIndex(windowsCF, i) else { continue }
+            let window = unsafeBitCast(windowPtr, to: AXUIElement.self)
             var titleRef: AnyObject?
             if AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef) == .success,
                let title = titleRef as? String {

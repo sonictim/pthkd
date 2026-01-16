@@ -355,6 +355,19 @@ pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) ->
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
+/// Helper to check if JSON response contains an error
+fn check_swift_error(json: &str) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct ErrorResponse {
+        error: String,
+    }
+
+    if let Ok(err_resp) = serde_json::from_str::<ErrorResponse>(json) {
+        return Err(anyhow::anyhow!("Swift error: {}", err_resp.error));
+    }
+    Ok(())
+}
+
 pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<String>> {
     unsafe {
         use std::ffi::CString;
@@ -370,6 +383,9 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
+
+        // Check for error response first
+        check_swift_error(&json)?;
 
         let buttons: Vec<String> = serde_json::from_str(&json)?;
         Ok(buttons)
@@ -433,6 +449,9 @@ pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str)
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
 
+        // Check for error response first
+        check_swift_error(&json)?;
+
         let items: Vec<String> = serde_json::from_str(&json)?;
         Ok(items)
     }
@@ -458,6 +477,9 @@ pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>>
 
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
+
+        // Check for error response first
+        check_swift_error(&json)?;
 
         let text: Vec<String> = serde_json::from_str(&json)?;
         Ok(text)
@@ -485,6 +507,9 @@ pub fn get_frontmost_info() -> Result<FrontmostInfo> {
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
 
+        // Check for error response first
+        check_swift_error(&json)?;
+
         let info: FrontmostInfo = serde_json::from_str(&json)?;
         Ok(info)
     }
@@ -501,6 +526,9 @@ pub fn get_running_apps() -> Result<Vec<String>> {
 
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
+
+        // Check for error response first
+        check_swift_error(&json)?;
 
         let apps: Vec<String> = serde_json::from_str(&json)?;
         Ok(apps)
@@ -606,6 +634,9 @@ pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
 
         let json = CStr::from_ptr(json_ptr).to_string_lossy().into_owned();
         pthkd_free_string(json_ptr);
+
+        // Check for error response first
+        check_swift_error(&json)?;
 
         let titles: Vec<String> = serde_json::from_str(&json)?;
         Ok(titles)

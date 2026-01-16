@@ -1,20 +1,19 @@
 //! macOS system command implementations
 
 use super::{MacOSSession, app_info, keystroke};
-use crate::params::Params;
-use anyhow::{Context, Result};
+use crate::prelude::*;
 use std::process::Command;
 
 // ============================================================================
 // Command Implementations
 // ============================================================================
 
-pub fn test_notification(_params: &Params) -> Result<()> {
+pub fn test_notification(_params: &Params) -> R<()> {
     MacOSSession::global().show_notification("CMD+Shift+K pressed!");
     Ok(())
 }
 
-pub fn execute_menu_item(params: &Params) -> Result<()> {
+pub fn execute_menu_item(params: &Params) -> R<()> {
     let app_name = params.get_string("app", "");
     let menu_path = params.get_str_vec("menu");
 
@@ -28,7 +27,7 @@ pub fn execute_menu_item(params: &Params) -> Result<()> {
     let path_refs: Vec<&str> = menu_path.iter().map(|s| &s[..]).collect();
 
     // Use the menu cache to execute
-    match crate::swift_bridge::menu_click(&app_name, &path_refs) {
+    match OS::menu_click(&app_name, &path_refs) {
         Ok(_) => {
             log::info!("✅ Menu click succeeded!");
             Ok(())
@@ -39,7 +38,7 @@ pub fn execute_menu_item(params: &Params) -> Result<()> {
         }
     }
 }
-pub fn test_window(_params: &Params) -> Result<()> {
+pub fn test_window(_params: &Params) -> R<()> {
     log::info!("=== test_window: Dispatching to main queue ===");
 
     unsafe {
@@ -65,7 +64,7 @@ pub fn test_window(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_modal_window(_params: &Params) -> Result<()> {
+pub fn test_modal_window(_params: &Params) -> R<()> {
     log::info!("=== test_modal_window: Dispatching to main queue ===");
 
     unsafe {
@@ -84,7 +83,7 @@ pub fn test_modal_window(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_text_window(_params: &Params) -> Result<()> {
+pub fn test_text_window(_params: &Params) -> R<()> {
     log::info!("=== test_text_window: Dispatching to main queue ===");
 
     unsafe {
@@ -101,14 +100,14 @@ pub fn test_text_window(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_keystroke(_params: &Params) -> Result<()> {
+pub fn test_keystroke(_params: &Params) -> R<()> {
     log::info!("Testing global keystroke - sending CMD+F1");
     keystroke::send_keystroke(&["cmd", "f1"])?;
     log::info!("Keystroke sent successfully");
     Ok(())
 }
 
-pub fn test_app_info(_params: &Params) -> Result<()> {
+pub fn test_app_info(_params: &Params) -> R<()> {
     use std::time::Instant;
     let mut log = crate::MessageLog::default();
     log.append("=== App Focus Information ===");
@@ -164,7 +163,7 @@ pub fn test_app_info(_params: &Params) -> Result<()> {
     log.display()
 }
 
-pub fn reload_config(_params: &Params) -> Result<()> {
+pub fn reload_config(_params: &Params) -> R<()> {
     use crate::config::{config_to_hotkeys, load_config};
     use crate::hotkey::HOTKEYS;
     use anyhow::{Context, bail};
@@ -199,21 +198,21 @@ pub fn reload_config(_params: &Params) -> Result<()> {
     }
 }
 
-pub fn dump_app_menus(_params: &Params) -> Result<()> {
+pub fn dump_app_menus(_params: &Params) -> R<()> {
     use anyhow::Context;
 
     // Get menu structure for Pro Tools
     let app_name = "Pro Tools";
     log::info!("Getting menu structure for {}...", app_name);
 
-    let json = crate::swift_bridge::get_app_menus(app_name)
-        .context(format!("Failed to get menus for {}", app_name))?;
+    let json =
+        OS::get_app_menus(app_name).context(format!("Failed to get menus for {}", app_name))?;
 
     let log = crate::MessageLog::new(&format!("Menu structure for {}:\n{}", app_name, json));
     log.display()
 }
 
-pub fn list_running_apps(_params: &Params) -> Result<()> {
+pub fn list_running_apps(_params: &Params) -> R<()> {
     use anyhow::Context;
 
     log::info!("Getting list of running applications...");
@@ -229,7 +228,7 @@ pub fn list_running_apps(_params: &Params) -> Result<()> {
     log.display()
 }
 
-pub fn focus_protools(_params: &Params) -> Result<()> {
+pub fn focus_protools(_params: &Params) -> R<()> {
     use anyhow::Context;
 
     log::info!("Focusing Pro Tools...");
@@ -238,7 +237,7 @@ pub fn focus_protools(_params: &Params) -> Result<()> {
 
     Ok(())
 }
-pub fn launch_application(params: &Params) -> Result<()> {
+pub fn launch_application(params: &Params) -> R<()> {
     use anyhow::Context;
     let app = params.get_str("app", "");
     if !app.is_empty() {
@@ -249,11 +248,13 @@ pub fn launch_application(params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn list_window_buttons(params: &Params) -> Result<()> {
-    use anyhow::Context;
-
-    let app_name = params.get_string("app", "Pro Tools");
+pub fn list_window_buttons(params: &Params) -> R<()> {
+    let current_app = crate::macos::app_info::get_current_app()
+        .ok()
+        .unwrap_or_default();
+    let app_name = params.get_string("app", &current_app);
     let window_name = params.get_string("window", "");
+    let debug = params.get_bool("debug", false);
 
     log::info!(
         "Listing buttons in window '{}' of app '{}'...",
@@ -265,19 +266,92 @@ pub fn list_window_buttons(params: &Params) -> Result<()> {
         app_name
     );
 
-    let buttons = super::ui_elements::get_window_buttons(&app_name, &window_name)
-        .context("Failed to get window buttons")?;
+    match OS::get_window_buttons(&app_name, &window_name) {
+        Ok(buttons) => {
+            let mut log = crate::MessageLog::new("\n=== Buttons in window ===");
+            log.append(&format!("App: {}", app_name));
+            log.append(&format!(
+                "Window: {}",
+                if window_name.is_empty() {
+                    "<focused>"
+                } else {
+                    &window_name
+                }
+            ));
+            log.append(&format!("\nFound {} buttons:", buttons.len()));
+            for (i, button) in buttons.iter().enumerate() {
+                log.append(&format!("  {}. {}", i + 1, button));
+            }
+            log.display()
+        }
+        Err(e) => {
+            let mut log = crate::MessageLog::new("\n❌ Error getting window buttons");
+            log.append(&format!("App: {}", app_name));
+            log.append(&format!(
+                "Window: {}",
+                if window_name.is_empty() {
+                    "<focused>"
+                } else {
+                    &window_name
+                }
+            ));
+            log.append(&format!("\nError: {}", e));
 
-    let mut log = crate::MessageLog::new("\n=== Buttons in window ===");
-    log.append(&format!("Found {} buttons:", buttons.len()));
-    for (i, button) in buttons.iter().enumerate() {
-        log.append(&format!("  {}. {}", i + 1, button));
+            // Add debug info if requested
+            if debug {
+                log.append("\n=== Debug Info ===");
+
+                // Show current app
+                if let Ok(current_app) = super::app_info::get_current_app() {
+                    log.append(&format!("Current frontmost app: {}", current_app));
+                }
+
+                // Show running apps
+                if let Ok(running_apps) = OS::get_running_apps() {
+                    log.append(&format!("\nRunning apps matching '{}':", app_name));
+                    for app in running_apps
+                        .iter()
+                        .filter(|a| crate::soft_match(a, &app_name))
+                    {
+                        log.append(&format!("  - {}", app));
+                    }
+                }
+
+                // Show window titles
+                if let Ok(titles) = OS::get_window_titles(&app_name) {
+                    log.append(&format!(
+                        "\nWindows for '{}' ({} total):",
+                        app_name,
+                        titles.len()
+                    ));
+                    for (i, title) in titles.iter().enumerate() {
+                        log.append(&format!("  {}. {}", i + 1, title));
+                    }
+                }
+
+                // Check accessibility permissions
+                log.append(&format!(
+                    "\nAccessibility permissions: {}",
+                    if app_info::has_accessibility_permission() {
+                        "✅ Granted"
+                    } else {
+                        "❌ Not granted"
+                    }
+                ));
+            }
+
+            log.append("\nPossible causes:");
+            log.append("  1. Application is not running");
+            log.append("  2. Window does not exist or is not focused");
+            log.append("  3. Accessibility permissions not granted");
+            log.append("     (System Settings > Privacy & Security > Accessibility)");
+            log.append("\nTip: Add 'debug = true' to see more diagnostic info");
+            log.display()
+        }
     }
-
-    log.display()
 }
 
-pub fn click_window_button(params: &Params) -> Result<()> {
+pub fn click_window_button(params: &Params) -> R<()> {
     use anyhow::Context;
 
     let app_name = params.get_string("app", "Pro Tools");
@@ -299,13 +373,12 @@ pub fn click_window_button(params: &Params) -> Result<()> {
         app_name
     );
 
-    super::ui_elements::click_button(&app_name, &window_name, &button_name)
-        .context("Failed to click button")?;
+    OS::click_button(&app_name, &window_name, &button_name).context("Failed to click button")?;
 
     Ok(())
 }
 
-pub fn display_window_text(_params: &Params) -> Result<()> {
+pub fn display_window_text(_params: &Params) -> R<()> {
     log::info!("Getting text from focused window...");
 
     // Get current app
@@ -314,7 +387,7 @@ pub fn display_window_text(_params: &Params) -> Result<()> {
     log.append(&format!("Current app: {}", app_name));
 
     // Get text from focused window (empty string = focused window)
-    match super::ui_elements::get_window_text(&app_name, "") {
+    match OS::get_window_text(&app_name, "") {
         Ok(text_elements) => {
             log.append(&format!(
                 "\n=== Window Text ({} elements) ===",
@@ -333,21 +406,21 @@ pub fn display_window_text(_params: &Params) -> Result<()> {
     Ok(())
 }
 
-pub fn test_input_dialog(_params: &Params) -> Result<()> {
+pub fn test_input_dialog(_params: &Params) -> R<()> {
     use super::input_dialog;
 
     log::info!("=== test_input_dialog: START ===");
 
     log::info!("About to show dialog...");
-    let dialog_result = input_dialog::show_input_dialog(
+    let dialog_r = input_dialog::show_input_dialog(
         "Enter some text:",
         Some("Type anything you want:"),
         Some("default value"),
     );
 
-    log::info!("Dialog returned, processing result...");
+    log::info!("Dialog returned, processing r...");
 
-    match dialog_result {
+    match dialog_r {
         Ok(Some(text)) => {
             let msg = format!("You entered: {}", text);
             log::info!("Showing success notification: {}", msg);
@@ -377,14 +450,17 @@ pub fn test_input_dialog(_params: &Params) -> Result<()> {
 
 /// Wait for all keys to be released before proceeding
 /// This is critical for Carbon hotkeys which fire on keydown while keys are still pressed
-fn wait_for_all_keys_released(max_wait_ms: u64) -> Result<()> {
+fn wait_for_all_keys_released(max_wait_ms: u64) -> R<()> {
     use crate::hotkey::KEY_STATE;
     use std::time::{Duration, Instant};
 
     let start = Instant::now();
     let timeout = Duration::from_millis(max_wait_ms);
 
-    eprintln!("Waiting for all keys to be released (timeout: {}ms)...", max_wait_ms);
+    eprintln!(
+        "Waiting for all keys to be released (timeout: {}ms)...",
+        max_wait_ms
+    );
 
     loop {
         if let Some(key_state) = KEY_STATE.get() {
@@ -398,7 +474,10 @@ fn wait_for_all_keys_released(max_wait_ms: u64) -> Result<()> {
             }
 
             if start.elapsed() > timeout {
-                eprintln!("⚠️ Timeout waiting for keys to be released ({} keys still pressed)", num_pressed);
+                eprintln!(
+                    "⚠️ Timeout waiting for keys to be released ({} keys still pressed)",
+                    num_pressed
+                );
                 return Ok(()); // Proceed anyway rather than failing
             }
 
@@ -415,13 +494,17 @@ fn wait_for_all_keys_released(max_wait_ms: u64) -> Result<()> {
     }
 }
 
-pub fn rapid_pw(params: &Params) -> Result<()> {
+pub fn rapid_pw(params: &Params) -> R<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
-    let result = if set {
+    let r = if set {
         unsafe { MacOSSession::global().password_prompt(account) }
     } else if let Ok(pw) = super::keyring::password_get(account) {
-        log::info!("Pasting password from keychain for account: {} (length: {} chars)", account, pw.len());
+        log::info!(
+            "Pasting password from keychain for account: {} (length: {} chars)",
+            account,
+            pw.len()
+        );
 
         // CRITICAL: Wait for user to release ALL keys before pasting
         // Carbon hotkeys fire on keydown, so modifier keys are still pressed
@@ -451,14 +534,14 @@ pub fn rapid_pw(params: &Params) -> Result<()> {
         );
     }
 
-    result
+    r
 }
 
-pub fn test_pw(params: &Params) -> Result<()> {
+pub fn test_pw(params: &Params) -> R<()> {
     let account = "test_pw";
     let set = params.get_bool("set", false);
     println!("Running Test PW");
-    let result = if set {
+    let r = if set {
         println!("setting");
         super::keyring::password_set(account, "test")
     } else if let Ok(pw) = super::keyring::password_get(account) {
@@ -478,52 +561,63 @@ pub fn test_pw(params: &Params) -> Result<()> {
         );
     }
 
-    result
+    r
 }
 
-pub fn list_window_titles(params: &Params) -> Result<()> {
-    use anyhow::Context;
-
+pub fn list_window_titles(params: &Params) -> R<()> {
     let app_name = params.get_string("app", "");
     let mut log = crate::MessageLog::default();
 
     if app_name.is_empty() {
         // If no app specified, use current app
-        let current_app = super::app_info::get_current_app()?;
-        log::info!("Getting window titles for current app: {}", current_app);
+        match super::app_info::get_current_app() {
+            Ok(current_app) => {
+                log::info!("Getting window titles for current app: {}", current_app);
 
-        let titles = super::ui_elements::get_window_titles(&current_app)
-            .context("Failed to get window titles")?;
-
-        log.append(&format!(
-            "\n=== Window Titles for '{}' ({} windows) ===",
-            current_app,
-            titles.len()
-        ));
-        for (i, title) in titles.iter().enumerate() {
-            log.append(&format!("  {}. {}", i + 1, title));
+                match OS::get_window_titles(&current_app) {
+                    Ok(titles) => {
+                        log.append(&format!(
+                            "\n=== Window Titles for '{}' ({} windows) ===",
+                            current_app,
+                            titles.len()
+                        ));
+                        for (i, title) in titles.iter().enumerate() {
+                            log.append(&format!("  {}. {}", i + 1, title));
+                        }
+                    }
+                    Err(e) => {
+                        log.append(&format!("❌ Error getting window titles: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                log.append(&format!("❌ Error getting current app: {}", e));
+            }
         }
     } else {
         log::info!("Getting window titles for app: {}", app_name);
 
-        let titles = super::ui_elements::get_window_titles(&app_name)
-            .context("Failed to get window titles")?;
-
-        log.append(&format!(
-            "\n=== Window Titles for '{}' ({} windows) ===",
-            app_name,
-            titles.len()
-        ));
-        for (i, title) in titles.iter().enumerate() {
-            log.append(&format!("  {}. {}", i + 1, title));
-            println!("  {}. {}", i + 1, title);
+        match OS::get_window_titles(&app_name) {
+            Ok(titles) => {
+                log.append(&format!(
+                    "\n=== Window Titles for '{}' ({} windows) ===",
+                    app_name,
+                    titles.len()
+                ));
+                for (i, title) in titles.iter().enumerate() {
+                    log.append(&format!("  {}. {}", i + 1, title));
+                }
+            }
+            Err(e) => {
+                log.append(&format!("❌ Error getting window titles: {}", e));
+            }
         }
     }
 
     log.display()
 }
 
-pub fn shell_script(params: &Params) -> Result<()> {
+pub fn shell_script(params: &Params) -> R<()> {
     let script = params.get_str("script_path", "");
     println!("script from params: {}", script);
     if script.is_empty() {
@@ -538,7 +632,7 @@ pub fn shell_script(params: &Params) -> Result<()> {
     }
 }
 
-pub fn run_shell_script(script_path: &str) -> Result<String> {
+pub fn run_shell_script(script_path: &str) -> R<String> {
     println!("running shell script: {}", script_path);
     let output = Command::new("sh")
         .arg("-c")

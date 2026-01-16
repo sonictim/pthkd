@@ -6,7 +6,7 @@
 //! All functions now use the Swift bridge for native macOS integration.
 
 use super::ffi::*;
-use anyhow::Result;
+use crate::prelude::*;
 
 /// Get the name of the currently focused (frontmost) application
 ///
@@ -15,8 +15,8 @@ use anyhow::Result;
 /// let app_name = get_current_app()?;
 /// println!("Current app: {}", app_name); // "Pro Tools"
 /// ```
-pub fn get_current_app() -> Result<String> {
-    let info = crate::swift_bridge::get_frontmost_info()?;
+pub fn get_current_app() -> R<String> {
+    let info = OS::get_frontmost_info()?;
     Ok(info.app)
 }
 
@@ -27,8 +27,8 @@ pub fn get_current_app() -> Result<String> {
 /// let window_title = get_app_window()?;
 /// println!("Window: {}", window_title); // "My Session - Pro Tools"
 /// ```
-pub fn get_app_window() -> Result<String> {
-    let info = crate::swift_bridge::get_frontmost_info()?;
+pub fn get_app_window() -> R<String> {
+    let info = OS::get_frontmost_info()?;
     Ok(info.window)
 }
 
@@ -36,8 +36,8 @@ pub fn get_app_window() -> Result<String> {
 ///
 /// # Arguments
 /// * `app_name` - Name of the application to focus
-pub fn focus_application(app_name: &str) -> Result<()> {
-    crate::swift_bridge::focus_app(app_name, "", true, false, 1000)
+pub fn focus_application(app_name: &str) -> R<()> {
+    OS::focus_app(app_name, "", true, false, 1000)
 }
 
 /// Focus/activate an application with options
@@ -54,25 +54,25 @@ pub fn focus_app(
     should_switch: bool,
     should_launch: bool,
     timeout: i32,
-) -> Result<()> {
-    crate::swift_bridge::focus_app(app_name, window_name, should_switch, should_launch, timeout)
+) -> R<()> {
+    OS::focus_app(app_name, window_name, should_switch, should_launch, timeout)
 }
 
 /// Launch an application
 ///
 /// # Arguments
 /// * `app_name` - Name of the application to launch
-pub fn launch_application(app_name: &str) -> Result<()> {
-    crate::swift_bridge::launch_app(app_name)
+pub fn launch_application(app_name: &str) -> R<()> {
+    OS::launch_app(app_name)
 }
 
 /// Get list of all running application names
-pub fn get_running_apps() -> Result<Vec<String>> {
-    crate::swift_bridge::get_running_apps()
+pub fn get_running_apps() -> R<Vec<String>> {
+    OS::get_running_apps()
 }
 
 /// Get list of all running application names (alias for compatibility)
-pub fn get_all_running_applications() -> Result<Vec<String>> {
+pub fn get_all_running_applications() -> R<Vec<String>> {
     get_running_apps()
 }
 
@@ -87,7 +87,7 @@ pub fn has_accessibility_permission() -> bool {
 ///
 /// # Arguments
 /// * `app_name` - Name of the application
-pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
+pub fn get_pid_by_name(app_name: &str) -> R<i32> {
     use objc2::msg_send;
 
     unsafe {
@@ -102,6 +102,6 @@ pub fn get_pid_by_name(app_name: &str) -> Result<i32> {
 ///
 /// Returns true if the focused element is a text field, text area, or similar editable text control.
 /// This is useful for preventing hotkeys from triggering when the user is typing.
-pub fn is_in_text_field() -> Result<bool> {
-    Ok(crate::swift_bridge::is_in_text_field())
+pub fn is_in_text_field() -> R<bool> {
+    Ok(OS::is_in_text_field())
 }

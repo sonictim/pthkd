@@ -3,14 +3,14 @@
 pub mod actions;
 pub mod commands;
 
-use anyhow::Result;
+// use crate::prelude::*;
 
-fn keystroke(keys: &[&str]) -> Result<()> {
-    crate::macos::keystroke::send_keystroke(keys)?;
-    Ok(())
-}
-
-fn menu(menu: &[&str]) -> Result<()> {
-    crate::swift_bridge::menu_click("Soundminer_Intel", menu)?;
-    Ok(())
-}
+// fn keystroke(keys: &[&str]) -> R<()> {
+//     crate::macos::keystroke::send_keystroke(keys)?;
+//     Ok(())
+// }
+//
+// fn menu(menu: &[&str]) -> R<()> {
+//     OS::menu_click("Soundminer_Intel", menu)?;
+//     Ok(())
+// }

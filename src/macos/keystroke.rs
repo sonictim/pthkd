@@ -132,7 +132,7 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
     }
 
     // Use Swift bridge to send keystroke
-    crate::swift_bridge::send_global_keystroke(&key_codes, modifier_flags)
+    crate::macos::swift_bridge::send_global_keystroke(&key_codes, modifier_flags)
 }
 
 /// Type text by sending individual keystrokes for each character
@@ -149,7 +149,7 @@ pub fn send_keystroke(keys: &[&str]) -> Result<()> {
 /// ```
 pub fn type_text(text: &str) -> Result<()> {
     // Use Swift bridge - mark_events=true to prevent event tap from catching
-    crate::swift_bridge::type_text(text, true)
+    crate::macos::swift_bridge::type_text(text, true)
 }
 
 /// Type text for password fields (without APP_MARKER)
@@ -172,7 +172,7 @@ pub fn type_text(text: &str) -> Result<()> {
 /// ```
 pub fn type_text_for_password(text: &str) -> Result<()> {
     // Use Swift bridge - mark_events=false to appear as genuine keystrokes
-    crate::swift_bridge::type_text(text, false)
+    crate::macos::swift_bridge::type_text(text, false)
 }
 
 /// Paste text for password fields using clipboard and Cmd+V
@@ -195,7 +195,7 @@ pub fn type_text_for_password(text: &str) -> Result<()> {
 /// ```
 pub fn paste_text_for_password(text: &str) -> Result<()> {
     // Use Swift bridge - uses clipboard to bypass password field restrictions
-    crate::swift_bridge::paste_text(text)
+    crate::macos::swift_bridge::paste_text(text)
 }
 
 // ============================================================================

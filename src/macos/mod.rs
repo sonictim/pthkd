@@ -7,7 +7,7 @@
 //! - `keystroke`: Sending keystrokes to apps (EXPERIMENTAL)
 //! - `app_info`: Application focus and window information (EXPERIMENTAL)
 //! - `actions`: macOS actions callable from config (namespace: "os")
-
+pub mod swift_bridge;
 // FFI declarations (shared across modules)
 pub mod ffi;
 pub mod helpers;
@@ -27,7 +27,6 @@ pub mod input_dialog;
 pub mod keyring;
 pub mod keystroke;
 pub mod menubar;
-pub mod ui_elements;
 pub mod window;
 
 // Commands and Actions
@@ -37,6 +36,5 @@ pub mod commands;
 // Re-export commonly used items
 pub use events::*;
 pub use session::MacOSSession;
-
 // Experimental items are not re-exported - must be explicitly imported
 // This makes it clear when experimental code is being used

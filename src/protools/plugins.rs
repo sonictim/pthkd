@@ -2,8 +2,7 @@ use super::client::*;
 use super::*;
 use crate::actions_async;
 use crate::hotkey::HotkeyCounter;
-use crate::params::Params;
-use anyhow::Result;
+use crate::prelude::*;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -28,7 +27,7 @@ struct MenuItem {
 }
 
 /// Parse menu JSON from Swift
-fn parse_menus(json: &str) -> Result<Vec<MenuItem>> {
+fn parse_menus(json: &str) -> R<Vec<MenuItem>> {
     #[derive(Deserialize)]
     struct MenuResponse {
         menus: Vec<MenuItem>,
@@ -40,7 +39,7 @@ fn parse_menus(json: &str) -> Result<Vec<MenuItem>> {
 // Command Implementations
 // ============================================================================
 
-pub async fn audiosuite(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn audiosuite(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let plugin = params.get_string("plugin", "");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
@@ -51,7 +50,7 @@ pub async fn audiosuite(pt: &mut ProtoolsSession, params: &Params) -> Result<()>
     }
     Ok(())
 }
-pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let version = params.get_int("version", 11);
     let plugin = format!("RX {} Connect", version);
     let rx_app = format!("RX {}", version);
@@ -74,7 +73,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
         // println!("Multiple windows detected");
         while windows > 1 {
             std::thread::sleep(std::time::Duration::from_millis(100)); // Wait 50ms
-            let app_windows = crate::macos::ui_elements::get_window_titles(&app)?;
+            let app_windows = OS::get_window_titles(&app)?;
             windows = app_windows
                 .into_iter()
                 .filter(|w| w == "Pro Tools 1")
@@ -82,7 +81,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
         }
         println!("one window detected");
         crate::macos::app_info::focus_app("Pro Tools", "", true, false, 50).ok();
-        crate::macos::ui_elements::wait_for_window_focused("Pro Tools", &plugin, 50).ok();
+        OS::wait_for_window("Pro Tools", &plugin, OS::WindowCondition::Focused, 50).ok();
         // Focus Pro Tools and wait for confirmation (switch but don't launch)
 
         // Now render the changes back
@@ -91,7 +90,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> Resu
 
     Ok(())
 }
-pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn multitap_selector(_pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let plugins = params.get_string_vec("plugins");
     let button = params.get_string("button", "");
     let close = params.get_bool("close", false);
@@ -116,9 +115,9 @@ lazy_static! {
 }
 
 /// Build the plugin map by traversing the AudioSuite menu tree once
-fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
+fn build_plugin_map() -> R<HashMap<String, (String, String)>> {
     // Get menus directly from Swift
-    let json = crate::swift_bridge::get_app_menus("Pro Tools")?;
+    let json = OS::get_app_menus("Pro Tools")?;
     let menus = parse_menus(&json)?;
 
     let audiosuite_menu = menus
@@ -165,7 +164,7 @@ fn build_plugin_map() -> Result<HashMap<String, (String, String)>> {
 }
 
 /// Get or build the plugin map
-fn get_plugin_map() -> Result<HashMap<String, (String, String)>> {
+fn get_plugin_map() -> R<HashMap<String, (String, String)>> {
     let mut cache = PLUGIN_MAP.lock().unwrap();
 
     if cache.is_none() {
@@ -180,13 +179,13 @@ fn get_plugin_map() -> Result<HashMap<String, (String, String)>> {
 
 /// Find the category for a plugin in the AudioSuite menu using cached HashMap
 /// Returns (category_name, exact_plugin_name)
-fn find_plugin_category(plugin_name: &str) -> Result<(String, String)> {
+fn find_plugin_category(plugin_name: &str) -> R<(String, String)> {
     let map = get_plugin_map()?;
 
     // Try exact match first (case-insensitive)
     let key = plugin_name.to_lowercase();
-    if let Some(result) = map.get(&key) {
-        return Ok(result.clone());
+    if let Some(r) = map.get(&key) {
+        return Ok(r.clone());
     }
 
     // Fall back to soft match (partial matching)
@@ -199,11 +198,11 @@ fn find_plugin_category(plugin_name: &str) -> Result<(String, String)> {
     anyhow::bail!("Plugin '{}' not found in AudioSuite menu", plugin_name)
 }
 
-async fn activate_plugin_internal(category: &str, exact_name: &str) -> Result<()> {
+async fn activate_plugin_internal(category: &str, exact_name: &str) -> R<()> {
     let window = format!("AudioSuite: {}", exact_name);
 
     // Check if already open
-    if crate::swift_bridge::window_exists("Pro Tools", &window)? {
+    if OS::window_exists("Pro Tools", &window)? {
         println!("Plugin '{}' window already open", exact_name);
         return Ok(());
     }
@@ -211,31 +210,26 @@ async fn activate_plugin_internal(category: &str, exact_name: &str) -> Result<()
     // Open it - build menu path based on whether there's a category
     if category.is_empty() {
         // No category - plugin is at root level
-        crate::swift_bridge::menu_click("Pro Tools", &["AudioSuite", exact_name])?;
+        OS::menu_click("Pro Tools", &["AudioSuite", exact_name])?;
     } else {
         // Has category
-        crate::swift_bridge::menu_click("Pro Tools", &["AudioSuite", category, exact_name])?;
+        OS::menu_click("Pro Tools", &["AudioSuite", category, exact_name])?;
     }
 
     // Wait for window
-    if !crate::swift_bridge::wait_for_window(
-        "Pro Tools",
-        &window,
-        crate::swift_bridge::WindowCondition::Exists,
-        5000,
-    )? {
+    if !OS::wait_for_window("Pro Tools", &window, OS::WindowCondition::Exists, 5000)? {
         anyhow::bail!("Window '{}' did not appear within timeout", window);
     }
 
     Ok(())
 }
 
-async fn activate_plugin(plugin_name: &str) -> Result<()> {
+async fn activate_plugin(plugin_name: &str) -> R<()> {
     let (category, exact_name) = find_plugin_category(plugin_name)?;
     activate_plugin_internal(&category, &exact_name).await
 }
 
-pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> {
+pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> R<()> {
     // Get the exact plugin name from the menu (search once)
     let exact_name = if !plugin.is_empty() {
         let (category, exact) = find_plugin_category(plugin)?;
@@ -247,12 +241,12 @@ pub async fn call_plugin(plugin: &str, button: &str, close: bool) -> Result<()> 
 
     if !button.is_empty() {
         let window = format!("AudioSuite: {}", exact_name);
-        crate::swift_bridge::click_button("Pro Tools", &window, button)?;
+        OS::click_button("Pro Tools", &window, button)?;
         std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     }
     if close {
         let window = format!("AudioSuite: {}", exact_name);
-        crate::swift_bridge::close_window("Pro Tools", &window, Some(10000))?;
+        OS::close_window("Pro Tools", &window, Some(10000))?;
     }
 
     Ok(())
@@ -266,7 +260,7 @@ pub async fn plugin_selector(
     button: String,
     close: bool,
     timeout_ms: u64,
-) -> Result<()> {
+) -> R<()> {
     let plugins = plugins.to_vec(); // Clone for closure
     let mut counter = PLUGIN_COUNTER.lock().unwrap();
     log::info!("plugin_selector called with {} plugins", plugins.len());

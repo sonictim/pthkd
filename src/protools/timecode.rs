@@ -1,4 +1,5 @@
 use super::*;
+use crate::prelude::*;
 use crate::protools::ptsl::CommandId;
 use std::fmt;
 
@@ -26,7 +27,7 @@ impl Timecode {
         sec: i64,
         fr: f64,
         pt: &mut ProtoolsSession,
-    ) -> Result<Self> {
+    ) -> R<Self> {
         let fps = pt.get_frames_per_second().await?;
         let mut s = Self {
             hr,
@@ -38,7 +39,7 @@ impl Timecode {
         s.normalize();
         Ok(s)
     }
-    pub async fn from_string(tc: &str, pt: &mut ProtoolsSession) -> Result<Self> {
+    pub async fn from_string(tc: &str, pt: &mut ProtoolsSession) -> R<Self> {
         let fps = pt.get_frames_per_second().await?;
         let v: Vec<f64> = tc
             .split(":")
@@ -121,12 +122,12 @@ pub struct PtSelectionTimecode {
 }
 
 impl PtSelectionTimecode {
-    pub async fn new(pt: &mut ProtoolsSession) -> Result<Self> {
+    pub async fn new(pt: &mut ProtoolsSession) -> R<Self> {
         let mut s = Self::default();
         s.get(pt).await?;
         Ok(s)
     }
-    pub async fn get(&mut self, pt: &mut ProtoolsSession) -> Result<()> {
+    pub async fn get(&mut self, pt: &mut ProtoolsSession) -> R<()> {
         log::info!("Requesting timeline selection...");
 
         // Pro Tools expects the enum as a STRING in JSON, not an integer!
@@ -175,7 +176,7 @@ impl PtSelectionTimecode {
         println!("{:?}", self);
         Ok(())
     }
-    pub async fn set(&mut self, pt: &mut ProtoolsSession) -> Result<()> {
+    pub async fn set(&mut self, pt: &mut ProtoolsSession) -> R<()> {
         let response: serde_json::Value = pt
             .cmd(
                 CommandId::SetTimelineSelection,
@@ -200,7 +201,7 @@ impl PtSelectionTimecode {
         pt: &mut ProtoolsSession,
         in_time: &Timecode,
         out_time: &Timecode,
-    ) -> Result<()> {
+    ) -> R<()> {
         self.pre_roll_start_time = in_time.to_string();
         self.post_roll_stop_time = out_time.to_string();
         self.in_time = in_time.to_string();
@@ -208,12 +209,12 @@ impl PtSelectionTimecode {
         self.set(pt).await?;
         Ok(())
     }
-    pub async fn get_io(&self, pt: &mut ProtoolsSession) -> Result<(Timecode, Timecode)> {
+    pub async fn get_io(&self, pt: &mut ProtoolsSession) -> R<(Timecode, Timecode)> {
         let i = Timecode::from_string(&self.in_time, pt).await?;
         let o = Timecode::from_string(&self.out_time, pt).await?;
         Ok((i, o))
     }
-    // pub async fn add(&mut self, pt: &mut ProtoolsSession, value: &str) -> Result<()> {
+    // pub async fn add(&mut self, pt: &mut ProtoolsSession, value: &str) -> R<()> {
     //     self.in_time += value;
     //     self.out_time += value;
     //     self.pre_roll_start_time += value;

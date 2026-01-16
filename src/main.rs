@@ -4,9 +4,9 @@ mod hotkey;
 mod keycodes;
 mod macos;
 mod params;
+mod prelude;
 mod protools;
 mod soundminer;
-mod swift_bridge;
 
 use anyhow::Context;
 use config::{config_to_hotkeys, load_config};

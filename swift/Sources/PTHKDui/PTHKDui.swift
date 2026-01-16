@@ -213,18 +213,51 @@ public func getWindowButtons(
     appName: UnsafePointer<CChar>?,
     windowName: UnsafePointer<CChar>?
 ) -> UnsafePointer<CChar>? {
+    NSLog("pthkd_get_window_buttons called")
+
+    // Wrap everything in a catch-all to prevent crashes
+    let result: String
     do {
         let app = appName != nil ? String(cString: appName!) : ""
         let window = windowName != nil ? String(cString: windowName!) : ""
 
+        NSLog("Calling WindowOps.getWindowButtons(app: '\(app)', window: '\(window)')")
+
         let buttons = try WindowOps.getWindowButtons(appName: app, windowName: window)
+
+        NSLog("Successfully got \(buttons.count) buttons, serializing to JSON")
         let jsonData = try JSONSerialization.data(withJSONObject: buttons)
-        let json = String(data: jsonData, encoding: .utf8) ?? "[]"
-        return UnsafePointer(strdup(json))  // Rust must free this
+        result = String(data: jsonData, encoding: .utf8) ?? "[]"
+
+        NSLog("Returning JSON: \(result)")
+    } catch let error as WindowError {
+        NSLog("WindowError caught: \(error)")
+        let errorMsg: String
+        switch error {
+        case .noFrontmostApp:
+            errorMsg = "No frontmost application"
+        case .appNotFound(let name):
+            errorMsg = "Application '\(name)' not found"
+        case .windowNotFound(let name):
+            errorMsg = "Window '\(name)' not found"
+        case .buttonNotFound(let name):
+            errorMsg = "Button '\(name)' not found"
+        case .checkboxNotFound(let name):
+            errorMsg = "Checkbox '\(name)' not found"
+        case .clickFailed:
+            errorMsg = "Click action failed"
+        case .closeFailed:
+            errorMsg = "Close action failed"
+        case .timeout:
+            errorMsg = "Operation timed out"
+        }
+        result = "{\"error\": \"\(errorMsg)\"}"
     } catch {
-        let errorJSON = "{\"error\": \"\(error.localizedDescription)\"}"
-        return UnsafePointer(strdup(errorJSON))
+        NSLog("Unexpected error: \(error)")
+        result = "{\"error\": \"\(error.localizedDescription)\"}"
     }
+
+    return UnsafePointer(strdup(result))
 }
 
 // C ABI: Set checkbox value (0 = unchecked, 1 = checked)

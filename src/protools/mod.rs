@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::prelude::*;
 use std::sync::OnceLock;
 
 // Generated protobuf module
@@ -39,39 +39,19 @@ where
     });
 }
 
-pub(crate) async fn keystroke(keys: &[&str]) -> Result<()> {
+pub(crate) async fn keystroke(keys: &[&str]) -> R<()> {
     crate::macos::keystroke::send_keystroke(keys)?;
     Ok(())
 }
 
-pub(crate) async fn call_menu(menu: &[&str]) -> Result<()> {
-    crate::swift_bridge::menu_click("Pro Tools", menu)?;
-    Ok(())
-}
-
-pub(crate) async fn click_button(window: &str, button: &str) -> Result<()> {
-    crate::macos::ui_elements::click_button("Pro Tools", window, button)?;
-    Ok(())
-}
-
-pub(crate) async fn click_checkbox(window: &str, checkbox: &str) -> Result<()> {
-    crate::macos::ui_elements::click_checkbox("Pro Tools", window, checkbox)?;
-    Ok(())
-}
-
-pub(crate) async fn check_box(window: &str, checkbox: &str) -> Result<()> {
-    crate::macos::ui_elements::check_box("Pro Tools", window, checkbox)?;
-    Ok(())
-}
-
-pub(crate) async fn uncheck_box(window: &str, checkbox: &str) -> Result<()> {
-    crate::macos::ui_elements::uncheck_box("Pro Tools", window, checkbox)?;
+pub(crate) async fn call_menu(menu: &[&str]) -> R<()> {
+    OS::menu_click("Pro Tools", menu)?;
     Ok(())
 }
 
 /// Combine all module registries into one
 pub fn get_action_registry()
--> std::collections::HashMap<&'static str, fn(&crate::params::Params) -> anyhow::Result<()>> {
+-> std::collections::HashMap<&'static str, fn(&crate::params::Params) -> R<()>> {
     let mut registry = std::collections::HashMap::new();
     registry.extend(tracks::get_tracks_registry());
     registry.extend(markers::get_markers_registry());

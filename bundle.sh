@@ -289,6 +289,73 @@ cp -r "$APP_PATH" /Applications/
 # cp -r target/universal/release/pthkd.app /Applications/
 echo "   ✓ Installed to $INSTALL_PATH"
 
+# Create DMG for distribution
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "💿 Creating DMG for distribution..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+DMG_NAME="pthkd-v$VERSION.dmg"
+DMG_OUTPUT_DIR="$HOME/dev/www/feralfreq.com/pthkd/download"
+DMG_PATH="$DMG_OUTPUT_DIR/$DMG_NAME"
+
+# Create output directory if it doesn't exist
+mkdir -p "$DMG_OUTPUT_DIR"
+
+# Create temporary DMG staging directory
+DMG_TEMP_DIR=$(mktemp -d)
+cp -r "$APP_PATH" "$DMG_TEMP_DIR/"
+
+echo "   Creating disk image..."
+# Create the DMG
+hdiutil create -volname "$APP_NAME v$VERSION" \
+    -srcfolder "$DMG_TEMP_DIR" \
+    -ov -format UDZO \
+    "$DMG_PATH"
+
+# Clean up temporary directory
+rm -rf "$DMG_TEMP_DIR"
+
+echo "   ✓ DMG created: $DMG_NAME"
+echo "   📁 Location: $DMG_PATH"
+echo "   💾 Size: $(du -sh "$DMG_PATH" | cut -f1)"
+
+# Git commit and push
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📝 Committing build to git..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Check if there are any changes to commit
+if ! git diff-index --quiet HEAD --; then
+    echo "   Changes detected, creating commit..."
+    git add -A
+    git commit -m "$(cat <<EOF
+Release v$VERSION build
+
+- Built and signed universal binary
+- Notarized and stapled
+- Created DMG for distribution
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+EOF
+)"
+
+    echo "   ✓ Committed changes"
+
+    # Push to remote
+    echo "   Pushing to remote..."
+    if git push; then
+        echo "   ✓ Pushed to remote"
+    else
+        echo "   ⚠ Failed to push to remote (continuing anyway)"
+    fi
+else
+    echo "   No changes to commit"
+fi
+
 # Final summary
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -301,6 +368,7 @@ echo "🔐 Signed: ✅"
 echo "📮 Notarized: ✅"
 echo "📌 Stapled: ✅"
 echo "💾 Installed: ✅"
+echo "💿 DMG: ✅"
 echo ""
 echo "To launch:"
 echo "   open /Applications/$BUNDLE_NAME"

@@ -22,14 +22,16 @@ pub async fn save_as(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
 }
 pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
     let tag_param = params.get_str("name_id", "");
+    let move_old_session = params.get_ostr("move_old_session");
 
     let path = pt.get_session_path().await?;
     println!("source path: {}", path.display());
 
     let parent = path
         .parent()
-        .and_then(|s| s.to_str())
+        .map(|p| format!("{}/", p.display()))
         .ok_or_else(|| anyhow::anyhow!("Session path has no parent"))?;
+    println!("parent: {}", parent);
 
     let stem = path
         .file_stem()
@@ -50,7 +52,20 @@ pub async fn version_up(pt: &mut ProtoolsSession, params: &Params) -> Result<()>
 
     let new_name = format!("{}_{:02}_{}", parts.join("_"), num, tag);
 
-    pt.save_session_as(&new_name, parent).await?;
+    pt.save_session_as(&new_name, &parent).await?;
+
+    if let Some(new_dir) = move_old_session {
+        let dest_dir = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Session path has no parent"))?
+            .join(new_dir);
+        std::fs::create_dir_all(&dest_dir)?;
+        let dest_file = dest_dir.join(
+            path.file_name()
+                .ok_or_else(|| anyhow::anyhow!("filename not present"))?,
+        );
+        std::fs::rename(path, dest_file)?;
+    }
 
     Ok(())
 }

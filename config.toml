@@ -267,6 +267,7 @@ action = "pt.session_version_up"
 target_application = "Pro Tools"
 [hotkey.params]
 name_id = "TF"
+move_old_session = "zOLD"
 
 [[hotkey]]
 keys = ["control", "option", "command", "down"]
@@ -292,7 +293,6 @@ close = true
 
 [[hotkey]]
 keys = ["control", "pad_multiply"]
-# keys = ["control", "period"]
 action = "pt.plugins_send_receive_rx"
 [hotkey.params]
 version = 11
@@ -355,7 +355,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 200
 plugins = ["TRAVELER (Stereo)", "Doppler Effect", "GRM Doppler", "Doppler Stereo" ]
-# button = "Analyze"
+button = "Analyze"
 
 
 [[hotkey]]
@@ -364,7 +364,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 200
 plugins = ["Pitch Shift Legacy","Pitch 'n Time Pro", "X-Form", "Vari-Fi"]
-# button = "Analyze"
+button = "Analyze"
 
 [[hotkey]]
 keys = ["ctrl", "pad_8"]
@@ -379,7 +379,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 200
 plugins = ["Tremolator", "Envy", "PitchFunk",  ]
-# button = "Analyze"
+button = "Analyze"
 
 [[hotkey]]
 keys = ["ctrl", "pad_0"]
@@ -394,7 +394,7 @@ action = "pt.plugins_multitap_selector"
 [hotkey.params]
 timeout = 200
 plugins = ["RX 11 Spectral De-noise", "Brusfri", "Hush",  ]
-# button = "Analyze"
+button = "Analyze"
 
 # ============================================================================
 # Marker Navigation with Parameters

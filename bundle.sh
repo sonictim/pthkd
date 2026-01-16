@@ -305,3 +305,22 @@ echo ""
 echo "To launch:"
 echo "   open /Applications/$BUNDLE_NAME"
 echo ""
+
+# Increment version for next build
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📈 Incrementing version for next build..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Parse current version
+IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+# Increment patch version
+NEW_PATCH=$((PATCH + 1))
+NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+# Update Cargo.toml
+sed -i '' "s/^version = \"$VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+echo "   Version updated: $VERSION → $NEW_VERSION"
+echo "   Next build will be v$NEW_VERSION"
+echo ""

@@ -61,7 +61,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> R<()
         call_plugin(&plugin, "Analyze", false).await?;
     } else if crate::soft_match(&app, &rx_app) {
         // Send back to Pro Tools - Cmd+Enter returns to DAW
-        keystroke(&["cmd", "enter"]).await?;
+        OS::keystroke(&["cmd", "enter"])?;
         let mut windows = 2;
         // while windows == 1 {
         //     let app_windows = crate::macos::ui_elements::get_window_titles(&app)?;

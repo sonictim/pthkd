@@ -102,7 +102,7 @@ pub fn test_text_window(_params: &Params) -> R<()> {
 
 pub fn test_keystroke(_params: &Params) -> R<()> {
     log::info!("Testing global keystroke - sending CMD+F1");
-    keystroke::send_keystroke(&["cmd", "f1"])?;
+    keystroke(&["cmd", "f1"])?;
     log::info!("Keystroke sent successfully");
     Ok(())
 }
@@ -520,7 +520,7 @@ pub fn rapid_pw(params: &Params) -> R<()> {
         std::thread::sleep(std::time::Duration::from_millis(100));
 
         log::info!("Sending Enter key");
-        super::keystroke::send_keystroke(&["return"])
+        keystroke(&["return"])
     } else {
         log::warn!("Password not found in keychain for account: {}", account);
         unsafe { MacOSSession::global().password_prompt(account) }
@@ -547,7 +547,7 @@ pub fn test_pw(params: &Params) -> R<()> {
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
         super::keystroke::type_text(&pw)?;
-        super::keystroke::send_keystroke(&["enter"])
+        keystroke(&["enter"])
     } else {
         println!("Password not found.  Setting");
         super::keyring::password_set(account, "test")

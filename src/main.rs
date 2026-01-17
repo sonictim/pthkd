@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 mod config;
 mod hotkey;
+mod input;
 mod keycodes;
-mod macos;
+pub mod macos;
 mod params;
 mod prelude;
 mod protools;

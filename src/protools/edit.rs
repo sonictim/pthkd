@@ -47,12 +47,12 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
         sel.set_io(pt, &io.0, &io.1).await?;
     }
     if fill {
-        call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"])
-            .await
-            .ok();
-        call_menu(&["Edit", "Trim Clip", "End to Fill Selection"])
-            .await
-            .ok();
+        OS::menu_click(
+            "Pro Tools",
+            &["Edit", "Trim Clip", "Start to Fill Selection"],
+        )
+        .ok();
+        OS::menu_click("Pro Tools", &["Edit", "Trim Clip", "End to Fill Selection"]).ok();
     }
     let result = pt
         .cmd::<_, serde_json::Value>(
@@ -75,9 +75,7 @@ pub async fn crossfade(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
         .await?;
     }
     if crossfade {
-        call_menu(&["Edit", "Automation", "Write to All Enabled"])
-            .await
-            .ok();
+        OS::menu_click("Pro Tools", &["Edit", "Automation", "Write to All Enabled"]).ok();
 
         let _: serde_json::Value = pt
             .cmd(
@@ -146,26 +144,20 @@ pub async fn bg_clear_selection(pt: &mut ProtoolsSession, params: &Params) -> R<
     Ok(())
 }
 pub async fn adjust_clip_to_match_selection(_pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
-    call_menu(&["Edit", "Trim Clip", "To Selection"]).await.ok();
-    call_menu(&["Edit", "Trim Clip", "To Fill Selection"])
-        .await
-        .ok();
-    call_menu(&["Edit", "Trim Clip", "Start to Fill Selection"])
-        .await
-        .ok();
-    call_menu(&["Edit", "Trim Clip", "End to Fill Selection"])
-        .await
-        .ok();
+    OS::menu_click("Pro Tools", &["Edit", "Trim Clip", "To Selection"]).ok();
+    OS::menu_click("Pro Tools", &["Edit", "Trim Clip", "To Fill Selection"]).ok();
+    OS::menu_click(
+        "Pro Tools",
+        &["Edit", "Trim Clip", "Start to Fill Selection"],
+    )
+    .ok();
+    OS::menu_click("Pro Tools", &["Edit", "Trim Clip", "End to Fill Selection"]).ok();
     Ok(())
 }
 pub async fn reset_clip(pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
-    call_menu(&["Edit", "Fades", "Delete"]).await.ok();
-    call_menu(&["Edit", "Clear Special", "Clip Gain"])
-        .await
-        .ok();
-    call_menu(&["Edit", "Clear Special", "Clip Effects"])
-        .await
-        .ok();
+    OS::menu_click("Pro Tools", &["Edit", "Fades", "Delete"]).ok();
+    OS::menu_click("Pro Tools", &["Edit", "Clear Special", "Clip Gain"]).ok();
+    OS::menu_click("Pro Tools", &["Edit", "Clear Special", "Clip Effects"]).ok();
     let result: serde_json::Value = pt
         .cmd(
             CommandId::ClearSpecial,
@@ -193,7 +185,7 @@ pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> R<()>
     pt.set_edit_mode("EMO_Shuffle").await?;
 
     if pt.get_edit_mode().await? != "EMO_Shuffle" {
-        keystroke(&["cmd", "f1"]).await?;
+        OS::keystroke(&["cmd", "f1"])?;
         // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
@@ -202,7 +194,7 @@ pub async fn conform_delete(pt: &mut ProtoolsSession, _params: &Params) -> R<()>
     // std::thread::sleep(std::time::Duration::from_millis(25)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
     if flag {
-        keystroke(&["cmd", "f1"]).await?;
+        OS::keystroke(&["cmd", "f1"])?;
     }
     Ok(())
 }
@@ -213,17 +205,17 @@ pub async fn conform_insert(pt: &mut ProtoolsSession, _params: &Params) -> R<()>
     pt.set_edit_mode("EMO_Shuffle").await?;
 
     if pt.get_edit_mode().await? != "EMO_Shuffle" {
-        keystroke(&["cmd", "f1"]).await?;
+        OS::keystroke(&["cmd", "f1"])?;
         // std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
         pt.set_edit_mode("EMO_Shuffle").await?;
         flag = true;
     }
     OS::menu_click("Pro Tools", &["Edit", "Insert Silence"])?;
-    // keystroke(&["cmd", "shift", "e"]).await?;
+    // OS::keystroke(&["cmd", "shift", "e"]).await?;
     std::thread::sleep(std::time::Duration::from_millis(35)); // Wait 50ms
     pt.set_edit_mode(&original_mode).await?;
     if flag {
-        keystroke(&["cmd", "f1"]).await?;
+        OS::keystroke(&["cmd", "f1"])?;
     }
     Ok(())
 }

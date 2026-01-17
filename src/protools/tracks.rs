@@ -1,8 +1,7 @@
 use super::client::*;
 use crate::actions_async;
 use crate::hotkey::HotkeyCounter;
-use crate::params::Params;
-use anyhow::Result;
+use crate::prelude::*;
 use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex};
 actions_async!("pt", tracks, {
@@ -14,7 +13,7 @@ actions_async!("pt", tracks, {
     lane_selector,
 });
 
-pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -39,7 +38,7 @@ pub async fn solo_clear(pt: &mut ProtoolsSession, _params: &Params) -> Result<()
     Ok(())
 }
 
-pub async fn solo_selected(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn solo_selected(pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
     log::info!("=== solo_selected_tracks: START ===");
 
     log::info!("Fetching all tracks from Pro Tools...");
@@ -96,7 +95,7 @@ pub async fn solo_selected(pt: &mut ProtoolsSession, _params: &Params) -> Result
     Ok(())
 }
 
-pub async fn add_selected_to_solos(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn add_selected_to_solos(pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -121,7 +120,7 @@ pub async fn add_selected_to_solos(pt: &mut ProtoolsSession, _params: &Params) -
 
     Ok(())
 }
-pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Params) -> Result<()> {
+pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Params) -> R<()> {
     println!("Running Solo Selected Tracks");
     let Some(tracks) = pt.get_all_tracks().await else {
         return Ok(());
@@ -149,18 +148,18 @@ pub async fn remove_selected_from_solos(pt: &mut ProtoolsSession, _params: &Para
 lazy_static! {
     static ref KEY_COUNTER: Arc<Mutex<HotkeyCounter>> = Arc::new(Mutex::new(HotkeyCounter::new()));
 }
-pub async fn view_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn view_selector(_pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     println!("Running view selector");
     let timeout_ms = params.get_int("timeout_ms", 500);
     let mut counter = KEY_COUNTER.lock().unwrap();
     counter.press(timeout_ms as u64, 2, |idx| async move {
         println!("Inside closure, idx={}", idx);
-        let result = match idx {
-            2 => super::keystroke(&["command", "grave"]).await,
-            1 => super::keystroke(&["command", "option", "grave"]).await,
-            _ => super::keystroke(&["command", "grave"]).await,
+        let r = match idx {
+            2 => OS::keystroke(&["command", "grave"]),
+            1 => OS::keystroke(&["command", "option", "grave"]),
+            _ => OS::keystroke(&["command", "grave"]),
         };
-        if let Err(e) = result {
+        if let Err(e) = r {
             log::error!("Keystroke failed: {}", e);
             println!("❌ Keystroke error: {}", e);
         } else {
@@ -170,16 +169,16 @@ pub async fn view_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result
 
     Ok(())
 }
-pub async fn lane_selector(_pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn lane_selector(_pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let timeout_ms = params.get_int("timeout_ms", 500);
     let mut counter = KEY_COUNTER.lock().unwrap();
     counter.press(timeout_ms as u64, 2, |idx| async move {
         println!("Lane selector closure, idx={}", idx);
-        let result = match idx {
-            1 => super::keystroke(&["option", "grave"]).await,
-            _ => super::keystroke(&["control", "grave"]).await,
+        let r = match idx {
+            1 => OS::keystroke(&["option", "grave"]),
+            _ => OS::keystroke(&["control", "grave"]),
         };
-        if let Err(e) = result {
+        if let Err(e) = r {
             log::error!("Lane keystroke failed: {}", e);
             println!("❌ Lane keystroke error: {}", e);
         } else {

@@ -1,9 +1,6 @@
 use super::client::*;
-use super::keystroke;
-use crate::params::Params;
-use anyhow::Result;
-
 use crate::actions_async;
+use crate::prelude::*;
 
 actions_async!("pt", markers, {
     go_to_next_marker,
@@ -11,7 +8,7 @@ actions_async!("pt", markers, {
     update_quick_marker,
 });
 
-pub async fn update_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn update_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let mut number = params.get_int("number", 0);
     let default_text = format!("QM {}", number);
     let text = params.get_string("name", &default_text);
@@ -32,7 +29,7 @@ pub async fn update_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> R
     Ok(())
 }
 
-pub async fn go_to_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn go_to_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let mut number = params.get_int("number", 0);
     number += 31000;
     let mut selection = PtSelectionSamples::new(pt).await?;
@@ -67,10 +64,10 @@ pub async fn go_to_quick_marker(pt: &mut ProtoolsSession, params: &Params) -> Re
 /// Parameters:
 /// - `reverse`: boolean - true for previous marker, false for next marker (default: false)
 /// - `ruler`: string - name of the marker ruler to use, empty string for all markers (default: "")
-pub async fn go_to_next_marker(pt: &mut ProtoolsSession, params: &Params) -> Result<()> {
+pub async fn go_to_next_marker(pt: &mut ProtoolsSession, params: &Params) -> R<()> {
     let reverse = params.get_bool("reverse", false);
     let ruler = params.get_string("ruler", "");
     pt.go_to_next_marker(&ruler, reverse).await?;
-    keystroke(&["left"]).await?;
+    OS::keystroke(&["left"])?;
     Ok(())
 }

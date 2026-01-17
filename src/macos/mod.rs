@@ -35,6 +35,8 @@ pub mod commands;
 
 // Re-export commonly used items
 pub use events::*;
+pub use keystroke::*;
 pub use session::MacOSSession;
+pub use swift_bridge::*;
 // Experimental items are not re-exported - must be explicitly imported
 // This makes it clear when experimental code is being used

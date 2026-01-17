@@ -88,7 +88,7 @@ fn modifier_to_flag(key_name: &str) -> Option<u64> {
 /// // Send Cmd+Shift+F1
 /// send_keystroke(&["cmd", "shift", "f1"])?;
 /// ```
-pub fn send_keystroke(keys: &[&str]) -> Result<()> {
+pub fn keystroke(keys: &[&str]) -> Result<()> {
     use crate::keycodes::key_name_to_codes;
 
     if keys.is_empty() {

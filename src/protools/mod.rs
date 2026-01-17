@@ -39,16 +39,6 @@ where
     });
 }
 
-pub(crate) async fn keystroke(keys: &[&str]) -> R<()> {
-    crate::macos::keystroke::send_keystroke(keys)?;
-    Ok(())
-}
-
-pub(crate) async fn call_menu(menu: &[&str]) -> R<()> {
-    OS::menu_click("Pro Tools", menu)?;
-    Ok(())
-}
-
 /// Combine all module registries into one
 pub fn get_action_registry()
 -> std::collections::HashMap<&'static str, fn(&crate::params::Params) -> R<()>> {

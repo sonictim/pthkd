@@ -1,6 +1,4 @@
 //! Soundminer command implementations
-
-use crate::params::Params;
 use crate::prelude::*;
 
 // ============================================================================

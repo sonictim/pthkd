@@ -320,6 +320,24 @@ echo "   ✓ DMG created: $DMG_NAME"
 echo "   📁 Location: $DMG_PATH"
 echo "   💾 Size: $(du -sh "$DMG_PATH" | cut -f1)"
 
+# Increment version for next build
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📈 Incrementing version for next build..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Parse current version
+IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+# Increment patch version
+NEW_PATCH=$((PATCH + 1))
+NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+# Update Cargo.toml
+sed -i '' "s/^version = \"$VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+echo "   Version updated: $VERSION → $NEW_VERSION"
+echo "   Next build will be v$NEW_VERSION"
+echo ""
 # Git commit and push
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -336,10 +354,8 @@ Release v$VERSION build
 - Built and signed universal binary
 - Notarized and stapled
 - Created DMG for distribution
+- Version updated: $VERSION → $NEW_VERSION
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 EOF
 )"
 
@@ -369,26 +385,9 @@ echo "📮 Notarized: ✅"
 echo "📌 Stapled: ✅"
 echo "💾 Installed: ✅"
 echo "💿 DMG: ✅"
+echo "📈 Version Up ✅"
 echo ""
 echo "To launch:"
 echo "   open /Applications/$BUNDLE_NAME"
 echo ""
 
-# Increment version for next build
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "📈 Incrementing version for next build..."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-# Parse current version
-IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-# Increment patch version
-NEW_PATCH=$((PATCH + 1))
-NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-
-# Update Cargo.toml
-sed -i '' "s/^version = \"$VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
-
-echo "   Version updated: $VERSION → $NEW_VERSION"
-echo "   Next build will be v$NEW_VERSION"
-echo ""

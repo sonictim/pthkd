@@ -132,14 +132,58 @@ impl ChordPattern {
 }
 
 // ============================================================================
+// Trigger Pattern System (Keyboard + MIDI)
+// ============================================================================
+
+/// Unified trigger pattern that supports keyboard, MIDI, or hybrid triggers
+#[derive(Debug, Clone)]
+pub enum TriggerPattern {
+    /// Keyboard chord pattern
+    Keyboard(ChordPattern),
+
+    /// MIDI pattern
+    Midi(crate::input::midi::MidiPattern),
+
+    // Future: Hybrid keyboard + MIDI triggers
+    // Hybrid { keyboard: ChordPattern, midi: MidiPattern },
+}
+
+impl TriggerPattern {
+    /// Returns a human-readable description of the trigger for logging
+    pub fn describe(&self) -> String {
+        match self {
+            TriggerPattern::Keyboard(chord) => chord.describe(),
+            TriggerPattern::Midi(pattern) => {
+                // Describe MIDI pattern
+                match pattern {
+                    crate::input::midi::MidiPattern::Simultaneous { messages } => {
+                        let parts: Vec<String> = messages.iter().map(|spec| {
+                            match spec {
+                                crate::input::midi::MidiMessageSpec::Note { note } => {
+                                    format!("note{}", note)
+                                }
+                                crate::input::midi::MidiMessageSpec::ControlChange { cc } => {
+                                    format!("cc{}", cc)
+                                }
+                            }
+                        }).collect();
+                        parts.join("+")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Hotkey Definition
 // ============================================================================
 
 /// Represents a hotkey binding
 #[derive(Debug)]
 pub struct Hotkey {
-    /// The chord pattern to match
-    pub chord: ChordPattern,
+    /// The trigger pattern to match (keyboard or MIDI)
+    pub trigger: TriggerPattern,
 
     /// The action name (for logging)
     pub action_name: String,
@@ -169,22 +213,43 @@ pub struct Hotkey {
 }
 
 impl Hotkey {
-    /// Checks if this hotkey's chord matches the current key state
-    pub fn matches(&self, pressed_keys: &HashSet<u16>) -> bool {
-        self.chord.matches(pressed_keys)
-            && (self.application.is_none()
-                || match (
-                    &self.application,
-                    crate::macos::app_info::get_current_app().ok(),
-                ) {
-                    (Some(config_apps), Some(current_app)) => {
-                        // Check if any of the configured apps match the current app
-                        config_apps
-                            .iter()
-                            .any(|app| crate::soft_match(&current_app, app))
-                    }
-                    _ => false,
-                })
+    /// Checks if this hotkey's keyboard chord matches the current key state
+    pub fn matches_keyboard(&self, pressed_keys: &HashSet<u16>) -> bool {
+        // Check if trigger is keyboard type
+        let trigger_matches = match &self.trigger {
+            TriggerPattern::Keyboard(chord) => chord.matches(pressed_keys),
+            _ => false, // Not a keyboard trigger
+        };
+
+        trigger_matches && self.check_application_filters()
+    }
+
+    /// Checks if this hotkey's MIDI pattern matches the current MIDI state
+    pub fn matches_midi(&self, active_midi: &HashSet<crate::input::midi::MidiMessage>) -> bool {
+        // Check if trigger is MIDI type
+        let trigger_matches = match &self.trigger {
+            TriggerPattern::Midi(pattern) => pattern.matches(active_midi),
+            _ => false, // Not a MIDI trigger
+        };
+
+        trigger_matches && self.check_application_filters()
+    }
+
+    /// Check application and window filters (shared by keyboard and MIDI)
+    fn check_application_filters(&self) -> bool {
+        (self.application.is_none()
+            || match (
+                &self.application,
+                crate::macos::app_info::get_current_app().ok(),
+            ) {
+                (Some(config_apps), Some(current_app)) => {
+                    // Check if any of the configured apps match the current app
+                    config_apps
+                        .iter()
+                        .any(|app| crate::soft_match(&current_app, app))
+                }
+                _ => false,
+            })
             && match &self.app_window {
                 None => true,
                 Some(config_window) => match crate::macos::app_info::get_app_window().ok() {

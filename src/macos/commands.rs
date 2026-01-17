@@ -184,7 +184,7 @@ pub fn reload_config(_params: &Params) -> R<()> {
     // Log registered hotkeys
     log::info!("Reloaded {} hotkeys:", hotkeys.len());
     for hotkey in &hotkeys {
-        log::info!("  - {} => {}", hotkey.chord.describe(), hotkey.action_name);
+        log::info!("  - {} => {}", hotkey.trigger.describe(), hotkey.action_name);
     }
 
     // Update the global hotkey registry

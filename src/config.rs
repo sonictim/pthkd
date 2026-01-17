@@ -1,4 +1,4 @@
-use crate::hotkey::{ChordPattern, Hotkey};
+use crate::hotkey::{ChordPattern, Hotkey, TriggerPattern};
 use crate::keycodes::key_name_to_codes;
 use crate::params::Params;
 use anyhow::{Context, Result, bail};
@@ -54,7 +54,7 @@ fn get_config_paths() -> Vec<PathBuf> {
 }
 
 /// Helper type to deserialize either a single string or array of strings
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 enum StringOrVec {
     Single(String),
@@ -70,14 +70,30 @@ impl StringOrVec {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub hotkey: Vec<HotkeyConfig>,
+    #[serde(default)]
+    pub midi: Option<MidiConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct MidiConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub port: Option<String>,
+    pub channel: Option<u8>, // 1-16
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct HotkeyConfig {
+    #[serde(default)]
     pub keys: Vec<String>,
+    pub midi: Option<StringOrVec>,
     pub action: String,
     #[serde(default)]
     pub params: HashMap<String, toml::Value>,
@@ -182,11 +198,45 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
     let mut skipped_count = 0;
 
     for hk_config in config.hotkey {
-        // Parse the chord pattern from the keys list
-        let chord = match parse_chord(&hk_config.keys) {
-            Ok(chord) => chord,
-            Err(e) => {
-                log::error!("Skipping hotkey with keys {:?}: {:#}", hk_config.keys, e);
+        // Determine trigger type: keyboard, MIDI, or invalid
+        let trigger = match (&hk_config.keys[..], &hk_config.midi) {
+            // Keyboard hotkey (keys provided, no MIDI)
+            (keys, None) if !keys.is_empty() => {
+                match parse_chord(keys) {
+                    Ok(chord) => TriggerPattern::Keyboard(chord),
+                    Err(e) => {
+                        log::error!("Skipping hotkey with keys {:?}: {:#}", keys, e);
+                        skipped_count += 1;
+                        continue;
+                    }
+                }
+            }
+            // MIDI hotkey (MIDI provided, no keys or empty keys)
+            (keys, Some(midi)) if keys.is_empty() => {
+                match crate::input::midi::parse_midi_pattern(midi.clone().into_vec()) {
+                    Ok(pattern) => TriggerPattern::Midi(pattern),
+                    Err(e) => {
+                        log::error!("Skipping hotkey with MIDI {:?}: {:#}", midi, e);
+                        skipped_count += 1;
+                        continue;
+                    }
+                }
+            }
+            // Hybrid (both keys and MIDI) - not yet supported
+            (keys, Some(midi)) if !keys.is_empty() => {
+                log::error!(
+                    "Skipping hotkey '{}': hybrid keyboard+MIDI triggers not yet supported (keys={:?}, midi={:?})",
+                    hk_config.action, keys, midi
+                );
+                skipped_count += 1;
+                continue;
+            }
+            // Invalid: neither keys nor MIDI
+            _ => {
+                log::error!(
+                    "Skipping hotkey '{}': must specify either 'keys' or 'midi'",
+                    hk_config.action
+                );
                 skipped_count += 1;
                 continue;
             }
@@ -203,7 +253,7 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
         };
 
         hotkeys.push(Hotkey {
-            chord,
+            trigger,
             action_name: hk_config.action.clone(),
             action,
             params: Params::new(hk_config.params),

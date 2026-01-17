@@ -256,8 +256,17 @@ pub fn register_carbon_hotkeys() -> Result<()> {
                 continue;
             }
 
+            // Only keyboard hotkeys can be registered as Carbon hotkeys
+            let chord = match &hotkey.trigger {
+                crate::hotkey::TriggerPattern::Keyboard(chord) => chord,
+                _ => {
+                    log::warn!("Skipping non-keyboard hotkey '{}' for Carbon registration", hotkey.action_name);
+                    continue;
+                }
+            };
+
             // Convert chord to Carbon hotkey spec
-            if let Some((key_code, modifiers)) = chord_to_carbon_spec(&hotkey.chord) {
+            if let Some((key_code, modifiers)) = chord_to_carbon_spec(chord) {
                 let hk_id = EventHotKeyID {
                     signature: u32::from_be_bytes(*b"pthk"), // 'pthk' signature
                     id: hotkey_id,

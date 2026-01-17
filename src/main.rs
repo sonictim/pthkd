@@ -248,7 +248,7 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
         let hotkeys = hotkeys_mutex.lock().unwrap();
 
         for (index, hotkey) in hotkeys.iter().enumerate() {
-            if hotkey.matches(pressed_keys) {
+            if hotkey.matches_keyboard(pressed_keys) {
                 // Check if in text field (if enabled for this hotkey)
                 if hotkey.check_for_text_field {
                     if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
@@ -395,6 +395,89 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
         }
     }
     false
+}
+
+// ============================================================================
+// MIDI Callback
+// ============================================================================
+
+/// Check if any registered MIDI hotkey matches the current MIDI state and trigger it
+///
+/// Returns true if a hotkey was matched
+fn check_and_trigger_midi_hotkey(active_midi: &Arc<std::collections::HashSet<input::midi::MidiMessage>>) -> bool {
+    if let Some(hotkeys_mutex) = HOTKEYS.get() {
+        let hotkeys = hotkeys_mutex.lock().unwrap();
+
+        for (_index, hotkey) in hotkeys.iter().enumerate() {
+            if hotkey.matches_midi(active_midi) {
+                // Clone action data before dropping lock
+                let action = hotkey.action;
+                let params = hotkey.params.clone();
+                let notify = hotkey.notify;
+                let action_name = hotkey.action_name.clone();
+                drop(hotkeys); // Explicitly drop the lock before calling action
+
+                log::info!("Triggering MIDI hotkey '{}'", action_name);
+
+                // Trigger immediately (lock is now released)
+                // Catch panics to prevent crashing the MIDI thread
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(&params)));
+
+                // Show notification if requested
+                if notify {
+                    match result {
+                        Ok(Ok(_)) => macos::MacOSSession::global()
+                            .show_notification(&format!("✅ {}", action_name)),
+                        Ok(Err(e)) => macos::MacOSSession::global()
+                            .show_notification(&format!("❌ {}: {}", action_name, e)),
+                        Err(_) => {
+                            log::error!("MIDI action '{}' panicked!", action_name);
+                            macos::MacOSSession::global().show_notification(&format!(
+                                "💥 {}: action panicked",
+                                action_name
+                            ))
+                        }
+                    }
+                } else {
+                    // Log panics even if notify is false
+                    if result.is_err() {
+                        log::error!("MIDI action '{}' panicked!", action_name);
+                    }
+                }
+
+                return true; // Matched
+            }
+        }
+    }
+    false
+}
+
+/// MIDI callback - updates MIDI state and checks registered MIDI hotkeys
+fn midi_callback(message: input::midi::MidiMessage) {
+    use input::midi::MIDI_STATE;
+
+    let state = MIDI_STATE.get().expect("MIDI_STATE not initialized");
+    let active = {
+        let mut s = state.lock().unwrap();
+        match message {
+            input::midi::MidiMessage::NoteOn { note, velocity } => {
+                log::debug!("MIDI: Note On {} vel={}", note, velocity);
+                s.note_on(note, velocity);
+            }
+            input::midi::MidiMessage::NoteOff { note } => {
+                log::debug!("MIDI: Note Off {}", note);
+                s.note_off(note);
+            }
+            input::midi::MidiMessage::ControlChange { cc, value } => {
+                log::debug!("MIDI: CC {} value={}", cc, value);
+                s.cc(cc, value);
+            }
+        }
+        s.get_active_messages()
+    };
+
+    check_and_trigger_midi_hotkey(&active);
 }
 
 // ============================================================================
@@ -557,18 +640,51 @@ fn run() -> anyhow::Result<()> {
         .context("Failed to load config.toml - make sure it exists in the current directory")?;
 
     // Convert config to hotkeys
-    let hotkeys = config_to_hotkeys(config).context("Failed to parse config")?;
+    let hotkeys = config_to_hotkeys(config.clone()).context("Failed to parse config")?;
 
     // Log registered hotkeys
     log::info!("Registered {} hotkeys:", hotkeys.len());
     for hotkey in &hotkeys {
-        log::info!("  - {} => {}", hotkey.chord.describe(), hotkey.action_name);
+        log::info!("  - {} => {}", hotkey.trigger.describe(), hotkey.action_name);
     }
 
     // Initialize hotkey registry
     HOTKEYS
         .set(Mutex::new(hotkeys))
         .map_err(|_| anyhow::anyhow!("Failed to initialize hotkeys - already initialized"))?;
+
+    // Initialize MIDI if any hotkeys use MIDI or if MIDI is enabled in config
+    let has_midi_hotkeys = HOTKEYS
+        .get()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|hk| matches!(hk.trigger, hotkey::TriggerPattern::Midi(_)));
+
+    if has_midi_hotkeys || config.midi.as_ref().map_or(false, |m| m.enabled) {
+        log::info!("Initializing MIDI input...");
+
+        // Initialize MIDI state
+        use input::midi::MidiState;
+        input::midi::MIDI_STATE
+            .set(Mutex::new(MidiState::new()))
+            .map_err(|_| anyhow::anyhow!("Failed to initialize MIDI_STATE - already initialized"))?;
+
+        // Initialize MIDI input with callback
+        if let Err(e) = input::midi::init_midi_input(
+            config.midi.as_ref().and_then(|m| m.port.as_deref()),
+            config.midi.as_ref().and_then(|m| m.channel),
+            midi_callback,
+        ) {
+            log::error!("Failed to initialize MIDI: {:#}", e);
+            log::warn!("MIDI hotkeys will not be available");
+        } else {
+            log::info!("✅ MIDI input initialized successfully");
+        }
+    } else {
+        log::info!("No MIDI hotkeys configured, skipping MIDI initialization");
+    }
 
     // Register Carbon hotkeys for those marked with carbon=true
     // These will work during secure input when CGEventTap is disabled

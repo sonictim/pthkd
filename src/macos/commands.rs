@@ -8,8 +8,9 @@ use std::process::Command;
 // Command Implementations
 // ============================================================================
 
-pub fn test_notification(_params: &Params) -> R<()> {
-    OS::show_notification("CMD+Shift+K pressed!");
+pub fn show_notification(params: &Params) -> R<()> {
+    let message = params.get_str("message", "Test Notification Activated!")
+    OS::show_notification(message);
     Ok(())
 }
 

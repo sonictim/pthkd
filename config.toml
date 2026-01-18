@@ -49,6 +49,11 @@
 # ============================================================================
 
 [[hotkey]]
+midi = "note60"
+action = "os.show_notification"
+
+
+[[hotkey]]
 keys = ["cmd", "shift", "r", "l"]
 action = "os.reload_config"
 notify = true

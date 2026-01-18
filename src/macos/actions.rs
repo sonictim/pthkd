@@ -5,7 +5,7 @@ use crate::actions_sync;
 // Define all macOS actions using the sync macro
 // Actions are automatically registered with the "os" namespace
 actions_sync!("os", {
-    test_notification,
+    show_notification,
     execute_menu_item,
     reload_config,
     dump_app_menus,

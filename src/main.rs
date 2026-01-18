@@ -391,13 +391,47 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
 ///
 /// Returns true if a hotkey was matched
 fn check_and_trigger_midi_hotkey(
+    device: &str,
+    channel: u8,
     active_midi: &Arc<std::collections::HashSet<input::midi::MidiMessage>>,
 ) -> bool {
     if let Some(hotkeys_mutex) = HOTKEYS.get() {
         let hotkeys = hotkeys_mutex.lock().unwrap();
 
         for hotkey in hotkeys.iter() {
-            if hotkey.matches_midi(active_midi) {
+            // Check if hotkey matches the MIDI pattern
+            if !hotkey.matches_midi(active_midi) {
+                continue;
+            }
+
+            // Filter by device if specified
+            if let Some(ref devices) = hotkey.midi_device {
+                if !devices.is_empty() && !devices.iter().any(|d| device.contains(d)) {
+                    log::debug!(
+                        "Hotkey '{}' not triggered - device filter '{}' doesn't match '{}'",
+                        hotkey.action_name,
+                        devices.join(", "),
+                        device
+                    );
+                    continue;
+                }
+            }
+
+            // Filter by channel if specified
+            if let Some(filter_channel) = hotkey.midi_channel {
+                if filter_channel != channel {
+                    log::debug!(
+                        "Hotkey '{}' not triggered - channel filter {} doesn't match {}",
+                        hotkey.action_name,
+                        filter_channel,
+                        channel
+                    );
+                    continue;
+                }
+            }
+
+            // All filters passed - trigger the hotkey
+            {
                 // Clone action data before dropping lock
                 let action = hotkey.action;
                 let params = hotkey.params.clone();
@@ -441,7 +475,7 @@ fn check_and_trigger_midi_hotkey(
 }
 
 /// MIDI callback - updates MIDI state and checks registered MIDI hotkeys
-fn midi_callback(message: input::midi::MidiMessage) {
+fn midi_callback(device: &str, channel: u8, message: input::midi::MidiMessage) {
     use input::midi::MIDI_STATE;
 
     let state = MIDI_STATE.get().expect("MIDI_STATE not initialized");
@@ -449,22 +483,22 @@ fn midi_callback(message: input::midi::MidiMessage) {
         let mut s = state.lock().unwrap();
         match message {
             input::midi::MidiMessage::NoteOn { note, velocity } => {
-                log::debug!("MIDI: Note On {} vel={}", note, velocity);
+                log::debug!("MIDI: [{}] ch{} Note On {} vel={}", device, channel, note, velocity);
                 s.note_on(note, velocity);
             }
             input::midi::MidiMessage::NoteOff { note } => {
-                log::debug!("MIDI: Note Off {}", note);
+                log::debug!("MIDI: [{}] ch{} Note Off {}", device, channel, note);
                 s.note_off(note);
             }
             input::midi::MidiMessage::ControlChange { cc, value } => {
-                log::debug!("MIDI: CC {} value={}", cc, value);
+                log::debug!("MIDI: [{}] ch{} CC {} value={}", device, channel, cc, value);
                 s.cc(cc, value);
             }
         }
         s.get_active_messages()
     };
 
-    check_and_trigger_midi_hotkey(&active);
+    check_and_trigger_midi_hotkey(device, channel, &active);
 }
 
 // ============================================================================
@@ -653,7 +687,13 @@ fn run() -> anyhow::Result<()> {
         .iter()
         .any(|hk| matches!(hk.trigger, hotkey::TriggerPattern::Midi(_)));
 
-    if has_midi_hotkeys || config.midi.as_ref().map_or(false, |m| m.enabled) {
+    // MIDI is enabled if:
+    // - [midi] section doesn't exist AND there are MIDI hotkeys (default: auto-enable)
+    // - [midi] section exists with enabled = true
+    // If [midi] enabled = false, MIDI is disabled even if MIDI hotkeys are defined
+    let midi_enabled = config.midi.as_ref().map_or(has_midi_hotkeys, |m| m.enabled);
+
+    if midi_enabled {
         log::info!("Initializing MIDI input...");
 
         // Initialize MIDI state
@@ -665,11 +705,7 @@ fn run() -> anyhow::Result<()> {
             })?;
 
         // Initialize MIDI input with callback
-        if let Err(e) = input::midi::init_midi_input(
-            config.midi.as_ref().and_then(|m| m.port.as_deref()),
-            config.midi.as_ref().and_then(|m| m.channel),
-            midi_callback,
-        ) {
+        if let Err(e) = input::midi::init_midi_input(midi_callback) {
             log::error!("Failed to initialize MIDI: {:#}", e);
             log::warn!("MIDI hotkeys will not be available");
         } else {

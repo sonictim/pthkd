@@ -3,10 +3,49 @@ pub use params::*;
 
 use crate::input::{ChordPattern, Hotkey, TriggerPattern, key_name_to_codes};
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+
+/// Deserialize either a single string or an array of strings into Vec<String>
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct StringOrVecVisitor;
+
+    impl<'de> Visitor<'de> for StringOrVecVisitor {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or array of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<String>, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![value.to_string()])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some(value) = seq.next_element()? {
+                vec.push(value);
+            }
+            Ok(vec)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVecVisitor)
+}
 
 /// Embedded default configuration
 const DEFAULT_CONFIG: &str = include_str!("../../config.toml");
@@ -65,8 +104,6 @@ pub struct Config {
 pub struct MidiConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    pub port: Option<String>,
-    pub channel: Option<u8>, // 1-16
 }
 
 fn default_true() -> bool {
@@ -75,10 +112,13 @@ fn default_true() -> bool {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct HotkeyConfig {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub keys: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     pub midi: Vec<String>,
+    #[serde(default, deserialize_with = "string_or_vec")]
+    pub midi_device: Vec<String>,
+    pub midi_channel: Option<u8>, // 1-16, None = all channels
     pub action: String,
     #[serde(default)]
     pub params: HashMap<String, toml::Value>,
@@ -90,7 +130,7 @@ pub struct HotkeyConfig {
     pub carbon: bool,
     #[serde(default)]
     pub check_for_text_field: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_vec")]
     target_application: Vec<String>,
     pub app_window: Option<String>,
 }
@@ -247,9 +287,17 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                     check_for_text_field: hk_config.check_for_text_field,
                     application: app.clone(),
                     app_window: hk_config.app_window.clone(),
+                    midi_device: None, // Keyboard hotkey - no MIDI filtering
+                    midi_channel: None,
                 });
 
                 // Create MIDI hotkey
+                let midi_dev = if hk_config.midi_device.is_empty() {
+                    None
+                } else {
+                    Some(hk_config.midi_device.clone())
+                };
+
                 hotkeys.push(Hotkey {
                     trigger: midi_trigger,
                     action_name: hk_config.action.clone(),
@@ -260,7 +308,9 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                     carbon: false, // MIDI hotkeys cannot be Carbon hotkeys
                     check_for_text_field: hk_config.check_for_text_field,
                     application: app,
-                    app_window: hk_config.app_window,
+                    app_window: hk_config.app_window.clone(),
+                    midi_device: midi_dev,
+                    midi_channel: hk_config.midi_channel,
                 });
 
                 log::info!("Created keyboard + MIDI hotkeys for '{}'", hk_config.action);
@@ -293,6 +343,8 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                     check_for_text_field: hk_config.check_for_text_field,
                     application: app,
                     app_window: hk_config.app_window,
+                    midi_device: None, // Keyboard hotkey - no MIDI filtering
+                    midi_channel: None,
                 });
             }
             // MIDI-only hotkey (MIDI provided, no keys or empty keys)
@@ -313,6 +365,12 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                     Some(hk_config.target_application)
                 };
 
+                let midi_dev = if hk_config.midi_device.is_empty() {
+                    None
+                } else {
+                    Some(hk_config.midi_device)
+                };
+
                 hotkeys.push(Hotkey {
                     trigger,
                     action_name: hk_config.action.clone(),
@@ -324,6 +382,8 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                     check_for_text_field: hk_config.check_for_text_field,
                     application: app,
                     app_window: hk_config.app_window,
+                    midi_device: midi_dev,
+                    midi_channel: hk_config.midi_channel,
                 });
             }
             // Invalid: neither keys nor MIDI

@@ -213,17 +213,18 @@ fn parse_raw_midi(data: &[u8]) -> Option<MidiMessage> {
     }
 }
 
-/// Connection holder to keep MIDI input alive
-static MIDI_CONNECTION: OnceLock<Mutex<Option<MidiInputConnection<()>>>> = OnceLock::new();
+/// Connection holder to keep MIDI input(s) alive
+static MIDI_CONNECTIONS: OnceLock<Mutex<Vec<MidiInputConnection<()>>>> = OnceLock::new();
 
 /// Initialize MIDI input and start listening
+///
+/// Connects to all available MIDI devices and calls the callback with device name,
+/// MIDI channel (1-16), and the message for each incoming MIDI event.
 pub fn init_midi_input<F>(
-    port_name: Option<&str>,
-    channel_filter: Option<u8>,
-    mut callback: F,
+    callback: F,
 ) -> Result<()>
 where
-    F: FnMut(MidiMessage) + Send + 'static,
+    F: FnMut(&str, u8, MidiMessage) + Send + 'static,
 {
     let midi_in = match MidiInput::new("pthkd") {
         Ok(m) => m,
@@ -241,50 +242,53 @@ where
         return Ok(());
     }
 
-    // Select port
-    let port = if let Some(name) = port_name {
-        // Find specific port by name
-        ports
-            .iter()
-            .find(|p| {
-                midi_in
-                    .port_name(p)
-                    .map(|n| n.contains(name))
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| anyhow::anyhow!("MIDI port '{}' not found", name))?
-    } else {
-        // Use first available port
-        &ports[0]
-    };
+    // Connect to ALL available devices
+    info!("Connecting to all {} MIDI device(s)", ports.len());
 
-    let port_name_str = midi_in
-        .port_name(port)
-        .unwrap_or_else(|_| "Unknown".to_string());
-    info!("Connecting to MIDI port: {}", port_name_str);
+    // Wrap callback in Arc<Mutex> to share across all connections
+    let callback = Arc::new(Mutex::new(callback));
+    let mut connections = Vec::new();
 
-    // Connect with callback
-    let connection = midi_in.connect(
-        port,
-        "pthkd-input",
-        move |_timestamp, data, _| {
-            if let Some(msg) = parse_raw_midi(data) {
-                // Apply channel filter if specified
-                if let Some(_filter_channel) = channel_filter {
-                    // TODO: Filter by channel (extract from status byte)
-                    // For now, accept all channels
+    for port in &ports {
+        let port_name_str = midi_in
+            .port_name(port)
+            .unwrap_or_else(|_| "Unknown".to_string());
+        info!("  - Connecting to: {}", port_name_str);
+
+        // Clone for this connection
+        let callback_clone = callback.clone();
+        let device_name = port_name_str.clone();
+
+        // Need a new MidiInput for each connection
+        let midi_in_clone = MidiInput::new("pthkd")?;
+
+        let connection = midi_in_clone.connect(
+            port,
+            &format!("pthkd-{}", port_name_str),
+            move |_timestamp, data, _| {
+                if let Some(msg) = parse_raw_midi(data) {
+                    // Extract MIDI channel from status byte (1-16)
+                    let channel = if !data.is_empty() {
+                        ((data[0] & 0x0F) + 1) as u8 // Convert 0-15 to 1-16
+                    } else {
+                        1 // Default to channel 1 if no data
+                    };
+
+                    if let Ok(mut cb) = callback_clone.lock() {
+                        cb(&device_name, channel, msg);
+                    }
                 }
+            },
+            (),
+        )?;
 
-                callback(msg);
-            }
-        },
-        (),
-    )?;
+        connections.push(connection);
+    }
 
-    // Store connection to keep it alive
-    MIDI_CONNECTION
-        .set(Mutex::new(Some(connection)))
-        .map_err(|_| anyhow::anyhow!("MIDI connection already initialized"))?;
+    // Store connections to keep them alive
+    MIDI_CONNECTIONS
+        .set(Mutex::new(connections))
+        .map_err(|_| anyhow::anyhow!("MIDI connections already initialized"))?;
 
     info!("MIDI input initialized successfully");
     Ok(())

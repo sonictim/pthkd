@@ -211,6 +211,12 @@ pub struct Hotkey {
     pub application: Option<Vec<String>>,
 
     pub app_window: Option<String>,
+
+    /// MIDI device filter (only for MIDI triggers) - None = all devices
+    pub midi_device: Option<Vec<String>>,
+
+    /// MIDI channel filter (only for MIDI triggers) - None = all channels
+    pub midi_channel: Option<u8>,
 }
 
 impl Hotkey {

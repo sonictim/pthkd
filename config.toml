@@ -70,10 +70,6 @@ keys = ["cmd", "shift", "a", "i"]
 action = "os.test_app_info"
 
 [[hotkey]]
-keys = ["cmd", "shift", "p", "t"]
-action = "os.focus_protools"
-
-[[hotkey]]
 keys = ["cmd", "shift", "a", "l"]
 action = "os.list_running_apps"
 

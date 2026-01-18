@@ -1,6 +1,8 @@
 //! Swift UI library bridge
 
-use anyhow::Result;
+use super::ffi::*;
+use anyhow::{Result as R, bail};
+use libc::c_void;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -59,10 +61,7 @@ unsafe extern "C" {
         window_name: *const c_char,
         popup_name: *const c_char,
     ) -> *const c_char;
-    fn pthkd_get_window_text(
-        app_name: *const c_char,
-        window_name: *const c_char,
-    ) -> *const c_char;
+    fn pthkd_get_window_text(app_name: *const c_char, window_name: *const c_char) -> *const c_char;
     fn pthkd_free_string(ptr: *const c_char);
 
     // App operations
@@ -98,7 +97,7 @@ unsafe extern "C" {
 ///
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
-pub fn get_app_menus(app_name: &str) -> Result<String> {
+pub fn get_app_menus(app_name: &str) -> R<String> {
     unsafe {
         use std::ffi::CString;
 
@@ -122,7 +121,7 @@ pub fn get_app_menus(app_name: &str) -> Result<String> {
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `menu_path` - Array of menu titles to traverse (e.g. &["File", "Save"])
-pub fn menu_click(app_name: &str, menu_path: &[&str]) -> Result<()> {
+pub fn menu_click(app_name: &str, menu_path: &[&str]) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -132,7 +131,7 @@ pub fn menu_click(app_name: &str, menu_path: &[&str]) -> Result<()> {
         let path_cstrs: Vec<CString> = menu_path
             .iter()
             .map(|s| CString::new(*s))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<R<Vec<_>, _>>()?;
 
         let path_ptrs: Vec<*const c_char> = path_cstrs.iter().map(|cs| cs.as_ptr()).collect();
 
@@ -155,7 +154,7 @@ pub fn menu_click(app_name: &str, menu_path: &[&str]) -> Result<()> {
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `menu_path` - Array of menu titles to traverse (e.g. &["File", "Save"])
-pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> Result<bool> {
+pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> R<bool> {
     unsafe {
         use std::ffi::CString;
 
@@ -163,7 +162,7 @@ pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> Result<bool> {
         let path_cstrs: Vec<CString> = menu_path
             .iter()
             .map(|s| CString::new(*s))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<R<Vec<_>, _>>()?;
         let path_ptrs: Vec<*const c_char> = path_cstrs.iter().map(|cs| cs.as_ptr()).collect();
 
         Ok(pthkd_menu_item_exists(
@@ -179,7 +178,7 @@ pub fn menu_item_exists(app_name: &str, menu_path: &[&str]) -> Result<bool> {
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `menu_path` - Array of menu titles to traverse (e.g. &["File", "Save"])
-pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> Result<bool> {
+pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> R<bool> {
     unsafe {
         use std::ffi::CString;
 
@@ -187,7 +186,7 @@ pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> Result<bool> {
         let path_cstrs: Vec<CString> = menu_path
             .iter()
             .map(|s| CString::new(*s))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<R<Vec<_>, _>>()?;
         let path_ptrs: Vec<*const c_char> = path_cstrs.iter().map(|cs| cs.as_ptr()).collect();
 
         Ok(pthkd_menu_item_enabled(
@@ -204,18 +203,14 @@ pub fn menu_item_enabled(app_name: &str, menu_path: &[&str]) -> Result<bool> {
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `key_char` - Key character to send (e.g. "s", "n", "f1")
 /// * `modifiers` - Bit flags: shift=1, control=2, option=4, command=8
-pub fn send_keystroke(app_name: &str, key_char: &str, modifiers: i32) -> Result<()> {
+pub fn send_keystroke(app_name: &str, key_char: &str, modifiers: i32) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
         let app_cstr = CString::new(app_name)?;
         let key_cstr = CString::new(key_char)?;
 
-        let success = pthkd_send_keystroke(
-            app_cstr.as_ptr(),
-            key_cstr.as_ptr(),
-            modifiers,
-        );
+        let success = pthkd_send_keystroke(app_cstr.as_ptr(), key_cstr.as_ptr(), modifiers);
 
         if success {
             Ok(())
@@ -230,13 +225,10 @@ pub fn send_keystroke(app_name: &str, key_char: &str, modifiers: i32) -> Result<
 /// # Arguments
 /// * `key_codes` - Array of key codes to send
 /// * `modifier_flags` - CGEventFlags (shift=0x20000, control=0x40000, option=0x80000, command=0x100000)
-pub fn send_global_keystroke(key_codes: &[u16], modifier_flags: u64) -> Result<()> {
+pub fn send_global_keystroke(key_codes: &[u16], modifier_flags: u64) -> R<()> {
     unsafe {
-        let success = pthkd_send_global_keystroke(
-            key_codes.as_ptr(),
-            key_codes.len() as i32,
-            modifier_flags,
-        );
+        let success =
+            pthkd_send_global_keystroke(key_codes.as_ptr(), key_codes.len() as i32, modifier_flags);
 
         if success {
             Ok(())
@@ -251,7 +243,7 @@ pub fn send_global_keystroke(key_codes: &[u16], modifier_flags: u64) -> Result<(
 /// # Arguments
 /// * `text` - The text string to type
 /// * `mark_events` - Whether to mark events with APP_MARKER (true = prevent event tap from catching them)
-pub fn type_text(text: &str, mark_events: bool) -> Result<()> {
+pub fn type_text(text: &str, mark_events: bool) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -278,7 +270,7 @@ pub fn type_text(text: &str, mark_events: bool) -> Result<()> {
 ///
 /// # Arguments
 /// * `text` - The text to paste
-pub fn paste_text(text: &str) -> Result<()> {
+pub fn paste_text(text: &str) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -300,7 +292,7 @@ pub fn paste_text(text: &str) -> Result<()> {
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
 /// * `button_name` - Name of the button to click
-pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Result<()> {
+pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -328,7 +320,7 @@ pub fn click_button(app_name: &str, window_name: &str, button_name: &str) -> Res
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
 /// * `checkbox_name` - Name of the checkbox to click
-pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> Result<()> {
+pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -355,8 +347,8 @@ pub fn click_checkbox(app_name: &str, window_name: &str, checkbox_name: &str) ->
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
-/// Helper to check if JSON response contains an error
-fn check_swift_error(json: &str) -> Result<()> {
+///   Helper to check if JSON response contains an error
+fn check_swift_error(json: &str) -> R<()> {
     #[derive(serde::Deserialize)]
     struct ErrorResponse {
         error: String,
@@ -368,7 +360,7 @@ fn check_swift_error(json: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<String>> {
+pub fn get_window_buttons(app_name: &str, window_name: &str) -> R<Vec<String>> {
     unsafe {
         use std::ffi::CString;
 
@@ -399,7 +391,12 @@ pub fn get_window_buttons(app_name: &str, window_name: &str) -> Result<Vec<Strin
 /// * `window_name` - Name of the window, or empty string for frontmost window
 /// * `checkbox_name` - Name of the checkbox
 /// * `value` - 0 for unchecked, 1 for checked
-pub fn set_checkbox_value(app_name: &str, window_name: &str, checkbox_name: &str, value: i32) -> Result<()> {
+pub fn set_checkbox_value(
+    app_name: &str,
+    window_name: &str,
+    checkbox_name: &str,
+    value: i32,
+) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -428,7 +425,7 @@ pub fn set_checkbox_value(app_name: &str, window_name: &str, checkbox_name: &str
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
 /// * `popup_name` - Name of the popup button
-pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str) -> Result<Vec<String>> {
+pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str) -> R<Vec<String>> {
     unsafe {
         use std::ffi::CString;
 
@@ -462,7 +459,7 @@ pub fn get_popup_menu_items(app_name: &str, window_name: &str, popup_name: &str)
 /// # Arguments
 /// * `app_name` - Name of the app (e.g. "Pro Tools"), or empty string for frontmost app
 /// * `window_name` - Name of the window, or empty string for frontmost window
-pub fn get_window_text(app_name: &str, window_name: &str) -> Result<Vec<String>> {
+pub fn get_window_text(app_name: &str, window_name: &str) -> R<Vec<String>> {
     unsafe {
         use std::ffi::CString;
 
@@ -496,7 +493,7 @@ pub struct FrontmostInfo {
 }
 
 /// Get information about the frontmost application and window
-pub fn get_frontmost_info() -> Result<FrontmostInfo> {
+pub fn get_frontmost_info() -> R<FrontmostInfo> {
     unsafe {
         let json_ptr = pthkd_get_frontmost_info();
 
@@ -516,7 +513,7 @@ pub fn get_frontmost_info() -> Result<FrontmostInfo> {
 }
 
 /// Get list of all running application names
-pub fn get_running_apps() -> Result<Vec<String>> {
+pub fn get_running_apps() -> R<Vec<String>> {
     unsafe {
         let json_ptr = pthkd_get_running_apps();
 
@@ -549,7 +546,7 @@ pub fn focus_app(
     should_switch: bool,
     should_launch: bool,
     timeout: i32,
-) -> Result<()> {
+) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -576,7 +573,7 @@ pub fn focus_app(
 ///
 /// # Arguments
 /// * `app_name` - Name of the application to launch
-pub fn launch_app(app_name: &str) -> Result<()> {
+pub fn launch_app(app_name: &str) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -606,7 +603,7 @@ pub fn is_in_text_field() -> bool {
 /// # Arguments
 /// * `app_name` - Name of the app (empty for frontmost)
 /// * `window_name` - Name of the window (empty for frontmost)
-pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
+pub fn window_exists(app_name: &str, window_name: &str) -> R<bool> {
     unsafe {
         use std::ffi::CString;
 
@@ -621,7 +618,7 @@ pub fn window_exists(app_name: &str, window_name: &str) -> Result<bool> {
 ///
 /// # Arguments
 /// * `app_name` - Name of the app (empty for frontmost)
-pub fn get_window_titles(app_name: &str) -> Result<Vec<String>> {
+pub fn get_window_titles(app_name: &str) -> R<Vec<String>> {
     unsafe {
         use std::ffi::CString;
 
@@ -664,7 +661,7 @@ pub fn wait_for_window(
     window_name: &str,
     condition: WindowCondition,
     timeout: i32,
-) -> Result<bool> {
+) -> R<bool> {
     unsafe {
         use std::ffi::CString;
 
@@ -686,7 +683,7 @@ pub fn wait_for_window(
 /// * `app_name` - Name of the app (empty for frontmost)
 /// * `window_name` - Name of the window (empty for frontmost)
 /// * `retry_timeout` - If Some, retry closing until window is gone or timeout (in milliseconds)
-pub fn close_window(app_name: &str, window_name: &str, retry_timeout: Option<i32>) -> Result<()> {
+pub fn close_window(app_name: &str, window_name: &str, retry_timeout: Option<i32>) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
@@ -702,4 +699,175 @@ pub fn close_window(app_name: &str, window_name: &str, retry_timeout: Option<i32
             Err(anyhow::anyhow!("Close window failed"))
         }
     }
+}
+
+/// Get the name of the currently focused (frontmost) application
+///
+/// # Example
+/// ```ignore
+/// let app_name = get_current_app()?;
+/// println!("Current app: {}", app_name); // "Pro Tools"
+pub fn get_current_app() -> R<String> {
+    let info = get_frontmost_info()?;
+    Ok(info.app)
+}
+
+/// Get the title of the currently focused window
+///
+/// # Example
+/// ```ignore
+/// let window_title = get_app_window()?;
+/// println!("Window: {}", window_title); // "My Session - Pro Tools"
+/// ```
+pub fn get_app_window() -> R<String> {
+    let info = get_frontmost_info()?;
+    Ok(info.window)
+}
+
+/// Check if the process has accessibility permissions
+///
+/// Returns true if accessibility permissions are granted, false otherwise
+pub fn has_accessibility_permission() -> bool {
+    unsafe { AXIsProcessTrusted() }
+}
+
+/// Get the process ID (PID) for an application by name
+///
+/// # Arguments
+/// * `app_name` - Name of the application
+pub fn get_pid_by_name(app_name: &str) -> R<i32> {
+    use objc2::msg_send;
+
+    unsafe {
+        super::helpers::with_running_app(app_name, |app| {
+            let pid: i32 = msg_send![app, processIdentifier];
+            Ok(pid)
+        })
+    }
+}
+
+// ============================================================================
+// Core Graphics Event FFI
+// ============================================================================
+
+const CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: i32 = 1;
+const CG_HID_EVENT_TAP: u32 = 0;
+const CG_SESSION_EVENT_TAP: u32 = 1;
+
+// Modifier key flags
+const CG_EVENT_FLAG_MASK_COMMAND: u64 = 0x00100000;
+const CG_EVENT_FLAG_MASK_SHIFT: u64 = 0x00020000;
+const CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 0x00080000; // Option key
+const CG_EVENT_FLAG_MASK_CONTROL: u64 = 0x00040000;
+
+unsafe extern "C" {
+    fn CGEventCreateKeyboardEvent(
+        source: *mut c_void,
+        virtual_key: u16,
+        key_down: bool,
+    ) -> *mut c_void;
+
+    fn CGEventSetFlags(event: *mut c_void, flags: u64);
+    fn CGEventPost(tap: u32, event: *mut c_void);
+    fn CGEventSourceCreate(source_state_id: i32) -> *mut c_void;
+    fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
+}
+
+// ============================================================================
+// Modifier Helpers
+// ============================================================================
+
+/// Check if a key name is a modifier
+fn is_modifier(key_name: &str) -> bool {
+    matches!(
+        key_name.to_lowercase().as_str(),
+        "cmd" | "command" | "shift" | "option" | "alt" | "control" | "ctrl"
+    )
+}
+
+/// Convert modifier key name to flag
+fn modifier_to_flag(key_name: &str) -> Option<u64> {
+    match key_name.to_lowercase().as_str() {
+        "cmd" | "command" => Some(CG_EVENT_FLAG_MASK_COMMAND),
+        "shift" => Some(CG_EVENT_FLAG_MASK_SHIFT),
+        "option" | "alt" => Some(CG_EVENT_FLAG_MASK_ALTERNATE),
+        "control" | "ctrl" => Some(CG_EVENT_FLAG_MASK_CONTROL),
+        _ => None,
+    }
+}
+
+// ============================================================================
+// Global Keystroke Sending
+// ============================================================================
+
+/// Send a global keystroke chord
+///
+/// **STATUS: WORKING** - Uses pure C Core Graphics API
+///
+/// This posts keyboard events to the system event queue. The keystrokes
+/// go to whatever application currently has focus.
+///
+/// Modifiers (cmd, shift, option, control) are applied as flags on the
+/// regular key events, not sent as separate key events. This is the proper
+/// way macOS applications expect to receive modified keystrokes.
+///
+/// # Arguments
+/// * `keys` - Slice of key names to press simultaneously (e.g., &["cmd", "f1"])
+///
+/// # Example
+/// ```ignore
+/// // Send Cmd+S
+/// send_keystroke(&["cmd", "s"])?;
+///
+/// // Send just Space
+/// send_keystroke(&["space"])?;
+///
+/// // Send Cmd+Shift+F1
+/// send_keystroke(&["cmd", "shift", "f1"])?;
+/// ```
+pub fn keystroke(keys: &[&str]) -> R<()> {
+    use crate::input::key_name_to_codes;
+
+    if keys.is_empty() {
+        bail!("No keys specified");
+    }
+
+    log::debug!("send_keystroke called with keys: {:?}", keys);
+
+    // Separate modifiers from regular keys
+    let mut modifier_flags = 0u64;
+    let mut regular_keys = Vec::new();
+
+    for &key_name in keys {
+        if is_modifier(key_name) {
+            // It's a modifier - add to flags
+            if let Some(flag) = modifier_to_flag(key_name) {
+                modifier_flags |= flag;
+                log::debug!("  Added modifier: {} (flag: 0x{:x})", key_name, flag);
+            }
+        } else {
+            // It's a regular key - add to list
+            regular_keys.push(key_name);
+        }
+    }
+
+    // Must have at least one regular key
+    if regular_keys.is_empty() {
+        bail!("Must specify at least one non-modifier key");
+    }
+
+    // Parse regular key names to keycodes
+    let mut key_codes = Vec::new();
+    for key_name in regular_keys {
+        let codes = key_name_to_codes(key_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown key name: {}", key_name))?;
+
+        // For keys with multiple options, use the first one
+        let keycode = codes[0];
+        key_codes.push(keycode);
+        log::debug!("  Key '{}' -> keycode {}", key_name, keycode);
+    }
+
+    // Use Swift bridge to send keystroke
+    send_global_keystroke(&key_codes, modifier_flags)
 }

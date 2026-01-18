@@ -21,11 +21,8 @@ pub mod permissions;
 pub mod session;
 
 // Experimental modules (work in progress)
-pub mod app_info;
 pub mod carbon_hotkeys;
-pub mod input_dialog;
 pub mod keyring;
-pub mod keystroke;
 pub mod menubar;
 pub mod window;
 
@@ -35,7 +32,7 @@ pub mod commands;
 
 // Re-export commonly used items
 pub use events::*;
-pub use keystroke::*;
+pub use notifications::*;
 pub use session::MacOSSession;
 pub use swift_bridge::*;
 // Experimental items are not re-exported - must be explicitly imported

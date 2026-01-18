@@ -1,8 +1,6 @@
 use super::client::*;
 use super::*;
 use crate::actions_async;
-use crate::hotkey::HotkeyCounter;
-use crate::prelude::*;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -55,7 +53,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> R<()
     let plugin = format!("RX {} Connect", version);
     let rx_app = format!("RX {}", version);
 
-    let app = crate::macos::app_info::get_current_app()?;
+    let app = OS::get_current_app()?;
     if app == "Pro Tools" {
         // Send to RX for analysis
         call_plugin(&plugin, "Analyze", false).await?;
@@ -80,7 +78,7 @@ pub async fn send_receive_rx(_pt: &mut ProtoolsSession, params: &Params) -> R<()
                 .count();
         }
         println!("one window detected");
-        crate::macos::app_info::focus_app("Pro Tools", "", true, false, 50).ok();
+        OS::focus_app("Pro Tools", "", true, false, 50).ok();
         OS::wait_for_window("Pro Tools", &plugin, OS::WindowCondition::Focused, 50).ok();
         // Focus Pro Tools and wait for confirmation (switch but don't launch)
 

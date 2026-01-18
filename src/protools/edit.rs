@@ -1,8 +1,6 @@
 //! ProTools edit actions (namespace: "pt")
-
 use super::*;
 use crate::actions_async;
-use crate::prelude::*;
 // Define all ProTools actions using the async macro
 // Actions are automatically registered with the "pt" namespace
 actions_async!("pt", edit, {
@@ -20,7 +18,6 @@ actions_async!("pt", edit, {
 use super::client::*;
 use super::ptsl;
 use super::timecode::*;
-use crate::params::Params;
 use ptsl::CommandId;
 
 // ============================================================================

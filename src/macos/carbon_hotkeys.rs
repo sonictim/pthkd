@@ -260,7 +260,10 @@ pub fn register_carbon_hotkeys() -> Result<()> {
             let chord = match &hotkey.trigger {
                 crate::hotkey::TriggerPattern::Keyboard(chord) => chord,
                 _ => {
-                    log::warn!("Skipping non-keyboard hotkey '{}' for Carbon registration", hotkey.action_name);
+                    log::warn!(
+                        "Skipping non-keyboard hotkey '{}' for Carbon registration",
+                        hotkey.action_name
+                    );
                     continue;
                 }
             };
@@ -351,8 +354,7 @@ pub fn register_carbon_hotkeys() -> Result<()> {
 /// Returns None if the chord is too complex for Carbon (which only supports
 /// simple modifier+key combinations, not OR groups)
 fn chord_to_carbon_spec(chord: &crate::hotkey::ChordPattern) -> Option<(u32, u32)> {
-    use crate::hotkey::ChordPattern;
-    use crate::keycodes::*;
+    use crate::input::*;
 
     match chord {
         ChordPattern::Simultaneous { key_groups } => {

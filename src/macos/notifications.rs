@@ -3,34 +3,9 @@ use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use std::process::Command;
 
-// ============================================================================
-// MacOSSession Extensions for Notifications
-// ============================================================================
-
-impl MacOSSession {
-    /// Show a macOS notification
-    ///
-    /// Tries native NSUserNotificationCenter first (uses app icon),
-    /// falls back to osascript if native fails (more reliable)
-    ///
-    /// # Example
-    /// ```ignore
-    /// let os = MacOSSession::global();
-    /// os.show_notification("Task completed!");
-    /// ```
-    pub fn show_notification(&self, message: &str) {
-        let message = message.to_string();
-        std::thread::spawn(move || {
-            // Try native notification first (uses app icon)
-            if let Err(e) = show_notification_native(&message) {
-                log::debug!("Native notification failed ({}), falling back to osascript", e);
-
-                // Fall back to osascript (more reliable for menu bar apps)
-                if let Err(e) = show_notification_osascript(&message) {
-                    log::error!("Failed to show notification: {}", e);
-                }
-            }
-        });
+pub fn show_notification(message: &str) {
+    if show_notification_native(message).is_err() {
+        show_notification_osascript(message).ok();
     }
 }
 
@@ -47,7 +22,8 @@ fn show_notification_native(message: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to get NSUserNotificationCenter class: {}", e))?;
 
         // Get the default notification center
-        let center: *mut AnyObject = msg_send![notification_center_class, defaultUserNotificationCenter];
+        let center: *mut AnyObject =
+            msg_send![notification_center_class, defaultUserNotificationCenter];
         if center.is_null() {
             return Err("Failed to get default notification center".to_string());
         }

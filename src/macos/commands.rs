@@ -1,6 +1,6 @@
 //! macOS system command implementations
 
-use super::{MacOSSession, app_info, keystroke};
+use super::MacOSSession;
 use crate::prelude::*;
 use std::process::Command;
 
@@ -9,7 +9,7 @@ use std::process::Command;
 // ============================================================================
 
 pub fn test_notification(_params: &Params) -> R<()> {
-    MacOSSession::global().show_notification("CMD+Shift+K pressed!");
+    OS::show_notification("CMD+Shift+K pressed!");
     Ok(())
 }
 
@@ -102,7 +102,7 @@ pub fn test_text_window(_params: &Params) -> R<()> {
 
 pub fn test_keystroke(_params: &Params) -> R<()> {
     log::info!("Testing global keystroke - sending CMD+F1");
-    keystroke(&["cmd", "f1"])?;
+    OS::keystroke(&["cmd", "f1"])?;
     log::info!("Keystroke sent successfully");
     Ok(())
 }
@@ -115,7 +115,7 @@ pub fn test_app_info(_params: &Params) -> R<()> {
     // Benchmark get_current_app()
     let start = Instant::now();
     for _ in 0..1000 {
-        app_info::get_current_app().ok();
+        OS::get_current_app().ok();
     }
     let elapsed = start.elapsed();
     let msg = format!(
@@ -126,7 +126,7 @@ pub fn test_app_info(_params: &Params) -> R<()> {
     log.append(&msg);
 
     // Get current app (no permissions needed)
-    match app_info::get_current_app() {
+    match OS::get_current_app() {
         Ok(app_name) => {
             log.append(&format!("Current App: {}", app_name));
         }
@@ -134,7 +134,7 @@ pub fn test_app_info(_params: &Params) -> R<()> {
     }
 
     // Check if we have accessibility permissions
-    if !app_info::has_accessibility_permission() {
+    if !OS::has_accessibility_permission() {
         log::warn!(
             "⚠️  Accessibility permissions not granted! \
             Enable in System Preferences > Security & Privacy > Accessibility"
@@ -144,28 +144,23 @@ pub fn test_app_info(_params: &Params) -> R<()> {
     }
 
     // Get window title (requires permissions)
-    match app_info::get_app_window() {
+    match OS::get_app_window() {
         Ok(title) => log.append(&format!("Window Title: {}", title)),
         Err(e) => log::error!("Failed to get window: {}", e),
     }
 
     // Check if in text field (requires permissions)
-    match app_info::is_in_text_field() {
-        Ok(is_text) => {
-            if is_text {
-                log.append("Text Field: ✅ Yes (cursor is in a text entry field)");
-            } else {
-                log.append("Text Field: ❌ No (not in a text field)");
-            }
-        }
-        Err(e) => log::error!("Failed to check text field: {}", e),
+    if OS::is_in_text_field() {
+        log.append("Text Field: ✅ Yes (cursor is in a text entry field)");
+    } else {
+        log.append("Text Field: ❌ No (not in a text field)");
     }
     log.display()
 }
 
 pub fn reload_config(_params: &Params) -> R<()> {
     use crate::config::{config_to_hotkeys, load_config};
-    use crate::hotkey::HOTKEYS;
+    use crate::input::HOTKEYS;
     use anyhow::{Context, bail};
 
     log::info!("⚠️  reload_config STARTED");
@@ -184,7 +179,11 @@ pub fn reload_config(_params: &Params) -> R<()> {
     // Log registered hotkeys
     log::info!("Reloaded {} hotkeys:", hotkeys.len());
     for hotkey in &hotkeys {
-        log::info!("  - {} => {}", hotkey.trigger.describe(), hotkey.action_name);
+        log::info!(
+            "  - {} => {}",
+            hotkey.trigger.describe(),
+            hotkey.action_name
+        );
     }
 
     // Update the global hotkey registry
@@ -217,8 +216,7 @@ pub fn list_running_apps(_params: &Params) -> R<()> {
 
     log::info!("Getting list of running applications...");
 
-    let apps =
-        app_info::get_all_running_applications().context("Failed to get running applications")?;
+    let apps = OS::get_running_apps().context("Failed to get running applications")?;
 
     log::info!("Running applications ({}):", apps.len());
     let mut log = crate::MessageLog::new(&format!("=== Running Applications ({}) ===", apps.len()));
@@ -228,30 +226,19 @@ pub fn list_running_apps(_params: &Params) -> R<()> {
     log.display()
 }
 
-pub fn focus_protools(_params: &Params) -> R<()> {
-    use anyhow::Context;
-
-    log::info!("Focusing Pro Tools...");
-    app_info::focus_application("Pro Tools").context("Failed to focus Pro Tools")?;
-    log::info!("✅ Pro Tools focused successfully!");
-
-    Ok(())
-}
 pub fn launch_application(params: &Params) -> R<()> {
     use anyhow::Context;
     let app = params.get_str("app", "");
     if !app.is_empty() {
         log::info!("Launching {app}...");
-        app_info::launch_application(app).context("Failed to launch {app}")?;
+        OS::focus_app(app, "", true, true, 1000).context("Failed to launch {app}")?;
         log::info!("✅ {app} launched successfully!");
     }
     Ok(())
 }
 
 pub fn list_window_buttons(params: &Params) -> R<()> {
-    let current_app = crate::macos::app_info::get_current_app()
-        .ok()
-        .unwrap_or_default();
+    let current_app = OS::get_current_app().ok().unwrap_or_default();
     let app_name = params.get_string("app", &current_app);
     let window_name = params.get_string("window", "");
     let debug = params.get_bool("debug", false);
@@ -302,7 +289,7 @@ pub fn list_window_buttons(params: &Params) -> R<()> {
                 log.append("\n=== Debug Info ===");
 
                 // Show current app
-                if let Ok(current_app) = super::app_info::get_current_app() {
+                if let Ok(current_app) = OS::get_current_app() {
                     log.append(&format!("Current frontmost app: {}", current_app));
                 }
 
@@ -332,7 +319,7 @@ pub fn list_window_buttons(params: &Params) -> R<()> {
                 // Check accessibility permissions
                 log.append(&format!(
                     "\nAccessibility permissions: {}",
-                    if app_info::has_accessibility_permission() {
+                    if OS::has_accessibility_permission() {
                         "✅ Granted"
                     } else {
                         "❌ Not granted"
@@ -382,7 +369,7 @@ pub fn display_window_text(_params: &Params) -> R<()> {
     log::info!("Getting text from focused window...");
 
     // Get current app
-    let app_name = super::app_info::get_current_app()?;
+    let app_name = OS::get_current_app()?;
     let mut log = crate::MessageLog::default();
     log.append(&format!("Current app: {}", app_name));
 
@@ -407,12 +394,10 @@ pub fn display_window_text(_params: &Params) -> R<()> {
 }
 
 pub fn test_input_dialog(_params: &Params) -> R<()> {
-    use super::input_dialog;
-
     log::info!("=== test_input_dialog: START ===");
 
     log::info!("About to show dialog...");
-    let dialog_r = input_dialog::show_input_dialog(
+    let dialog_r = super::window::show_input_dialog(
         "Enter some text:",
         Some("Type anything you want:"),
         Some("default value"),
@@ -424,12 +409,12 @@ pub fn test_input_dialog(_params: &Params) -> R<()> {
         Ok(Some(text)) => {
             let msg = format!("You entered: {}", text);
             log::info!("Showing success notification: {}", msg);
-            MacOSSession::global().show_notification(&msg);
+            OS::show_notification(&msg);
             log::info!("Notification shown");
         }
         Ok(None) => {
             log::info!("User cancelled, showing cancel notification");
-            MacOSSession::global().show_notification("Input cancelled");
+            OS::show_notification("Input cancelled");
             log::info!("Cancel notification shown");
         }
         Err(e) => {
@@ -451,7 +436,7 @@ pub fn test_input_dialog(_params: &Params) -> R<()> {
 /// Wait for all keys to be released before proceeding
 /// This is critical for Carbon hotkeys which fire on keydown while keys are still pressed
 fn wait_for_all_keys_released(max_wait_ms: u64) -> R<()> {
-    use crate::hotkey::KEY_STATE;
+    use crate::input::KEY_STATE;
     use std::time::{Duration, Instant};
 
     let start = Instant::now();
@@ -482,7 +467,7 @@ fn wait_for_all_keys_released(max_wait_ms: u64) -> R<()> {
             }
 
             // Log which keys are still pressed (for debugging)
-            if start.elapsed().as_millis() % 100 == 0 {
+            if start.elapsed().as_millis().is_multiple_of(100) {
                 eprintln!("  Still waiting... ({} keys pressed)", num_pressed);
             }
 
@@ -514,13 +499,13 @@ pub fn rapid_pw(params: &Params) -> R<()> {
         eprintln!("All keys released, pasting password...");
 
         // Use paste instead of typing - much faster and more reliable
-        super::keystroke::paste_text_for_password(&pw)?;
+        OS::paste_text(&pw)?;
 
         // Small delay to ensure paste completes before Enter
         std::thread::sleep(std::time::Duration::from_millis(100));
 
         log::info!("Sending Enter key");
-        keystroke(&["return"])
+        OS::keystroke(&["return"])
     } else {
         log::warn!("Password not found in keychain for account: {}", account);
         unsafe { MacOSSession::global().password_prompt(account) }
@@ -546,8 +531,8 @@ pub fn test_pw(params: &Params) -> R<()> {
         super::keyring::password_set(account, "test")
     } else if let Ok(pw) = super::keyring::password_get(account) {
         println!("typing password: {}", pw);
-        super::keystroke::type_text(&pw)?;
-        keystroke(&["enter"])
+        OS::type_text(&pw, false)?;
+        OS::keystroke(&["enter"])
     } else {
         println!("Password not found.  Setting");
         super::keyring::password_set(account, "test")
@@ -570,7 +555,7 @@ pub fn list_window_titles(params: &Params) -> R<()> {
 
     if app_name.is_empty() {
         // If no app specified, use current app
-        match super::app_info::get_current_app() {
+        match OS::get_current_app() {
             Ok(current_app) => {
                 log::info!("Getting window titles for current app: {}", current_app);
 

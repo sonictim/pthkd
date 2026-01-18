@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -143,7 +144,6 @@ pub enum TriggerPattern {
 
     /// MIDI pattern
     Midi(crate::input::midi::MidiPattern),
-
     // Future: Hybrid keyboard + MIDI triggers
     // Hybrid { keyboard: ChordPattern, midi: MidiPattern },
 }
@@ -157,16 +157,17 @@ impl TriggerPattern {
                 // Describe MIDI pattern
                 match pattern {
                     crate::input::midi::MidiPattern::Simultaneous { messages } => {
-                        let parts: Vec<String> = messages.iter().map(|spec| {
-                            match spec {
+                        let parts: Vec<String> = messages
+                            .iter()
+                            .map(|spec| match spec {
                                 crate::input::midi::MidiMessageSpec::Note { note } => {
                                     format!("note{}", note)
                                 }
                                 crate::input::midi::MidiMessageSpec::ControlChange { cc } => {
                                     format!("cc{}", cc)
                                 }
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         parts.join("+")
                     }
                 }
@@ -189,10 +190,10 @@ pub struct Hotkey {
     pub action_name: String,
 
     /// The action function to execute
-    pub action: fn(&crate::params::Params) -> anyhow::Result<()>,
+    pub action: fn(&crate::config::Params) -> R<()>,
 
     /// Parameters to pass to the action function
-    pub params: crate::params::Params,
+    pub params: crate::config::Params,
 
     /// Whether to trigger on key release instead of key down
     pub trigger_on_release: bool,
@@ -238,10 +239,7 @@ impl Hotkey {
     /// Check application and window filters (shared by keyboard and MIDI)
     fn check_application_filters(&self) -> bool {
         (self.application.is_none()
-            || match (
-                &self.application,
-                crate::macos::app_info::get_current_app().ok(),
-            ) {
+            || match (&self.application, OS::get_current_app().ok()) {
                 (Some(config_apps), Some(current_app)) => {
                     // Check if any of the configured apps match the current app
                     config_apps
@@ -252,7 +250,7 @@ impl Hotkey {
             })
             && match &self.app_window {
                 None => true,
-                Some(config_window) => match crate::macos::app_info::get_app_window().ok() {
+                Some(config_window) => match OS::get_app_window().ok() {
                     None => false,
                     Some(app_window) => crate::soft_match(&app_window, config_window),
                 },
@@ -280,9 +278,9 @@ pub struct PendingHotkey {
 /// Global pending hotkey state
 pub static PENDING_HOTKEY: OnceLock<Mutex<Option<PendingHotkey>>> = OnceLock::new();
 
+use std::future::Future;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
-use std::future::Future;
 
 pub struct HotkeyCounter {
     count: u32,
@@ -296,7 +294,7 @@ impl HotkeyCounter {
         Self {
             count: 0,
             last_call: Instant::now() - Duration::from_secs(10), // Far in the past
-            last_timeout: Duration::from_millis(500), // Default timeout
+            last_timeout: Duration::from_millis(500),            // Default timeout
             pending_task: None,
         }
     }
@@ -337,8 +335,13 @@ impl HotkeyCounter {
         // Return 0-based index for array indexing
         let final_count = (self.count - 1) % max;
 
-        log::info!("HotkeyCounter: count={}, max={}, final_count={}, will execute in {}ms",
-                   self.count, max, final_count, timeout_ms);
+        log::info!(
+            "HotkeyCounter: count={}, max={}, final_count={}, will execute in {}ms",
+            self.count,
+            max,
+            final_count,
+            timeout_ms
+        );
 
         // Spawn delayed execution task
         let handle = tokio::spawn(async move {

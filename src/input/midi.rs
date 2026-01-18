@@ -1,10 +1,9 @@
-use anyhow::{bail, Result};
-use log::{error, info, warn};
+use anyhow::{Result, bail};
+use log::{info, warn};
 use midir::{MidiInput, MidiInputConnection};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use tokio::time::sleep;
 
 /// Represents a MIDI message that can trigger hotkeys
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -29,9 +28,10 @@ impl MidiMessageSpec {
             (Self::Note { note: spec_note }, MidiMessage::NoteOn { note: msg_note, .. }) => {
                 spec_note == msg_note
             }
-            (Self::ControlChange { cc: spec_cc }, MidiMessage::ControlChange { cc: msg_cc, .. }) => {
-                spec_cc == msg_cc
-            }
+            (
+                Self::ControlChange { cc: spec_cc },
+                MidiMessage::ControlChange { cc: msg_cc, .. },
+            ) => spec_cc == msg_cc,
             _ => false,
         }
     }
@@ -49,9 +49,9 @@ impl MidiPattern {
         match self {
             MidiPattern::Simultaneous { messages } => {
                 // All required messages must be active
-                let all_present = messages.iter().all(|spec| {
-                    active.iter().any(|msg| spec.matches(msg))
-                });
+                let all_present = messages
+                    .iter()
+                    .all(|spec| active.iter().any(|msg| spec.matches(msg)));
 
                 // Exact match: no extra messages allowed
                 let exact_count = messages.len() == active.len();
@@ -63,7 +63,7 @@ impl MidiPattern {
 }
 
 /// Tracks currently active MIDI messages (notes held, recent CCs)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MidiState {
     active_notes: Arc<HashSet<u8>>,
     active_ccs: Arc<HashMap<u8, u8>>, // CC number -> value
@@ -101,12 +101,12 @@ impl MidiState {
         let cc_to_remove = cc;
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(50));
-            if let Some(state) = MIDI_STATE.get() {
-                if let Ok(mut s) = state.lock() {
-                    let mut new_ccs = (*s.active_ccs).clone();
-                    new_ccs.remove(&cc_to_remove);
-                    s.active_ccs = Arc::new(new_ccs);
-                }
+            if let Some(state) = MIDI_STATE.get()
+                && let Ok(mut s) = state.lock()
+            {
+                let mut new_ccs = (*s.active_ccs).clone();
+                new_ccs.remove(&cc_to_remove);
+                s.active_ccs = Arc::new(new_ccs);
             }
         });
     }
@@ -137,14 +137,16 @@ pub static MIDI_STATE: OnceLock<Mutex<MidiState>> = OnceLock::new();
 /// Parse a MIDI spec string like "cc34" or "note60"
 pub fn parse_midi_spec(spec: &str) -> Result<MidiMessageSpec> {
     if let Some(num_str) = spec.strip_prefix("cc") {
-        let cc = num_str.parse::<u8>()
+        let cc = num_str
+            .parse::<u8>()
             .map_err(|_| anyhow::anyhow!("Invalid CC number: {}", num_str))?;
         if cc > 127 {
             bail!("CC number must be 0-127, got {}", cc);
         }
         Ok(MidiMessageSpec::ControlChange { cc })
     } else if let Some(num_str) = spec.strip_prefix("note") {
-        let note = num_str.parse::<u8>()
+        let note = num_str
+            .parse::<u8>()
             .map_err(|_| anyhow::anyhow!("Invalid note number: {}", num_str))?;
         if note > 127 {
             bail!("Note number must be 0-127, got {}", note);
@@ -242,17 +244,23 @@ where
     // Select port
     let port = if let Some(name) = port_name {
         // Find specific port by name
-        ports.iter().find(|p| {
-            midi_in.port_name(p)
-                .map(|n| n.contains(name))
-                .unwrap_or(false)
-        }).ok_or_else(|| anyhow::anyhow!("MIDI port '{}' not found", name))?
+        ports
+            .iter()
+            .find(|p| {
+                midi_in
+                    .port_name(p)
+                    .map(|n| n.contains(name))
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| anyhow::anyhow!("MIDI port '{}' not found", name))?
     } else {
         // Use first available port
         &ports[0]
     };
 
-    let port_name_str = midi_in.port_name(port).unwrap_or_else(|_| "Unknown".to_string());
+    let port_name_str = midi_in
+        .port_name(port)
+        .unwrap_or_else(|_| "Unknown".to_string());
     info!("Connecting to MIDI port: {}", port_name_str);
 
     // Connect with callback
@@ -274,7 +282,8 @@ where
     )?;
 
     // Store connection to keep it alive
-    MIDI_CONNECTION.set(Mutex::new(Some(connection)))
+    MIDI_CONNECTION
+        .set(Mutex::new(Some(connection)))
         .map_err(|_| anyhow::anyhow!("MIDI connection already initialized"))?;
 
     info!("MIDI input initialized successfully");
@@ -306,12 +315,21 @@ mod tests {
         };
 
         let mut msgs = HashSet::new();
-        msgs.insert(MidiMessage::NoteOn { note: 60, velocity: 100 });
-        msgs.insert(MidiMessage::NoteOn { note: 64, velocity: 100 });
+        msgs.insert(MidiMessage::NoteOn {
+            note: 60,
+            velocity: 100,
+        });
+        msgs.insert(MidiMessage::NoteOn {
+            note: 64,
+            velocity: 100,
+        });
         assert!(pattern.matches(&msgs));
 
         // Extra note should fail (exact match required)
-        msgs.insert(MidiMessage::NoteOn { note: 67, velocity: 100 });
+        msgs.insert(MidiMessage::NoteOn {
+            note: 67,
+            velocity: 100,
+        });
         assert!(!pattern.matches(&msgs));
     }
 
@@ -322,11 +340,17 @@ mod tests {
         };
 
         let mut msgs = HashSet::new();
-        msgs.insert(MidiMessage::NoteOn { note: 60, velocity: 100 });
+        msgs.insert(MidiMessage::NoteOn {
+            note: 60,
+            velocity: 100,
+        });
         assert!(pattern.matches(&msgs));
 
         // Should NOT match if extra notes are pressed
-        msgs.insert(MidiMessage::NoteOn { note: 64, velocity: 100 });
+        msgs.insert(MidiMessage::NoteOn {
+            note: 64,
+            velocity: 100,
+        });
         assert!(!pattern.matches(&msgs));
     }
 
@@ -351,7 +375,13 @@ mod tests {
     fn test_parse_raw_midi() {
         // Note On (channel 1)
         let msg = parse_raw_midi(&[0x90, 60, 100]).unwrap();
-        assert_eq!(msg, MidiMessage::NoteOn { note: 60, velocity: 100 });
+        assert_eq!(
+            msg,
+            MidiMessage::NoteOn {
+                note: 60,
+                velocity: 100
+            }
+        );
 
         // Note Off (channel 1)
         let msg = parse_raw_midi(&[0x80, 60, 0]).unwrap();
@@ -369,8 +399,14 @@ mod tests {
     #[test]
     fn test_midi_message_spec_matches() {
         let note_spec = MidiMessageSpec::Note { note: 60 };
-        assert!(note_spec.matches(&MidiMessage::NoteOn { note: 60, velocity: 100 }));
-        assert!(!note_spec.matches(&MidiMessage::NoteOn { note: 61, velocity: 100 }));
+        assert!(note_spec.matches(&MidiMessage::NoteOn {
+            note: 60,
+            velocity: 100
+        }));
+        assert!(!note_spec.matches(&MidiMessage::NoteOn {
+            note: 61,
+            velocity: 100
+        }));
         assert!(!note_spec.matches(&MidiMessage::NoteOff { note: 60 }));
 
         let cc_spec = MidiMessageSpec::ControlChange { cc: 34 };

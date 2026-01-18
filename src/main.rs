@@ -1,17 +1,14 @@
 #![allow(dead_code)]
 mod config;
-mod hotkey;
 mod input;
-mod keycodes;
 pub mod macos;
-mod params;
-mod prelude;
+pub mod prelude;
 mod protools;
 mod soundminer;
 
-use anyhow::Context;
+pub use prelude::*;
+
 use config::{config_to_hotkeys, load_config};
-use hotkey::{HOTKEYS, KEY_STATE, PENDING_HOTKEY, PendingHotkey};
 
 use libc::c_void;
 use std::io::Write;
@@ -35,15 +32,15 @@ use std::sync::Arc;
 macro_rules! actions_sync {
     ($namespace:expr, { $($action_name:ident),* $(,)? }) => {
         $(
-            pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+            pub fn $action_name(params: &$crate::config::Params) -> anyhow::Result<()> {
                 super::commands::$action_name(params)
             }
         )*
 
-        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+        pub fn get_action_registry() -> std::collections::HashMap<&'static str, fn(&$crate::config::Params) -> anyhow::Result<()>> {
             let mut registry = std::collections::HashMap::new();
             $(
-                registry.insert(stringify!($action_name), $action_name as fn(&$crate::params::Params) -> anyhow::Result<()>);
+                registry.insert(stringify!($action_name), $action_name as fn(&$crate::config::Params) -> anyhow::Result<()>);
             )*
             registry
         }
@@ -76,7 +73,7 @@ macro_rules! actions_async {
 
 
             $(
-                pub fn $action_name(params: &$crate::params::Params) -> anyhow::Result<()> {
+                pub fn $action_name(params: &$crate::config::Params) -> anyhow::Result<()> {
                     use std::sync::{Arc, Mutex};
                     let params = params.clone();
                     let action_name = concat!(stringify!($module_id), "_", stringify!($action_name));
@@ -114,8 +111,8 @@ macro_rules! actions_async {
                     // Show notification if requested
                     if notify {
                         match &result {
-                            Ok(_) => $crate::macos::MacOSSession::global().show_notification(&format!("✅ {}", action_name)),
-                            Err(e) => $crate::macos::MacOSSession::global().show_notification(&format!("❌ {}: {}", action_name, e)),
+                            Ok(_) => $crate::macos::show_notification(&format!("✅ {}", action_name)),
+                            Err(e) => $crate::macos::show_notification(&format!("❌ {}: {}", action_name, e)),
                         }
                     }
 
@@ -126,12 +123,12 @@ macro_rules! actions_async {
 
         // Generate uniquely-named registry function using paste crate
         paste::paste! {
-            pub fn [<get_ $module_id _registry>]() -> std::collections::HashMap<&'static str, fn(&$crate::params::Params) -> anyhow::Result<()>> {
+            pub fn [<get_ $module_id _registry>]() -> std::collections::HashMap<&'static str, fn(&$crate::config::Params) -> anyhow::Result<()>> {
                 let mut registry = std::collections::HashMap::new();
                 $(
                     registry.insert(
                         concat!(stringify!($module_id), "_", stringify!($action_name)),
-                        __actions::$action_name as fn(&$crate::params::Params) -> anyhow::Result<()>
+                        __actions::$action_name as fn(&$crate::config::Params) -> anyhow::Result<()>
                     );
                 )*
                 registry
@@ -155,7 +152,7 @@ pub fn trigger_hotkey_by_index(index: usize) {
         if let Some(hotkey) = hotkeys.get(index) {
             // Check app/window filters
             if let Some(config_apps) = &hotkey.application {
-                if let Ok(current_app) = macos::app_info::get_current_app() {
+                if let Ok(current_app) = macos::get_current_app() {
                     if !config_apps.iter().any(|app| soft_match(&current_app, app)) {
                         log::debug!(
                             "Hotkey '{}' not triggered - app filter doesn't match",
@@ -173,7 +170,7 @@ pub fn trigger_hotkey_by_index(index: usize) {
             }
 
             if let Some(config_window) = &hotkey.app_window {
-                if let Ok(app_window) = macos::app_info::get_app_window() {
+                if let Ok(app_window) = OS::get_app_window() {
                     if !soft_match(&app_window, config_window) {
                         log::debug!(
                             "Hotkey '{}' not triggered - window filter doesn't match",
@@ -191,16 +188,12 @@ pub fn trigger_hotkey_by_index(index: usize) {
             }
 
             // Check if in text field (if enabled for this hotkey)
-            if hotkey.check_for_text_field {
-                if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
-                    if is_in_text {
-                        log::debug!(
-                            "Hotkey '{}' not triggered - cursor is in a text field",
-                            hotkey.action_name
-                        );
-                        return;
-                    }
-                }
+            if hotkey.check_for_text_field && OS::is_in_text_field() {
+                log::debug!(
+                    "Hotkey '{}' not triggered - cursor is in a text field",
+                    hotkey.action_name
+                );
+                return;
             }
 
             // Clone action data before dropping lock
@@ -218,14 +211,11 @@ pub fn trigger_hotkey_by_index(index: usize) {
             // Show notification if requested
             if notify {
                 match result {
-                    Ok(Ok(_)) => macos::MacOSSession::global()
-                        .show_notification(&format!("✅ {}", action_name)),
-                    Ok(Err(e)) => macos::MacOSSession::global()
-                        .show_notification(&format!("❌ {}: {}", action_name, e)),
+                    Ok(Ok(_)) => OS::show_notification(&format!("✅ {}", action_name)),
+                    Ok(Err(e)) => OS::show_notification(&format!("❌ {}: {}", action_name, e)),
                     Err(_) => {
                         log::error!("Action '{}' panicked!", action_name);
-                        macos::MacOSSession::global()
-                            .show_notification(&format!("💥 {}: action panicked", action_name))
+                        OS::show_notification(&format!("💥 {}: action panicked", action_name));
                     }
                 }
             } else {
@@ -250,16 +240,12 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
         for (index, hotkey) in hotkeys.iter().enumerate() {
             if hotkey.matches_keyboard(pressed_keys) {
                 // Check if in text field (if enabled for this hotkey)
-                if hotkey.check_for_text_field {
-                    if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
-                        if is_in_text {
-                            log::debug!(
-                                "Hotkey '{}' not triggered - cursor is in a text field",
-                                hotkey.action_name
-                            );
-                            return false; // Don't consume event - let it pass through
-                        }
-                    }
+                if hotkey.check_for_text_field && OS::is_in_text_field() {
+                    log::debug!(
+                        "Hotkey '{}' not triggered - cursor is in a text field",
+                        hotkey.action_name
+                    );
+                    return false; // Don't consume event - let it pass through
                 }
 
                 if hotkey.trigger_on_release {
@@ -288,16 +274,19 @@ fn check_and_trigger_hotkey(pressed_keys: &Arc<std::collections::HashSet<u16>>) 
                     // Show notification if requested
                     if notify {
                         match result {
-                            Ok(Ok(_)) => macos::MacOSSession::global()
-                                .show_notification(&format!("✅ {}", action_name)),
-                            Ok(Err(e)) => macos::MacOSSession::global()
-                                .show_notification(&format!("❌ {}: {}", action_name, e)),
+                            Ok(Ok(_)) => {
+                                OS::show_notification(&format!("✅ {}", action_name));
+                            }
+                            Ok(Err(e)) => {
+                                OS::show_notification(&format!("❌ {}: {}", action_name, e));
+                            }
+
                             Err(_) => {
                                 log::error!("Action '{}' panicked!", action_name);
-                                macos::MacOSSession::global().show_notification(&format!(
+                                OS::show_notification(&format!(
                                     "💥 {}: action panicked",
                                     action_name
-                                ))
+                                ));
                             }
                         }
                     } else {
@@ -338,16 +327,12 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
                 let hotkeys = hotkeys_mutex.lock().unwrap();
                 hotkeys.get(pending.hotkey_index).and_then(|hotkey| {
                     // Check if in text field (if enabled for this hotkey)
-                    if hotkey.check_for_text_field {
-                        if let Ok(is_in_text) = macos::app_info::is_in_text_field() {
-                            if is_in_text {
-                                log::debug!(
-                                    "Pending hotkey '{}' not triggered - cursor is in a text field",
-                                    hotkey.action_name
-                                );
-                                return None; // Skip triggering
-                            }
-                        }
+                    if hotkey.check_for_text_field && OS::is_in_text_field() {
+                        log::debug!(
+                            "Pending hotkey '{}' not triggered - cursor is in a text field",
+                            hotkey.action_name
+                        );
+                        return None; // Skip triggering
                     }
 
                     Some((
@@ -373,14 +358,15 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
                 // Show notification if requested
                 if notify {
                     match result {
-                        Ok(Ok(_)) => macos::MacOSSession::global()
-                            .show_notification(&format!("✅ {}", action_name)),
-                        Ok(Err(e)) => macos::MacOSSession::global()
-                            .show_notification(&format!("❌ {}: {}", action_name, e)),
+                        Ok(Ok(_)) => {
+                            OS::show_notification(&format!("✅ {}", action_name));
+                        }
+                        Ok(Err(e)) => {
+                            OS::show_notification(&format!("❌ {}: {}", action_name, e));
+                        }
                         Err(_) => {
                             log::error!("Action '{}' panicked!", action_name);
-                            macos::MacOSSession::global()
-                                .show_notification(&format!("💥 {}: action panicked", action_name))
+                            OS::show_notification(&format!("💥 {}: action panicked", action_name));
                         }
                     }
                 } else {
@@ -404,11 +390,13 @@ fn check_pending_hotkey_release(pressed_keys: &Arc<std::collections::HashSet<u16
 /// Check if any registered MIDI hotkey matches the current MIDI state and trigger it
 ///
 /// Returns true if a hotkey was matched
-fn check_and_trigger_midi_hotkey(active_midi: &Arc<std::collections::HashSet<input::midi::MidiMessage>>) -> bool {
+fn check_and_trigger_midi_hotkey(
+    active_midi: &Arc<std::collections::HashSet<input::midi::MidiMessage>>,
+) -> bool {
     if let Some(hotkeys_mutex) = HOTKEYS.get() {
         let hotkeys = hotkeys_mutex.lock().unwrap();
 
-        for (_index, hotkey) in hotkeys.iter().enumerate() {
+        for hotkey in hotkeys.iter() {
             if hotkey.matches_midi(active_midi) {
                 // Clone action data before dropping lock
                 let action = hotkey.action;
@@ -427,16 +415,15 @@ fn check_and_trigger_midi_hotkey(active_midi: &Arc<std::collections::HashSet<inp
                 // Show notification if requested
                 if notify {
                     match result {
-                        Ok(Ok(_)) => macos::MacOSSession::global()
-                            .show_notification(&format!("✅ {}", action_name)),
-                        Ok(Err(e)) => macos::MacOSSession::global()
-                            .show_notification(&format!("❌ {}: {}", action_name, e)),
+                        Ok(Ok(_)) => {
+                            OS::show_notification(&format!("✅ {}", action_name));
+                        }
+                        Ok(Err(e)) => {
+                            OS::show_notification(&format!("❌ {}: {}", action_name, e));
+                        }
                         Err(_) => {
                             log::error!("MIDI action '{}' panicked!", action_name);
-                            macos::MacOSSession::global().show_notification(&format!(
-                                "💥 {}: action panicked",
-                                action_name
-                            ))
+                            OS::show_notification(&format!("💥 {}: action panicked", action_name));
                         }
                     }
                 } else {
@@ -559,7 +546,7 @@ unsafe extern "C" fn key_event_callback(
         let flags = unsafe { macos::CGEventGetFlags(event) };
 
         // Determine if this is a press or release based on the flags
-        use crate::keycodes::*;
+        use crate::input::*;
         let is_pressed = match key_code {
             KEY_CMD_LEFT | KEY_CMD_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_COMMAND) != 0,
             KEY_SHIFT_LEFT | KEY_SHIFT_RIGHT => (flags & macos::CG_EVENT_FLAG_MASK_SHIFT) != 0,
@@ -624,7 +611,7 @@ fn run() -> anyhow::Result<()> {
     protools::init_runtime();
 
     // Initialize key state tracker
-    use hotkey::KeyState;
+    use input::KeyState;
     use std::sync::Mutex;
     KEY_STATE
         .set(Mutex::new(KeyState::new()))
@@ -645,7 +632,11 @@ fn run() -> anyhow::Result<()> {
     // Log registered hotkeys
     log::info!("Registered {} hotkeys:", hotkeys.len());
     for hotkey in &hotkeys {
-        log::info!("  - {} => {}", hotkey.trigger.describe(), hotkey.action_name);
+        log::info!(
+            "  - {} => {}",
+            hotkey.trigger.describe(),
+            hotkey.action_name
+        );
     }
 
     // Initialize hotkey registry
@@ -669,7 +660,9 @@ fn run() -> anyhow::Result<()> {
         use input::midi::MidiState;
         input::midi::MIDI_STATE
             .set(Mutex::new(MidiState::new()))
-            .map_err(|_| anyhow::anyhow!("Failed to initialize MIDI_STATE - already initialized"))?;
+            .map_err(|_| {
+                anyhow::anyhow!("Failed to initialize MIDI_STATE - already initialized")
+            })?;
 
         // Initialize MIDI input with callback
         if let Err(e) = input::midi::init_midi_input(
@@ -725,14 +718,13 @@ fn run() -> anyhow::Result<()> {
         let _menu_bar = macos::menubar::create_menu_bar(None, || {
             log::info!("Reload Config triggered from menu");
             // Call the reload_config command
-            if let Err(e) = macos::commands::reload_config(&crate::params::Params::new(
+            if let Err(e) = macos::commands::reload_config(&crate::config::Params::new(
                 std::collections::HashMap::new(),
             )) {
                 log::error!("Failed to reload config: {}", e);
-                macos::MacOSSession::global()
-                    .show_notification(&format!("❌ Failed to reload config: {}", e));
+                OS::show_notification(&format!("❌ Failed to reload config: {}", e));
             } else {
-                macos::MacOSSession::global().show_notification("✅ Config reloaded successfully!");
+                OS::show_notification("✅ Config reloaded successfully!");
             }
         })
         .context("Failed to create menu bar")?;

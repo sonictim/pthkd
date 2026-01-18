@@ -1,6 +1,5 @@
 use super::client::*;
 use crate::actions_async;
-use crate::hotkey::HotkeyCounter;
 use crate::prelude::*;
 use lazy_static::lazy_static;
 use std::sync::{Arc, Mutex};

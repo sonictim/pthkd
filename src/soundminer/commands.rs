@@ -19,7 +19,7 @@ pub fn send_to_daw(params: &Params) -> R<()> {
     //     OS::get_running_apps()
     // );
     if launch && let Some(ref d) = daw {
-        crate::macos::app_info::focus_app(d, "", false, true, 1000)?;
+        OS::focus_app(d, "", false, true, 1000)?;
     }
     let sm = focus_sm();
 
@@ -78,8 +78,8 @@ pub fn select_spotting_folder(_params: &Params) -> R<()> {
 }
 
 fn focus_sm() -> String {
-    crate::macos::app_info::focus_app("Soundminer", "", true, true, 50).ok();
-    if let Ok(sm) = crate::macos::app_info::get_current_app() {
+    OS::focus_app("Soundminer", "", true, true, 50).ok();
+    if let Ok(sm) = OS::get_current_app() {
         sm
     } else {
         "Soundminer_Intel".to_string()

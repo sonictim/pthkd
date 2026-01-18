@@ -41,7 +41,7 @@ where
 
 /// Combine all module registries into one
 pub fn get_action_registry()
--> std::collections::HashMap<&'static str, fn(&crate::params::Params) -> R<()>> {
+-> std::collections::HashMap<&'static str, fn(&crate::config::Params) -> R<()>> {
     let mut registry = std::collections::HashMap::new();
     registry.extend(tracks::get_tracks_registry());
     registry.extend(markers::get_markers_registry());

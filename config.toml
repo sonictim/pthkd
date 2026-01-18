@@ -42,11 +42,17 @@
 #
 # Trigger Options:
 # - trigger_on_release: If true, action triggers when keys are released (useful for modifier keys)
-
+[midi]
+enabled = true
+input = "KOMPLETE KONTROL M32"
 
 # ============================================================================
 # System actions (os.* namespace)
 # ============================================================================
+[[hotkey]]
+midi = "note60"
+action = "os.test_notification"
+
 
 [[hotkey]]
 keys = ["cmd", "shift", "r", "l"]

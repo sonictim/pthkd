@@ -30,6 +30,20 @@ extern "C" fn menu_reload_config(
     }
 }
 
+extern "C" fn menu_edit_config(
+    _this: *mut AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) {
+    log::info!("Edit Config menu item clicked");
+    let r = std::process::Command::new("open")
+        .arg("config.toml")
+        .status();
+    if let Err(e) = r {
+        crate::macos::show_notification(&format!("{:?}", e));
+    }
+}
+
 extern "C" fn menu_restore_defaults(
     _this: *mut AnyObject,
     _cmd: objc2::runtime::Sel,
@@ -238,6 +252,11 @@ unsafe fn create_menu_delegate() -> Result<*mut AnyObject> {
                 as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
         );
 
+        builder.add_method(
+            sel!(editConfig:),
+            menu_edit_config as extern "C" fn(*mut AnyObject, objc2::runtime::Sel, *mut AnyObject),
+        );
+
         // Add the showAbout: method
         builder.add_method(
             sel!(showAbout:),
@@ -281,6 +300,12 @@ unsafe fn create_status_menu(delegate: *mut AnyObject) -> Result<*mut AnyObject>
         AnyClass::get("NSMenuItem").context("Failed to get NSMenuItem class")?;
     let separator_1: *mut AnyObject = msg_send![separator_class_1, separatorItem];
     let _: () = msg_send![menu, addItem: separator_1];
+
+    // Create "Edit Config" menu item
+    log::debug!("Creating 'Edit Config' menu item...");
+    let reload_item = unsafe { create_menu_item("Edit Config", "editConfig:", Some(delegate))? };
+    let _: () = msg_send![menu, addItem: reload_item];
+    log::debug!("Added 'Edit Config' item");
 
     // Create "Reload Config" menu item
     log::debug!("Creating 'Reload Config' menu item...");
@@ -454,6 +479,7 @@ impl MacOSSession {
             let selector = match action {
                 "terminate:" => sel!(terminate:),
                 "restoreDefaults:" => sel!(restoreDefaults:),
+                "editConfig:" => sel!(editConfig:),
                 "reloadConfig:" => sel!(reloadConfig:),
                 "showAbout:" => sel!(showAbout:),
                 _ => anyhow::bail!("Unknown action: {}", action),

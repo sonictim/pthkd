@@ -296,7 +296,7 @@ echo "💿 Creating DMG for distribution..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 DMG_NAME="pthkd-v$VERSION.dmg"
-DMG_OUTPUT_DIR="$HOME/dev/www/feralfreq.com/pthkd/download"
+DMG_OUTPUT_DIR="$HOME/dev/www/feralfreq.com/public/pthkd/download"
 DMG_PATH="$DMG_OUTPUT_DIR/$DMG_NAME"
 
 # Create output directory if it doesn't exist

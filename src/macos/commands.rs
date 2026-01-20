@@ -9,7 +9,7 @@ use std::process::Command;
 // ============================================================================
 
 pub fn show_notification(params: &Params) -> R<()> {
-    let message = params.get_str("message", "Test Notification Activated!")
+    let message = params.get_str("message", "Test Notification Activated!");
     OS::show_notification(message);
     Ok(())
 }

@@ -35,12 +35,19 @@ extern "C" fn menu_edit_config(
     _cmd: objc2::runtime::Sel,
     _sender: *mut AnyObject,
 ) {
-    log::info!("Edit Config menu item clicked");
-    let r = std::process::Command::new("open")
-        .arg("config.toml")
-        .status();
-    if let Err(e) = r {
-        crate::macos::show_notification(&format!("{:?}", e));
+    let configs = crate::config::get_config_paths();
+    for config in configs {
+        if config.exists() {
+            log::info!(
+                "Edit Config menu item clicked\nOpening: {}",
+                config.display()
+            );
+            std::process::Command::new("open")
+                .arg("config.toml")
+                .status()
+                .ok();
+            return;
+        }
     }
 }
 

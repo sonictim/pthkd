@@ -77,7 +77,7 @@ fn is_bundled() -> bool {
 }
 
 /// Get the config file paths to try, in order of preference
-fn get_config_paths() -> Vec<PathBuf> {
+pub fn get_config_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
     if !is_bundled() {
@@ -254,20 +254,19 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
                 };
 
                 // Parse MIDI pattern
-                let midi_trigger =
-                    match crate::input::midi::parse_midi_pattern(midi.to_vec()) {
-                        Ok(pattern) => TriggerPattern::Midi(pattern),
-                        Err(e) => {
-                            log::error!(
-                                "Skipping MIDI part of hotkey '{}' with MIDI {:?}: {:#}",
-                                hk_config.action,
-                                midi,
-                                e
-                            );
-                            skipped_count += 1;
-                            continue;
-                        }
-                    };
+                let midi_trigger = match crate::input::midi::parse_midi_pattern(midi.to_vec()) {
+                    Ok(pattern) => TriggerPattern::Midi(pattern),
+                    Err(e) => {
+                        log::error!(
+                            "Skipping MIDI part of hotkey '{}' with MIDI {:?}: {:#}",
+                            hk_config.action,
+                            midi,
+                            e
+                        );
+                        skipped_count += 1;
+                        continue;
+                    }
+                };
 
                 // Create keyboard hotkey
                 let app = if hk_config.target_application.is_empty() {
@@ -349,8 +348,7 @@ pub fn config_to_hotkeys(config: Config) -> Result<Vec<Hotkey>> {
             }
             // MIDI-only hotkey (MIDI provided, no keys or empty keys)
             (keys, midi) if keys.is_empty() && !midi.is_empty() => {
-                let trigger = match crate::input::midi::parse_midi_pattern(midi.to_vec())
-                {
+                let trigger = match crate::input::midi::parse_midi_pattern(midi.to_vec()) {
                     Ok(pattern) => TriggerPattern::Midi(pattern),
                     Err(e) => {
                         log::error!("Skipping hotkey with MIDI {:?}: {:#}", midi, e);

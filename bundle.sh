@@ -18,7 +18,7 @@ BUNDLE_NAME="pthkd.app"
 VERSION=$(awk '/\[package\]/ {flag=1} flag && /^version =/ {print $3; exit}' Cargo.toml | tr -d '"')
 BUILD_DIR="target/universal/release"
 APP_PATH="$BUILD_DIR/$BUNDLE_NAME"
-
+CONFIG_FILE="$HOME/Library/Application Support/pthkd/config.toml"
 # Your Apple Developer credentials
 CODESIGN_CERTIFICATE_ID="CD96C81E43F0FFA026939DC37BF69875A96FEF81"
 NOTARIZE_USERNAME="soundguru@gmail.com"
@@ -41,6 +41,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🔨 Building $APP_NAME v$VERSION"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# Ensure targets are installed
+echo "📦 Updating default_config.toml..."
+cp $CONFIG_FILE $SCRIPT_DIR/src/config/default_config.toml
 
 # Ensure targets are installed
 echo "📦 Ensuring Rust targets are installed..."

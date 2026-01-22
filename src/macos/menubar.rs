@@ -35,19 +35,15 @@ extern "C" fn menu_edit_config(
     _cmd: objc2::runtime::Sel,
     _sender: *mut AnyObject,
 ) {
-    let configs = crate::config::get_config_paths();
-    for config in configs {
-        if config.exists() {
-            log::info!(
-                "Edit Config menu item clicked\nOpening: {}",
-                config.display()
-            );
-            std::process::Command::new("open")
-                .arg("config.toml")
-                .status()
-                .ok();
-            return;
-        }
+    if let Ok(config) = crate::config::get_config_path() {
+        log::info!(
+            "Edit Config menu item clicked\nOpening: {}",
+            config.display()
+        );
+        std::process::Command::new("open")
+            .arg(&config)
+            .status()
+            .ok();
     }
 }
 
@@ -57,7 +53,13 @@ extern "C" fn menu_restore_defaults(
     _sender: *mut AnyObject,
 ) {
     log::info!("Restore Defaults menu item clicked");
-    crate::config::create_default_config().ok();
+    if let Ok(config) = crate::config::get_config_path() {
+        if config.exists() {
+            std::fs::rename(&config, config.with_extension("backup")).ok();
+        }
+
+        crate::config::create_default_config(&config).ok();
+    }
 }
 
 extern "C" fn menu_show_about(

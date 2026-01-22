@@ -19,6 +19,7 @@ VERSION=$(awk '/\[package\]/ {flag=1} flag && /^version =/ {print $3; exit}' Car
 BUILD_DIR="target/universal/release"
 APP_PATH="$BUILD_DIR/$BUNDLE_NAME"
 CONFIG_FILE="$HOME/Library/Application Support/pthkd/config.toml"
+DEFAULT_CONFIG_FILE="$SCRIPT_DIR/src/config/default_config.toml"
 # Your Apple Developer credentials
 CODESIGN_CERTIFICATE_ID="CD96C81E43F0FFA026939DC37BF69875A96FEF81"
 NOTARIZE_USERNAME="soundguru@gmail.com"
@@ -44,7 +45,7 @@ echo ""
 
 # Ensure targets are installed
 echo "📦 Updating default_config.toml..."
-cp $CONFIG_FILE $SCRIPT_DIR/src/config/default_config.toml
+cp "$CONFIG_FILE" "$DEFAULT_CONFIG_FILE"
 
 # Ensure targets are installed
 echo "📦 Ensuring Rust targets are installed..."

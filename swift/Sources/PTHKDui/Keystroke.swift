@@ -12,6 +12,107 @@ class Keystroke {
     private static let APP_EVENT_MARKER: Int64 = 0x5054484B44 // "PTHKD"
     private static let EVENT_USER_DATA_FIELD: CGEventField = CGEventField(rawValue: 127)!
 
+    // MARK: - Accessibility-based paste (for password fields)
+
+    /// Paste into the currently focused field using Accessibility APIs
+    /// This is preferred for password fields as it bypasses synthetic keystroke restrictions
+    /// Falls back to Cmd+V if AX approach fails
+    static func pasteIntoFocusedField(text: String) throws {
+        // Check accessibility permission
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        guard AXIsProcessTrustedWithOptions(options) else {
+            NSLog("Accessibility permission not granted, falling back to Cmd+V")
+            try pasteText(text: text)
+            return
+        }
+
+        // Try AX-based approach first
+        if tryAXPaste(text: text) {
+            NSLog("Successfully pasted via Accessibility API")
+            return
+        }
+
+        // Fallback to Cmd+V
+        NSLog("AX paste failed, falling back to Cmd+V")
+        try pasteText(text: text)
+    }
+
+    /// Try to paste using Accessibility API (returns true on success)
+    private static func tryAXPaste(text: String) -> Bool {
+        // Get the system-wide accessibility element
+        let systemWide = AXUIElementCreateSystemWide()
+
+        // Get the focused element
+        var focusedElement: CFTypeRef?
+        let focusError = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+
+        guard focusError == .success, let element = focusedElement else {
+            NSLog("Could not get focused element: \(focusError.rawValue)")
+            return false
+        }
+
+        let axElement = element as! AXUIElement
+
+        // Try to set value directly on focused element
+        if setAXValue(element: axElement, value: text) {
+            return true
+        }
+
+        // Some apps wrap text fields - try children
+        var children: CFTypeRef?
+        let childError = AXUIElementCopyAttributeValue(axElement, kAXChildrenAttribute as CFString, &children)
+
+        if childError == .success, let childArray = children as? [AXUIElement] {
+            for child in childArray {
+                if setAXValue(element: child, value: text) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    /// Set AXValue on an element if it's a text field
+    private static func setAXValue(element: AXUIElement, value: String) -> Bool {
+        // Check the role
+        var role: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+
+        guard let roleStr = role as? String else { return false }
+
+        // Only attempt on text fields
+        let textFieldRoles = [
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            "AXSecureTextField"  // Secure text field role
+        ]
+
+        guard textFieldRoles.contains(roleStr) else {
+            return false
+        }
+
+        // Check if the value attribute is settable
+        var isSettable: DarwinBoolean = false
+        AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &isSettable)
+
+        guard isSettable.boolValue else {
+            NSLog("AXValue is not settable for role: \(roleStr)")
+            return false
+        }
+
+        // Try to set the value
+        let setError = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFTypeRef)
+
+        if setError == .success {
+            NSLog("Successfully set AXValue for role: \(roleStr)")
+            return true
+        } else {
+            NSLog("Failed to set AXValue: \(setError.rawValue) for role: \(roleStr)")
+            return false
+        }
+    }
+
     /// Send a keystroke to an application
     /// modifiers: bit flags (shift=1, control=2, option=4, command=8)
     static func send(appName: String, keyChar: String, modifiers: Int) throws {
@@ -288,8 +389,18 @@ class Keystroke {
     static func pasteText(text: String) throws {
         let pasteboard = NSPasteboard.general
 
-        // Save current clipboard contents
-        let savedItems = pasteboard.pasteboardItems
+        // Save current clipboard contents by COPYING the data (not just references)
+        // NSPasteboardItem references become invalid after clearContents()
+        var savedData: [(NSPasteboard.PasteboardType, Data)] = []
+        if let items = pasteboard.pasteboardItems {
+            for item in items {
+                for type in item.types {
+                    if let data = item.data(forType: type) {
+                        savedData.append((type, data))
+                    }
+                }
+            }
+        }
 
         // Clear and set new text
         pasteboard.clearContents()
@@ -327,10 +438,14 @@ class Keystroke {
         // Small delay before restoring clipboard
         Thread.sleep(forTimeInterval: 0.05)  // 50ms
 
-        // Restore previous clipboard
+        // Restore previous clipboard using the copied data
         pasteboard.clearContents()
-        if let saved = savedItems {
-            pasteboard.writeObjects(saved)
+        if !savedData.isEmpty {
+            let newItem = NSPasteboardItem()
+            for (type, data) in savedData {
+                newItem.setData(data, forType: type)
+            }
+            pasteboard.writeObjects([newItem])
         }
     }
 }

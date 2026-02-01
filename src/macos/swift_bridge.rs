@@ -36,6 +36,7 @@ unsafe extern "C" {
     ) -> bool;
     fn pthkd_type_text(text: *const c_char, mark_events: bool) -> bool;
     fn pthkd_paste_text(text: *const c_char) -> bool;
+    fn pthkd_paste_into_focused_field(text: *const c_char) -> bool;
     fn pthkd_click_button(
         app_name: *const c_char,
         window_name: *const c_char,
@@ -282,6 +283,24 @@ pub fn paste_text(text: &str) -> R<()> {
             Ok(())
         } else {
             Err(anyhow::anyhow!("Paste text failed"))
+        }
+    }
+}
+
+/// Paste text into the focused field using Accessibility API with Cmd+V fallback
+/// This is preferred for password fields that may block synthetic keystrokes
+pub fn paste_into_focused_field(text: &str) -> R<()> {
+    unsafe {
+        use std::ffi::CString;
+
+        let text_cstr = CString::new(text)?;
+
+        let success = pthkd_paste_into_focused_field(text_cstr.as_ptr());
+
+        if success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Paste into focused field failed"))
         }
     }
 }

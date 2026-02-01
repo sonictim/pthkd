@@ -483,34 +483,40 @@ fn wait_for_all_keys_released(max_wait_ms: u64) -> R<()> {
 pub fn rapid_pw(params: &Params) -> R<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
-    let r = if set {
-        unsafe { MacOSSession::global().password_prompt(account) }
-    } else if let Ok(pw) = super::keyring::password_get(account) {
-        log::info!(
-            "Pasting password from keychain for account: {} (length: {} chars)",
-            account,
-            pw.len()
-        );
 
-        // CRITICAL: Wait for user to release ALL keys before pasting
-        // Carbon hotkeys fire on keydown, so modifier keys are still pressed
-        // We need to wait until they're released or the paste will have wrong modifiers
-        wait_for_all_keys_released(500)?;
+    // Check if we need to set or if password doesn't exist
+    if set || super::keyring::password_get(account).is_err() {
+        if !set {
+            log::warn!("Password not found in keychain for account: {}", account);
+        }
+        unsafe {
+            let _ = MacOSSession::global().password_prompt(account);
+        }
+        return Ok(());
+    }
 
-        eprintln!("All keys released, pasting password...");
+    // Get the password
+    let pw = super::keyring::password_get(account)?;
+    log::info!(
+        "Pasting password from keychain for account: {} (length: {} chars)",
+        account,
+        pw.len()
+    );
 
-        // Use paste instead of typing - much faster and more reliable
-        OS::paste_text(&pw)?;
+    // CRITICAL: Wait for user to release ALL keys before pasting
+    // Carbon hotkeys fire on keydown, so modifier keys are still pressed
+    wait_for_all_keys_released(500)?;
 
-        // Small delay to ensure paste completes before Enter
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    eprintln!("All keys released, pasting password...");
 
-        log::info!("Sending Enter key");
-        OS::keystroke(&["return"])
-    } else {
-        log::warn!("Password not found in keychain for account: {}", account);
-        unsafe { MacOSSession::global().password_prompt(account) }
-    };
+    // Use AX-based paste with Cmd+V fallback
+    OS::paste_into_focused_field(&pw)?;
+
+    // Small delay to ensure paste completes before Enter
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    log::info!("Sending Enter key");
+    OS::keystroke(&["return"])?;
 
     // Check and recreate event tap if it was disabled by keychain dialog
     if let Err(e) = super::recreate_event_tap_if_needed() {
@@ -520,7 +526,7 @@ pub fn rapid_pw(params: &Params) -> R<()> {
         );
     }
 
-    r
+    Ok(())
 }
 
 pub fn test_pw(params: &Params) -> R<()> {

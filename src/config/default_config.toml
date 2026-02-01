@@ -127,6 +127,23 @@ notify = true
 [hotkey.params]
 set = true
 
+[[hotkey]]
+keys = ["shift", "option", "command", "return"]
+action = "os.rapid_pw"
+trigger_on_release = true  # Trigger after keys released (solves modifier passthrough)
+carbon = true
+notify = true
+[hotkey.params]
+account = "master"
+
+[[hotkey]]
+keys = ["shift", "option", "p", "s"]
+action = "os.rapid_pw"
+notify = true
+[hotkey.params]
+set = true
+account = "master"
+
 
 [[hotkey]]
 keys = ["shift", "cmd", "o", "p"]

@@ -36,7 +36,7 @@ unsafe extern "C" {
     ) -> bool;
     fn pthkd_type_text(text: *const c_char, mark_events: bool) -> bool;
     fn pthkd_paste_text(text: *const c_char) -> bool;
-    fn pthkd_paste_into_focused_field(text: *const c_char) -> bool;
+    fn pthkd_paste_into_focused_field(text: *const c_char, send_enter: bool) -> bool;
     fn pthkd_click_button(
         app_name: *const c_char,
         window_name: *const c_char,
@@ -287,15 +287,15 @@ pub fn paste_text(text: &str) -> R<()> {
     }
 }
 
-/// Paste text into the focused field using Accessibility API with Cmd+V fallback
-/// This is preferred for password fields that may block synthetic keystrokes
-pub fn paste_into_focused_field(text: &str) -> R<()> {
+/// Paste text into the focused field using Accessibility API
+/// If send_enter is true, Swift sends Enter key after pasting (atomic operation)
+pub fn paste_into_focused_field(text: &str, send_enter: bool) -> R<()> {
     unsafe {
         use std::ffi::CString;
 
         let text_cstr = CString::new(text)?;
 
-        let success = pthkd_paste_into_focused_field(text_cstr.as_ptr());
+        let success = pthkd_paste_into_focused_field(text_cstr.as_ptr(), send_enter);
 
         if success {
             Ok(())

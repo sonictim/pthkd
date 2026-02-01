@@ -15,30 +15,15 @@ class Keystroke {
     // MARK: - Accessibility-based paste (for password fields)
 
     /// Paste into the currently focused field using Accessibility APIs
-    /// This is preferred for password fields as it bypasses synthetic keystroke restrictions
-    /// Falls back to Cmd+V if AX approach fails
-    static func pasteIntoFocusedField(text: String) throws {
+    /// Optionally sends Enter key after pasting
+    static func pasteIntoFocusedField(text: String, sendEnter: Bool) throws {
         // Check accessibility permission
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(options) else {
-            NSLog("Accessibility permission not granted, falling back to Cmd+V")
-            try pasteText(text: text)
-            return
+            throw NSError(domain: "Keystroke", code: -1,
+                         userInfo: [NSLocalizedDescriptionKey: "Accessibility permission not granted"])
         }
 
-        // Try AX-based approach first
-        if tryAXPaste(text: text) {
-            NSLog("Successfully pasted via Accessibility API")
-            return
-        }
-
-        // Fallback to Cmd+V
-        NSLog("AX paste failed, falling back to Cmd+V")
-        try pasteText(text: text)
-    }
-
-    /// Try to paste using Accessibility API (returns true on success)
-    private static func tryAXPaste(text: String) -> Bool {
         // Get the system-wide accessibility element
         let systemWide = AXUIElementCreateSystemWide()
 
@@ -47,15 +32,18 @@ class Keystroke {
         let focusError = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedElement)
 
         guard focusError == .success, let element = focusedElement else {
-            NSLog("Could not get focused element: \(focusError.rawValue)")
-            return false
+            throw NSError(domain: "Keystroke", code: Int(focusError.rawValue),
+                         userInfo: [NSLocalizedDescriptionKey: "Could not get focused element: \(focusError.rawValue)"])
         }
 
         let axElement = element as! AXUIElement
 
         // Try to set value directly on focused element
         if setAXValue(element: axElement, value: text) {
-            return true
+            if sendEnter {
+                sendEnterKey()
+            }
+            return
         }
 
         // Some apps wrap text fields - try children
@@ -65,12 +53,30 @@ class Keystroke {
         if childError == .success, let childArray = children as? [AXUIElement] {
             for child in childArray {
                 if setAXValue(element: child, value: text) {
-                    return true
+                    if sendEnter {
+                        sendEnterKey()
+                    }
+                    return
                 }
             }
         }
 
-        return false
+        throw NSError(domain: "Keystroke", code: -1,
+                     userInfo: [NSLocalizedDescriptionKey: "Could not set value on focused element"])
+    }
+
+    /// Send Enter key
+    private static func sendEnterKey() {
+        guard let eventSource = CGEventSource(stateID: .hidSystemState) else { return }
+
+        // Keycode 36 = Return/Enter
+        guard let keyDown = CGEvent(keyboardEventSource: eventSource, virtualKey: 36, keyDown: true) else { return }
+        keyDown.setIntegerValueField(EVENT_USER_DATA_FIELD, value: APP_EVENT_MARKER)
+        keyDown.post(tap: .cghidEventTap)
+
+        guard let keyUp = CGEvent(keyboardEventSource: eventSource, virtualKey: 36, keyDown: false) else { return }
+        keyUp.setIntegerValueField(EVENT_USER_DATA_FIELD, value: APP_EVENT_MARKER)
+        keyUp.post(tap: .cghidEventTap)
     }
 
     /// Set AXValue on an element if it's a text field
@@ -79,25 +85,31 @@ class Keystroke {
         var role: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
 
-        guard let roleStr = role as? String else { return false }
+        guard let roleStr = role as? String else {
+            NSLog("setAXValue: Could not get role")
+            return false
+        }
 
-        // Only attempt on text fields
+        // Accept common text field roles
         let textFieldRoles = [
             kAXTextFieldRole as String,
             kAXTextAreaRole as String,
-            "AXSecureTextField"  // Secure text field role
+            "AXSecureTextField"
         ]
 
         guard textFieldRoles.contains(roleStr) else {
+            NSLog("setAXValue: Skipping role '\(roleStr)' - not a text field")
             return false
         }
+
+        NSLog("setAXValue: Found text field with role '\(roleStr)'")
 
         // Check if the value attribute is settable
         var isSettable: DarwinBoolean = false
         AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &isSettable)
 
         guard isSettable.boolValue else {
-            NSLog("AXValue is not settable for role: \(roleStr)")
+            NSLog("setAXValue: AXValue is not settable for role: \(roleStr)")
             return false
         }
 
@@ -105,10 +117,10 @@ class Keystroke {
         let setError = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFTypeRef)
 
         if setError == .success {
-            NSLog("Successfully set AXValue for role: \(roleStr)")
+            NSLog("setAXValue: Successfully set AXValue for role: \(roleStr)")
             return true
         } else {
-            NSLog("Failed to set AXValue: \(setError.rawValue) for role: \(roleStr)")
+            NSLog("setAXValue: Failed with error code \(setError.rawValue) for role: \(roleStr)")
             return false
         }
     }

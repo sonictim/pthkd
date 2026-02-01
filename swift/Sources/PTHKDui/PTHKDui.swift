@@ -167,15 +167,16 @@ public func pasteText(
     }
 }
 
-// C ABI: Paste into focused field using Accessibility API (with Cmd+V fallback)
-// This is preferred for password fields that may block synthetic keystrokes
+// C ABI: Paste into focused field using Accessibility API
+// sendEnter: if true, sends Enter key after pasting
 @_cdecl("pthkd_paste_into_focused_field")
 public func pasteIntoFocusedField(
-    text: UnsafePointer<CChar>
+    text: UnsafePointer<CChar>,
+    sendEnter: Bool
 ) -> Bool {
     do {
         let textStr = String(cString: text)
-        try Keystroke.pasteIntoFocusedField(text: textStr)
+        try Keystroke.pasteIntoFocusedField(text: textStr, sendEnter: sendEnter)
         return true
     } catch {
         NSLog("pthkd_paste_into_focused_field error: \(error.localizedDescription)")

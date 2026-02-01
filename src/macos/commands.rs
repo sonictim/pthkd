@@ -483,47 +483,35 @@ fn wait_for_all_keys_released(max_wait_ms: u64) -> R<()> {
 pub fn rapid_pw(params: &Params) -> R<()> {
     let account = params.get_str("account", "rapid_pw");
     let set = params.get_bool("set", false);
+    if !set && let Ok(pw) = super::keyring::password_get(account) {
+        log::info!(
+            "Pasting password from keychain for account: {} (length: {} chars)",
+            account,
+            pw.len()
+        );
 
-    // Check if we need to set or if password doesn't exist
-    if set || super::keyring::password_get(account).is_err() {
+        // CRITICAL: Wait for user to release ALL keys before pasting
+        // Carbon hotkeys fire on keydown, so modifier keys are still pressed
+        wait_for_all_keys_released(200)?;
+        //
+        // eprintln!("All keys released, pasting password...");
+        //
+        // Use AX-based paste with Enter - Swift handles it atomically
+        OS::paste_into_focused_field(&pw, true)?;
+
+        if let Err(e) = super::recreate_event_tap_if_needed() {
+            log::error!(
+                "Failed to recreate event tap after keychain operation: {}",
+                e
+            );
+        }
+    } else {
         if !set {
             log::warn!("Password not found in keychain for account: {}", account);
         }
         unsafe {
             let _ = MacOSSession::global().password_prompt(account);
         }
-        return Ok(());
-    }
-
-    // Get the password
-    let pw = super::keyring::password_get(account)?;
-    log::info!(
-        "Pasting password from keychain for account: {} (length: {} chars)",
-        account,
-        pw.len()
-    );
-
-    // CRITICAL: Wait for user to release ALL keys before pasting
-    // Carbon hotkeys fire on keydown, so modifier keys are still pressed
-    wait_for_all_keys_released(500)?;
-
-    eprintln!("All keys released, pasting password...");
-
-    // Use AX-based paste with Cmd+V fallback
-    OS::paste_into_focused_field(&pw)?;
-
-    // Small delay to ensure paste completes before Enter
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    log::info!("Sending Enter key");
-    OS::keystroke(&["return"])?;
-
-    // Check and recreate event tap if it was disabled by keychain dialog
-    if let Err(e) = super::recreate_event_tap_if_needed() {
-        log::error!(
-            "Failed to recreate event tap after keychain operation: {}",
-            e
-        );
     }
 
     Ok(())
